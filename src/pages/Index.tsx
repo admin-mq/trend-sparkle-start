@@ -1,16 +1,15 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-
-interface Trend {
-  trend_id: string;
-  trend_name: string;
-  views_last_60h_millions: number | null;
-}
+import { BrandProfileForm } from "@/components/BrandProfileForm";
+import { RecommendedTrends } from "@/components/RecommendedTrends";
+import { Trend, RecommendedTrend } from "@/types/trends";
 
 const Index = () => {
   const [trends, setTrends] = useState<Trend[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [recommendations, setRecommendations] = useState<RecommendedTrend[]>([]);
+  const [brandName, setBrandName] = useState<string>('');
 
   useEffect(() => {
     const fetchTrends = async () => {
@@ -52,7 +51,23 @@ const Index = () => {
           </p>
         </div>
 
+        <BrandProfileForm 
+          onRecommendationsReceived={setRecommendations}
+          onBrandNameChange={setBrandName}
+        />
+
+        <RecommendedTrends 
+          recommendations={recommendations}
+          brandName={brandName}
+        />
+
         <div className="space-y-4">
+          <h2 className="text-2xl font-bold text-foreground">
+            Top 5 trends from Supabase
+          </h2>
+          <p className="text-muted-foreground">
+            Global, non-premium, active trends
+          </p>
           {loading && (
             <p className="text-center text-muted-foreground">Loading trends…</p>
           )}
