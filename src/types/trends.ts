@@ -20,3 +20,12 @@ export interface RecommendedTrend extends Trend {
   example_hook: string;
   angle_summary: string;
 }
+
+export interface CreativeDirection {
+  idea_id: number;
+  title: string;
+  summary: string;
+  hook: string;
+  visual_idea: string;
+  suggested_cta: string;
+}
