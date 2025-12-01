@@ -9,9 +9,10 @@ import { UserProfile, RecommendedTrend } from "@/types/trends";
 interface BrandProfileFormProps {
   onRecommendationsReceived: (recommendations: RecommendedTrend[]) => void;
   onBrandNameChange: (brandName: string) => void;
+  onUserProfileChange: (profile: UserProfile) => void;
 }
 
-export const BrandProfileForm = ({ onRecommendationsReceived, onBrandNameChange }: BrandProfileFormProps) => {
+export const BrandProfileForm = ({ onRecommendationsReceived, onBrandNameChange, onUserProfileChange }: BrandProfileFormProps) => {
   const [userProfile, setUserProfile] = useState<UserProfile>({
     brand_name: '',
     industry: '',
@@ -41,6 +42,7 @@ export const BrandProfileForm = ({ onRecommendationsReceived, onBrandNameChange 
 
     setLoading(true);
     setError(null);
+    onUserProfileChange(userProfile);
 
     try {
       // Fetch top 5 trends from Supabase

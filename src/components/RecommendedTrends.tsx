@@ -1,12 +1,14 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { RecommendedTrend } from "@/types/trends";
 
 interface RecommendedTrendsProps {
   recommendations: RecommendedTrend[];
   brandName: string;
+  onViewDirections: (trend: RecommendedTrend) => void;
 }
 
-export const RecommendedTrends = ({ recommendations, brandName }: RecommendedTrendsProps) => {
+export const RecommendedTrends = ({ recommendations, brandName, onViewDirections }: RecommendedTrendsProps) => {
   if (recommendations.length === 0) {
     return (
       <div className="mb-8">
@@ -48,6 +50,15 @@ export const RecommendedTrends = ({ recommendations, brandName }: RecommendedTre
               <div>
                 <p className="text-sm text-muted-foreground">{trend.angle_summary}</p>
               </div>
+
+              <Button 
+                onClick={() => onViewDirections(trend)}
+                variant="outline"
+                size="sm"
+                className="mt-4"
+              >
+                View creative directions
+              </Button>
             </CardContent>
           </Card>
         ))}
