@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { CreativeDirection } from "@/types/trends";
 
 interface CreativeDirectionsProps {
@@ -6,9 +7,10 @@ interface CreativeDirectionsProps {
   directions: CreativeDirection[];
   loading: boolean;
   error: string | null;
+  onViewBlueprint: (direction: CreativeDirection) => void;
 }
 
-export const CreativeDirections = ({ trendName, directions, loading, error }: CreativeDirectionsProps) => {
+export const CreativeDirections = ({ trendName, directions, loading, error, onViewBlueprint }: CreativeDirectionsProps) => {
   if (loading) {
     return (
       <div className="mb-8">
@@ -49,6 +51,15 @@ export const CreativeDirections = ({ trendName, directions, loading, error }: Cr
               <p className="text-sm font-medium text-foreground">
                 CTA: {direction.suggested_cta}
               </p>
+              
+              <Button 
+                onClick={() => onViewBlueprint(direction)}
+                variant="outline"
+                size="sm"
+                className="mt-4"
+              >
+                View execution blueprint
+              </Button>
             </CardContent>
           </Card>
         ))}

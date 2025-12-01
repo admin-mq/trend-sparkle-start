@@ -29,3 +29,11 @@ export interface CreativeDirection {
   visual_idea: string;
   suggested_cta: string;
 }
+
+export interface DetailedDirection {
+  concept: string;
+  script_outline: string[];
+  caption: string;
+  recommended_hashtags: string[];
+  extra_tips: string[];
+}
