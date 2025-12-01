@@ -3,7 +3,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { BrandProfileForm } from "@/components/BrandProfileForm";
 import { RecommendedTrends } from "@/components/RecommendedTrends";
 import { CreativeDirections } from "@/components/CreativeDirections";
-import { Trend, RecommendedTrend, CreativeDirection, UserProfile } from "@/types/trends";
+import { ExecutionBlueprint } from "@/components/ExecutionBlueprint";
+import { Trend, RecommendedTrend, CreativeDirection, UserProfile, DetailedDirection } from "@/types/trends";
 
 const Index = () => {
   const [trends, setTrends] = useState<Trend[]>([]);
@@ -14,8 +15,13 @@ const Index = () => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [creativeDirections, setCreativeDirections] = useState<CreativeDirection[]>([]);
   const [selectedTrendName, setSelectedTrendName] = useState<string>('');
+  const [selectedTrendId, setSelectedTrendId] = useState<string>('');
   const [directionsLoading, setDirectionsLoading] = useState(false);
   const [directionsError, setDirectionsError] = useState<string | null>(null);
+  const [detailedDirection, setDetailedDirection] = useState<DetailedDirection | null>(null);
+  const [selectedIdeaTitle, setSelectedIdeaTitle] = useState<string>('');
+  const [blueprintLoading, setBlueprintLoading] = useState(false);
+  const [blueprintError, setBlueprintError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchTrends = async () => {
@@ -54,6 +60,8 @@ const Index = () => {
     setDirectionsLoading(true);
     setDirectionsError(null);
     setSelectedTrendName(trend.trend_name);
+    setSelectedTrendId(trend.trend_id);
+    setDetailedDirection(null); // Clear previous blueprint
 
     try {
       // Fetch the full trend record from Supabase
@@ -89,6 +97,69 @@ const Index = () => {
     }
   };
 
+  const handleViewBlueprint = async (direction: CreativeDirection) => {
+    if (!userProfile) {
+      setBlueprintError('User profile is required');
+      return;
+    }
+
+    setBlueprintLoading(true);
+    setBlueprintError(null);
+    setSelectedIdeaTitle(direction.title);
+
+    try {
+      // Fetch the full trend record from Supabase
+      const { data: trendData, error: trendError } = await supabase
+        .from('trends')
+        .select('*')
+        .eq('trend_id', selectedTrendId)
+        .maybeSingle();
+
+      if (trendError) {
+        throw trendError;
+      }
+
+      if (!trendData) {
+        throw new Error('Trend not found');
+      }
+
+      // Generate mocked detailed direction
+      const blueprint: DetailedDirection = {
+        concept: `High-level idea of how ${userProfile.brand_name} can use ${trendData.trend_name} with the idea "${direction.title}". This approach combines the trending content style with your brand's unique voice to create engaging content that resonates with your audience.`,
+        script_outline: [
+          `Slide 1: Hook about ${trendData.trend_name} that grabs attention for ${userProfile.brand_name}`,
+          `Slide 2: Explain the connection between ${trendData.trend_name} and your audience's needs`,
+          `Slide 3: Show how ${userProfile.brand_name} uniquely approaches this trend`,
+          `Slide 4: Present the main value proposition using ${direction.title}`,
+          `Slide 5: Include social proof or results related to ${trendData.trend_name}`,
+          `Slide 6: End with a strong call-to-action: ${direction.suggested_cta}`
+        ],
+        caption: `🔥 ${trendData.trend_name} is taking over, and here's how ${userProfile.brand_name} is making it work! ${direction.hook} Ready to see the results? Check out our approach and let us know what you think! ${direction.suggested_cta}`,
+        recommended_hashtags: [
+          `#${trendData.trend_name.replace(/\s+/g, '')}`,
+          '#marketing',
+          '#content',
+          `#${userProfile.brand_name.replace(/\s+/g, '')}`,
+          '#trending',
+          '#socialmedia'
+        ],
+        extra_tips: [
+          `Post during peak engagement hours for your ${userProfile.audience} audience`,
+          `Use the trending audio or format associated with ${trendData.trend_name}`,
+          `Keep the visual style consistent with your brand identity`,
+          `Engage with comments quickly to boost algorithmic reach`,
+          `Consider creating a series of posts around this trend for maximum impact`
+        ]
+      };
+
+      setDetailedDirection(blueprint);
+    } catch (err) {
+      setBlueprintError(err instanceof Error ? err.message : 'Failed to load execution blueprint');
+    } finally {
+      setBlueprintLoading(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-16 max-w-4xl">
@@ -118,6 +189,15 @@ const Index = () => {
           directions={creativeDirections}
           loading={directionsLoading}
           error={directionsError}
+          onViewBlueprint={handleViewBlueprint}
+        />
+
+        <ExecutionBlueprint 
+          trendName={selectedTrendName}
+          ideaTitle={selectedIdeaTitle}
+          blueprint={detailedDirection}
+          loading={blueprintLoading}
+          error={blueprintError}
         />
 
         <div className="space-y-4">
