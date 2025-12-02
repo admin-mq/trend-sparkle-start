@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/integrations/supabase/client";
 import { UserProfile, RecommendedTrend } from "@/types/trends";
 
 interface BrandProfileFormProps {
@@ -45,30 +45,22 @@ export const BrandProfileForm = ({ onRecommendationsReceived, onBrandNameChange,
     onUserProfileChange(userProfile);
 
     try {
-      // Fetch top 5 trends from Supabase
-      const { data: trends, error: trendsError } = await supabase
-        .from('trends')
-        .select('trend_id, trend_name, views_last_60h_millions')
-        .eq('region', 'Global')
-        .eq('premium_only', false)
-        .eq('active', true)
-        .order('views_last_60h_millions', { ascending: false })
-        .limit(5);
+      // Call the edge function to get AI-powered recommendations
+      const { data, error: functionError } = await supabase.functions.invoke('recommend-trends', {
+        body: { user_profile: userProfile }
+      });
 
-      if (trendsError) {
-        throw trendsError;
+      if (functionError) {
+        throw functionError;
       }
 
-      // Generate mock recommendations with placeholder text
-      const recommendedTrends: RecommendedTrend[] = (trends || []).map((trend) => ({
-        ...trend,
-        why_good_fit: `This is a strong fit for ${userProfile.brand_name} because it is a high-attention global trend.`,
-        example_hook: `Example hook using ${trend.trend_name} for ${userProfile.brand_name}`,
-        angle_summary: `Short summary of how ${userProfile.brand_name} could use ${trend.trend_name} in their content.`
-      }));
+      if (!data || !data.recommended_trends) {
+        throw new Error('Invalid response from recommendation service');
+      }
 
-      onRecommendationsReceived(recommendedTrends);
+      onRecommendationsReceived(data.recommended_trends);
     } catch (err) {
+      console.error('Error fetching recommendations:', err);
       setError(err instanceof Error ? err.message : 'Failed to load recommendations');
     } finally {
       setLoading(false);

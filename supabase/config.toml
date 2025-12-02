@@ -1,1 +1,4 @@
 project_id = "xkwadhydveebpaqmgkei"
+
+[functions.recommend-trends]
+verify_jwt = false
