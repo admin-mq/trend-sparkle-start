@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 import { BrandProfileForm } from "@/components/BrandProfileForm";
 import { RecommendedTrends } from "@/components/RecommendedTrends";
 import { CreativeDirections } from "@/components/CreativeDirections";
@@ -43,7 +43,8 @@ const Index = () => {
 
         setTrends(data || []);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
+        console.error('Error fetching trends:', err);
+        setError('Failed to load trends');
       } finally {
         setLoading(false);
       }
