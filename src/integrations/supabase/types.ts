@@ -14,7 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      trends: {
+        Row: {
+          active: boolean | null
+          created_at: string
+          hashtags: string | null
+          id: string
+          premium_only: boolean | null
+          region: string | null
+          trend_name: string
+        }
+        Insert: {
+          active?: boolean | null
+          created_at?: string
+          hashtags?: string | null
+          id?: string
+          premium_only?: boolean | null
+          region?: string | null
+          trend_name: string
+        }
+        Update: {
+          active?: boolean | null
+          created_at?: string
+          hashtags?: string | null
+          id?: string
+          premium_only?: boolean | null
+          region?: string | null
+          trend_name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
