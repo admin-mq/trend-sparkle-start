@@ -22,6 +22,7 @@ const Index = () => {
   const [selectedIdeaTitle, setSelectedIdeaTitle] = useState<string>('');
   const [blueprintLoading, setBlueprintLoading] = useState(false);
   const [blueprintError, setBlueprintError] = useState<string | null>(null);
+  const [trendHashtags, setTrendHashtags] = useState<string>('');
 
   useEffect(() => {
     const fetchTrends = async () => {
@@ -123,6 +124,9 @@ const Index = () => {
         throw new Error('Trend not found');
       }
 
+      // Store the trend hashtags
+      setTrendHashtags(trendData.hashtags || '');
+
       // Generate mocked detailed direction
       const blueprint: DetailedDirection = {
         concept: `High-level idea of how ${userProfile.brand_name} can use ${trendData.trend_name} with the idea "${direction.title}". This approach combines the trending content style with your brand's unique voice to create engaging content that resonates with your audience.`,
@@ -198,6 +202,7 @@ const Index = () => {
           blueprint={detailedDirection}
           loading={blueprintLoading}
           error={blueprintError}
+          trendHashtags={trendHashtags}
         />
 
         <div className="space-y-4">
