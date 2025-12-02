@@ -7,9 +7,10 @@ interface ExecutionBlueprintProps {
   blueprint: DetailedDirection | null;
   loading: boolean;
   error: string | null;
+  trendHashtags: string;
 }
 
-export const ExecutionBlueprint = ({ trendName, ideaTitle, blueprint, loading, error }: ExecutionBlueprintProps) => {
+export const ExecutionBlueprint = ({ trendName, ideaTitle, blueprint, loading, error, trendHashtags }: ExecutionBlueprintProps) => {
   if (loading) {
     return (
       <div className="mb-8">
@@ -58,8 +59,17 @@ export const ExecutionBlueprint = ({ trendName, ideaTitle, blueprint, loading, e
             </div>
           </div>
 
+          {trendHashtags && (
+            <div>
+              <h3 className="text-lg font-semibold text-foreground mb-2">Trend hashtags (from data)</h3>
+              <div className="bg-muted/30 p-4 rounded-md">
+                <p className="text-foreground">{trendHashtags}</p>
+              </div>
+            </div>
+          )}
+
           <div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">Hashtags</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-2">Suggested hashtags</h3>
             <div className="flex flex-wrap gap-2">
               {blueprint.recommended_hashtags.map((tag, index) => (
                 <span key={index} className="text-sm bg-muted px-3 py-1 rounded-full text-foreground">
