@@ -66,32 +66,25 @@ const Index = () => {
     setDetailedDirection(null); // Clear previous blueprint
 
     try {
-      // Fetch the full trend record from Supabase
-      const { data: trendData, error: trendError } = await supabase
-        .from('trends')
-        .select('*')
-        .eq('trend_id', trend.trend_id)
-        .maybeSingle();
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-directions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          user_profile: userProfile,
+          trend_id: trend.trend_id,
+          trend_name: trend.trend_name
+        }),
+      });
 
-      if (trendError) {
-        throw trendError;
+      if (!response.ok) {
+        throw new Error('Failed to generate creative directions');
       }
 
-      if (!trendData) {
-        throw new Error('Trend not found');
-      }
-
-      // Generate 5 mocked creative directions
-      const directions: CreativeDirection[] = Array.from({ length: 5 }, (_, i) => ({
-        idea_id: i + 1,
-        title: `Idea ${i + 1} for ${trendData.trend_name}`,
-        summary: `Short summary of how ${userProfile.brand_name} could use ${trendData.trend_name} in their content.`,
-        hook: `Example hook line mentioning ${trendData.trend_name} and ${userProfile.brand_name}`,
-        visual_idea: `Simple description of what the visual could look like for this idea.`,
-        suggested_cta: `Suggested call-to-action for this idea.`
-      }));
-
-      setCreativeDirections(directions);
+      const data = await response.json();
+      setCreativeDirections(data.creative_directions || []);
     } catch (err) {
       setDirectionsError(err instanceof Error ? err.message : 'Failed to load creative directions');
     } finally {
@@ -110,54 +103,26 @@ const Index = () => {
     setSelectedIdeaTitle(direction.title);
 
     try {
-      // Fetch the full trend record from Supabase
-      const { data: trendData, error: trendError } = await supabase
-        .from('trends')
-        .select('*')
-        .eq('trend_id', selectedTrendId)
-        .maybeSingle();
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-blueprint`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          user_profile: userProfile,
+          trend_id: selectedTrendId,
+          chosen_direction: direction
+        }),
+      });
 
-      if (trendError) {
-        throw trendError;
+      if (!response.ok) {
+        throw new Error('Failed to generate execution blueprint');
       }
 
-      if (!trendData) {
-        throw new Error('Trend not found');
-      }
-
-      // Store the trend hashtags
-      setTrendHashtags(trendData.hashtags || '');
-
-      // Generate mocked detailed direction
-      const blueprint: DetailedDirection = {
-        concept: `High-level idea of how ${userProfile.brand_name} can use ${trendData.trend_name} with the idea "${direction.title}". This approach combines the trending content style with your brand's unique voice to create engaging content that resonates with your audience.`,
-        script_outline: [
-          `Slide 1: Hook about ${trendData.trend_name} that grabs attention for ${userProfile.brand_name}`,
-          `Slide 2: Explain the connection between ${trendData.trend_name} and your audience's needs`,
-          `Slide 3: Show how ${userProfile.brand_name} uniquely approaches this trend`,
-          `Slide 4: Present the main value proposition using ${direction.title}`,
-          `Slide 5: Include social proof or results related to ${trendData.trend_name}`,
-          `Slide 6: End with a strong call-to-action: ${direction.suggested_cta}`
-        ],
-        caption: `🔥 ${trendData.trend_name} is taking over, and here's how ${userProfile.brand_name} is making it work! ${direction.hook} Ready to see the results? Check out our approach and let us know what you think! ${direction.suggested_cta}`,
-        recommended_hashtags: [
-          `#${trendData.trend_name.replace(/\s+/g, '')}`,
-          '#marketing',
-          '#content',
-          `#${userProfile.brand_name.replace(/\s+/g, '')}`,
-          '#trending',
-          '#socialmedia'
-        ],
-        extra_tips: [
-          `Post during peak engagement hours for your ${userProfile.audience} audience`,
-          `Use the trending audio or format associated with ${trendData.trend_name}`,
-          `Keep the visual style consistent with your brand identity`,
-          `Engage with comments quickly to boost algorithmic reach`,
-          `Consider creating a series of posts around this trend for maximum impact`
-        ]
-      };
-
-      setDetailedDirection(blueprint);
+      const data = await response.json();
+      setTrendHashtags(data.trend_hashtags || '');
+      setDetailedDirection(data.detailed_direction || null);
     } catch (err) {
       setBlueprintError(err instanceof Error ? err.message : 'Failed to load execution blueprint');
     } finally {
