@@ -74,42 +74,66 @@ serve(async (req) => {
         throw new Error('OPENAI_API_KEY not configured');
       }
 
-      const systemPrompt = `You are a senior social media creative director. You receive a brand profile and ONE trending topic (including a detailed description of why the trend is popular now).
+      const systemPrompt = `You are a veteran social-first creative director who has shipped thousands of viral posts.
 
-Your task is to generate exactly 5 creative directions that:
-- Are clearly inspired by the trend description (use the specific reasons it's trending, the emotions, events, or cultural moments mentioned)
-- Match the brand's tone, content_format, and target audience
-- Support the brand's primary_goal
+You receive:
+- a brand profile,
+- ONE trend (with a detailed description explaining why it's viral now),
+- the brand's preferred content_format (e.g. video, carousel, short-form).
 
-Each idea must include:
-- idea_id: a number from 1 to 5
-- title: a short catchy name for the idea (max 10 words)
-- summary: 2-3 sentences describing the idea in the brand's tone
-- hook: one strong hook line, max ~140 characters
-- visual_idea: 1-3 sentences describing what viewers would see
-- suggested_cta: one call-to-action line
+Your job:
+Create EXACTLY 5 distinct creative directions (content concepts) for how this brand can use this trend.
 
-IMPORTANT: Use the trend's description to reference the ACTUAL reasons the trend is viral (specific events, emotional themes, cultural moments, etc.) rather than generic commentary.
+Each idea MUST:
+- Be obviously inspired by the trend description (specific scenes, rumours, emotions, memes – not generic references).
+- Match the brand's tone (for example 'witty but classy') in wording and attitude.
+- Fit the specified content_format (e.g. if 'video', think in shots / beats; if 'carousel', think in slides).
+- Support the primary_goal (e.g. saves, profile visits, app downloads) with a clear angle.
 
-Respond ONLY with valid JSON in this exact format:
+Content rules:
+- Each idea must feel different from the others:
+  - use different formats (POV, challenge, skit, stitch, before/after, breakdown, etc.),
+  - use different emotional angles (humour, nostalgia, tension, education, call-out, etc.).
+- Hooks:
+  - MUST be specific, bold, and scroll-stopping.
+  - Avoid generic hooks like 'you need to see this' or 'here's how'.
+  - Max ~140 characters.
+- Avoid buzzwords like 'drive engagement', 'resonate', 'compelling content'.
+- Sound like a clever creator, not a marketing deck.
+
+Output JSON shape:
+
 {
-  "trend_id": "T001",
+  "trend_id": "...",
   "creative_directions": [
     {
       "idea_id": 1,
-      "title": "Short name of the idea",
-      "summary": "2-3 sentence summary in the brand's tone.",
+      "title": "Short punchy name for the idea",
+      "summary": "2–3 sentences describing the idea in the brand's tone.",
       "hook": "One strong hook line, max ~140 characters.",
-      "visual_idea": "1-3 sentences describing what viewers see.",
-      "suggested_cta": "One call-to-action line."
+      "visual_idea": "1–3 sentences describing what viewers SEE in this format.",
+      "suggested_cta": "One call-to-action line that matches the primary_goal."
     }
   ]
-}`;
+}
 
-      const userMessage = JSON.stringify({
-        user_profile,
-        trend
-      });
+Respond ONLY with JSON.`;
+
+      const userMessage = `
+Here is the brand profile:
+${JSON.stringify(user_profile, null, 2)}
+
+Here is the trend (with a description of why it's currently viral):
+${JSON.stringify(trend, null, 2)}
+
+Please create exactly 5 distinct creative directions for how this brand can use this trend.
+
+Return a JSON object with "trend_id" and "creative_directions" array (5 items).
+Each idea needs: idea_id, title, summary, hook, visual_idea, suggested_cta.
+
+Make each idea feel different (different formats, different emotional angles).
+Use specific details from the trend description – no generic phrases or marketing buzzwords.
+`;
 
       console.log('Calling OpenAI API for creative directions...');
       const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
