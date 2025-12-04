@@ -65,40 +65,69 @@ serve(async (req) => {
       // Find the top 2 trends by views to ensure they're included
       const top2TrendIds = trends.slice(0, 2).map(t => t.trend_id);
 
-      const systemPrompt = `You are a senior social media strategist. Your task is to analyze a brand profile and a list of trending content topics, then recommend exactly 5 trends that are the best fit for this brand.
+      const systemPrompt = `You are a senior social media strategist for high-growth creators and brands.
 
-CRITICAL REQUIREMENTS:
-1. You MUST include the 2 trends with the highest views_last_60h_millions in your final 5 recommendations.
-2. Choose 3 additional trends that align well with the brand's profile.
-3. For each recommended trend, provide:
-   - trend_id: the exact trend_id from the input list
-   - why_good_fit: 2-3 sentences explaining why this trend suits the brand
-   - example_hook: a single compelling hook line the brand could use
-   - angle_summary: 1-2 sentences describing the content angle
+Your job:
+- Read a brand profile.
+- Read a list of current social media trends, including:
+  - a description of WHY they are trending right now
+  - recent view volume (views_last_60h_millions).
+- Pick exactly 5 trends that will perform best for this brand.
 
-Respond ONLY with valid JSON in this exact format:
+Rules:
+- ALWAYS include the 2 trends with the highest views_last_60h_millions in the final 5.
+- For the other 3:
+  - Optimise for a mix of:
+    - brand fit (industry, niche, audience, tone, content_format, primary_goal)
+    - view volume (don't pick dead trends).
+- Use the description field: reference specific triggers (leaks, finales, controversies, emotional themes, flashmobs, etc.), not generic statements.
+- Avoid clichés like:
+  - 'engaging content'
+  - 'resonates with your audience'
+  - 'leveraging this trend'
+  - 'drive engagement'.
+- Write like a human creative partner, not a corporate strategist.
+
+For each selected trend you must return:
+- trend_id (matching one from the input),
+- why_good_fit (2–3 punchy sentences using brand language and the real reasons the trend is hot),
+- example_hook (ONE scroll-stopping hook line, max ~140 characters, which can start with an emoji or CAPS),
+- angle_summary (1–2 sentences describing the creative angle, not a repeat of why_good_fit).
+
+Always respond with a single valid JSON object.`;
+
+      const trendsForPrompt = trends.map(t => ({
+        trend_id: t.trend_id,
+        trend_name: t.trend_name,
+        description: t.description || '',
+        hashtags: t.hashtags || '',
+        views_last_60h_millions: t.views_last_60h_millions
+      }));
+
+      const userMessage = `
+Here is the brand profile:
+${JSON.stringify(user_profile, null, 2)}
+
+Here is the list of candidate trends (with descriptions of why they are currently viral):
+${JSON.stringify(trendsForPrompt, null, 2)}
+
+The 2 trends with the highest views are: ${top2TrendIds.join(', ')} — you MUST include these.
+
+Please select exactly 5 trends and return a JSON object like:
+
 {
   "recommended_trends": [
     {
       "trend_id": "T001",
-      "why_good_fit": "explanation here",
-      "example_hook": "hook line here",
-      "angle_summary": "angle description here"
+      "why_good_fit": "2–3 punchy sentences.",
+      "example_hook": "One scroll-stopping hook line, max ~140 characters.",
+      "angle_summary": "1–2 sentences describing the creative angle."
     }
   ]
-}`;
+}
 
-      const userMessage = JSON.stringify({
-        user_profile,
-        trends: trends.map(t => ({
-          trend_id: t.trend_id,
-          trend_name: t.trend_name,
-          description: t.description || '',
-          hashtags: t.hashtags || '',
-          views_last_60h_millions: t.views_last_60h_millions
-        })),
-        top_2_trend_ids: top2TrendIds
-      });
+Focus on very concrete reasons this trend works for this specific brand. Do NOT use generic marketing buzzwords.
+`;
 
       console.log('Calling OpenAI API...');
       const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
