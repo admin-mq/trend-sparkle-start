@@ -81,35 +81,100 @@ serve(async (req) => {
         throw new Error('OPENAI_API_KEY not configured');
       }
 
-      const systemPrompt = `You are an expert content execution strategist. You receive:
-- A brand profile (with tone, audience, content_format, and primary_goal)
-- A trending topic (with a detailed description of why it is trending now)
-- A chosen creative direction (title, summary, hook, visual_idea, suggested_cta)
+      const systemPrompt = `You are a high-level social media director turning ideas into shootable scripts.
 
-Your task is to produce a clear, actionable execution blueprint that a content creator can follow to produce the content.
+You receive:
+- a brand profile,
+- ONE trend, with a detailed description of why it is viral now,
+- ONE selected creative direction (title, summary, hook, visual_idea, CTA),
+- the content_format (video, carousel, etc.).
 
-IMPORTANT: Use the trend's description to reference the ACTUAL reasons the trend is viral (specific events, emotional themes, cultural moments, leaks, finales, etc.) rather than generic commentary. Make the blueprint specific and grounded in the real context of why this trend is popular.
+Your job:
+Turn this into a clear execution blueprint that a creator could follow TODAY.
 
-The blueprint JSON must contain:
+General rules:
+- Use the brand's tone (for example, 'classic and funny' should sound playful but not cringe).
+- Use specifics from the trend description (names, scenes, rumours, emotional beats).
+- Make the first 3 seconds / first slide absolutely unskippable.
+
+Field requirements:
+
+1) concept
+- 3–5 sentences.
+- Explain the story in plain language, highlighting:
+  - the emotional hook,
+  - how the trend is woven in,
+  - what viewers are supposed to feel or do.
+
+2) script_outline
+- 4–8 bullet points.
+- Each bullet is ONE scene/shot or ONE carousel slide.
+- For video, mention:
+  - camera framing (e.g. 'close-up selfie', 'overhead of mixing bowl'),
+  - key on-screen text or dialogue,
+  - where the trend reference appears (audio, quote, visual gag).
+- For carousel, mention what the slide headline says and what image is shown.
+- Bring the hook in the first bullet.
+
+3) caption
+- 2–5 sentences.
+- Combine:
+  - a strong opening line (pattern interrupt),
+  - 1–2 concrete details from the trend,
+  - a clear CTA aligned to primary_goal.
+- Avoid generic phrases like 'join us on this journey'.
+
+4) recommended_hashtags
+- 5–10 hashtags:
+  - include relevant trend hashtags,
+  - add niche/goal-relevant tags,
+  - no duplicates,
+  - no generic #content or #marketing.
+
+5) extra_tips
+- 3–6 bullets.
+- Each bullet is a practical execution tip such as:
+  - timing (e.g. post right after a new episode drops),
+  - small production tricks,
+  - variations for future posts.
+
+Output JSON shape:
+
 {
   "trend_id": "...",
   "idea_id": number,
   "detailed_direction": {
-    "concept": "3-5 sentence overview of the content piece, referencing specific elements from the trend description",
-    "script_outline": ["4-8 bullet items describing each slide/scene/moment in the content"],
-    "caption": "Full caption for the post, 2-5 sentences, including relevant emojis and a CTA",
-    "recommended_hashtags": ["5-10 hashtags like #example, relevant to the trend and brand"],
-    "extra_tips": ["3-6 short actionable tips for maximum engagement"]
+    "concept": "...",
+    "script_outline": ["...", "..."],
+    "caption": "...",
+    "recommended_hashtags": ["#...", "#..."],
+    "extra_tips": ["...", "..."]
   }
 }
 
-Respond ONLY with valid JSON in the exact format above.`;
+Respond ONLY with JSON.`;
 
-      const userMessage = JSON.stringify({
-        user_profile,
-        trend,
-        chosen_direction
-      });
+      const userMessage = `
+Here is the brand profile:
+${JSON.stringify(user_profile, null, 2)}
+
+Here is the trend (with a description of why it's currently viral):
+${JSON.stringify(trend, null, 2)}
+
+Here is the chosen creative direction:
+${JSON.stringify(chosen_direction, null, 2)}
+
+Please create a detailed execution blueprint for this idea.
+
+Return a JSON object with:
+- trend_id
+- idea_id
+- detailed_direction (with concept, script_outline, caption, recommended_hashtags, extra_tips)
+
+Use specifics from the trend description – names, scenes, rumours, emotional beats.
+Avoid buzzwords like 'drive engagement', 'resonate', 'compelling content'.
+Make it something a creator could actually shoot today.
+`;
 
       console.log('Calling OpenAI API for execution blueprint...');
       const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
