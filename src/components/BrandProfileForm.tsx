@@ -1,18 +1,106 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { UserProfile, RecommendedTrend } from "@/types/trends";
+import { Sparkles, Zap } from "lucide-react";
 
 interface BrandProfileFormProps {
   onRecommendationsReceived: (recommendations: RecommendedTrend[]) => void;
   onBrandNameChange: (brandName: string) => void;
   onUserProfileChange: (profile: UserProfile) => void;
+  loading: boolean;
+  setLoading: (loading: boolean) => void;
 }
 
-export const BrandProfileForm = ({ onRecommendationsReceived, onBrandNameChange, onUserProfileChange }: BrandProfileFormProps) => {
+const INDUSTRIES = [
+  "Food & beverage",
+  "Fashion & beauty",
+  "Fitness & wellness",
+  "Tech / SaaS",
+  "Education",
+  "Finance",
+  "Gaming",
+  "Music & entertainment",
+  "Travel & hospitality",
+  "Ecommerce / DTC",
+  "Other"
+];
+
+const NICHES = [
+  "Baking",
+  "Streetwear",
+  "Relationships",
+  "Motorsports",
+  "Interior design",
+  "Crypto",
+  "News & memes",
+  "Health tips",
+  "Parenting",
+  "Other"
+];
+
+const AUDIENCES = [
+  "Gen Z",
+  "Millennials",
+  "Gen Z & Millennials",
+  "Parents",
+  "Professionals",
+  "Students",
+  "Everyone",
+  "Custom"
+];
+
+const GEOGRAPHIES = [
+  "Global",
+  "US & Canada",
+  "UK & Europe",
+  "India",
+  "Middle East",
+  "Southeast Asia",
+  "Latin America",
+  "Custom"
+];
+
+const TONES = [
+  "Witty but classy",
+  "Professional",
+  "Casual",
+  "Bold / edgy",
+  "Educational",
+  "Empathetic",
+  "High-energy",
+  "Minimal & clean"
+];
+
+const CONTENT_FORMATS = [
+  "Short-form video (Reels / TikTok / Shorts)",
+  "Carousel post",
+  "Single image",
+  "Story",
+  "Mix of formats"
+];
+
+const PRIMARY_GOALS = [
+  "Sales",
+  "Leads",
+  "App downloads",
+  "Saves",
+  "Profile visits",
+  "Follower growth",
+  "Engagement",
+  "Website traffic"
+];
+
+export const BrandProfileForm = ({ 
+  onRecommendationsReceived, 
+  onBrandNameChange, 
+  onUserProfileChange,
+  loading,
+  setLoading
+}: BrandProfileFormProps) => {
   const [userProfile, setUserProfile] = useState<UserProfile>({
     brand_name: '',
     industry: '',
@@ -24,7 +112,6 @@ export const BrandProfileForm = ({ onRecommendationsReceived, onBrandNameChange,
     primary_goal: ''
   });
 
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleInputChange = (field: keyof UserProfile, value: string) => {
@@ -45,7 +132,6 @@ export const BrandProfileForm = ({ onRecommendationsReceived, onBrandNameChange,
     onUserProfileChange(userProfile);
 
     try {
-      // Call edge function for AI recommendations
       const { data, error: functionError } = await supabase.functions.invoke('recommend-trends', {
         body: { user_profile: userProfile }
       });
@@ -69,105 +155,141 @@ export const BrandProfileForm = ({ onRecommendationsReceived, onBrandNameChange,
   };
 
   return (
-    <Card className="mb-8">
-      <CardHeader>
-        <CardTitle>Brand Profile</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="h-full flex flex-col">
+      <div className="flex items-center gap-2 mb-6">
+        <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
+          <Zap className="w-4 h-4 text-primary" />
+        </div>
+        <h2 className="text-lg font-semibold text-foreground">Brand Profile</h2>
+      </div>
+
+      <div className="flex-1 space-y-4 overflow-y-auto pr-1">
+        <div className="space-y-2">
+          <Label htmlFor="brand_name" className="text-xs text-muted-foreground uppercase tracking-wider">Brand name</Label>
+          <Input
+            id="brand_name"
+            value={userProfile.brand_name}
+            onChange={(e) => handleInputChange('brand_name', e.target.value)}
+            placeholder="Your brand"
+            className="bg-secondary/50 border-border/50 focus:border-primary"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
-            <Label htmlFor="brand_name">Brand name</Label>
-            <Input
-              id="brand_name"
-              value={userProfile.brand_name}
-              onChange={(e) => handleInputChange('brand_name', e.target.value)}
-              placeholder="Enter brand name"
-            />
+            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Industry</Label>
+            <Select value={userProfile.industry} onValueChange={(v) => handleInputChange('industry', v)}>
+              <SelectTrigger className="bg-secondary/50 border-border/50">
+                <SelectValue placeholder="Select" />
+              </SelectTrigger>
+              <SelectContent>
+                {INDUSTRIES.map((item) => (
+                  <SelectItem key={item} value={item}>{item}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="industry">Industry</Label>
-            <Input
-              id="industry"
-              value={userProfile.industry}
-              onChange={(e) => handleInputChange('industry', e.target.value)}
-              placeholder="e.g., Fashion, Tech, Food"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="niche">Niche</Label>
-            <Input
-              id="niche"
-              value={userProfile.niche}
-              onChange={(e) => handleInputChange('niche', e.target.value)}
-              placeholder="e.g., Sustainable fashion"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="audience">Audience</Label>
-            <Input
-              id="audience"
-              value={userProfile.audience}
-              onChange={(e) => handleInputChange('audience', e.target.value)}
-              placeholder="e.g., Gen Z, Millennials"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="geography">Geography</Label>
-            <Input
-              id="geography"
-              value={userProfile.geography}
-              onChange={(e) => handleInputChange('geography', e.target.value)}
-              placeholder="e.g., US, Europe, Global"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="tone">Tone</Label>
-            <Input
-              id="tone"
-              value={userProfile.tone}
-              onChange={(e) => handleInputChange('tone', e.target.value)}
-              placeholder="e.g., Professional, Casual"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="content_format">Content format</Label>
-            <Input
-              id="content_format"
-              value={userProfile.content_format}
-              onChange={(e) => handleInputChange('content_format', e.target.value)}
-              placeholder="e.g., Video, Images, Text"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="primary_goal">Primary goal</Label>
-            <Input
-              id="primary_goal"
-              value={userProfile.primary_goal}
-              onChange={(e) => handleInputChange('primary_goal', e.target.value)}
-              placeholder="e.g., Brand awareness, Sales"
-            />
+            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Niche</Label>
+            <Select value={userProfile.niche} onValueChange={(v) => handleInputChange('niche', v)}>
+              <SelectTrigger className="bg-secondary/50 border-border/50">
+                <SelectValue placeholder="Select" />
+              </SelectTrigger>
+              <SelectContent>
+                {NICHES.map((item) => (
+                  <SelectItem key={item} value={item}>{item}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
-        {error && (
-          <p className="text-red-500 text-sm">{error}</p>
-        )}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Audience</Label>
+            <Select value={userProfile.audience} onValueChange={(v) => handleInputChange('audience', v)}>
+              <SelectTrigger className="bg-secondary/50 border-border/50">
+                <SelectValue placeholder="Select" />
+              </SelectTrigger>
+              <SelectContent>
+                {AUDIENCES.map((item) => (
+                  <SelectItem key={item} value={item}>{item}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <Button 
-          onClick={handleSubmit} 
-          disabled={loading}
-          className="w-full md:w-auto"
-        >
-          {loading ? 'Loading...' : 'Get AI trend suggestions'}
-        </Button>
-      </CardContent>
-    </Card>
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Geography</Label>
+            <Select value={userProfile.geography} onValueChange={(v) => handleInputChange('geography', v)}>
+              <SelectTrigger className="bg-secondary/50 border-border/50">
+                <SelectValue placeholder="Select" />
+              </SelectTrigger>
+              <SelectContent>
+                {GEOGRAPHIES.map((item) => (
+                  <SelectItem key={item} value={item}>{item}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground uppercase tracking-wider">Tone</Label>
+          <Select value={userProfile.tone} onValueChange={(v) => handleInputChange('tone', v)}>
+            <SelectTrigger className="bg-secondary/50 border-border/50">
+              <SelectValue placeholder="Select your vibe" />
+            </SelectTrigger>
+            <SelectContent>
+              {TONES.map((item) => (
+                <SelectItem key={item} value={item}>{item}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground uppercase tracking-wider">Content format</Label>
+          <Select value={userProfile.content_format} onValueChange={(v) => handleInputChange('content_format', v)}>
+            <SelectTrigger className="bg-secondary/50 border-border/50">
+              <SelectValue placeholder="Select format" />
+            </SelectTrigger>
+            <SelectContent>
+              {CONTENT_FORMATS.map((item) => (
+                <SelectItem key={item} value={item}>{item}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground uppercase tracking-wider">Primary goal</Label>
+          <Select value={userProfile.primary_goal} onValueChange={(v) => handleInputChange('primary_goal', v)}>
+            <SelectTrigger className="bg-secondary/50 border-border/50">
+              <SelectValue placeholder="What's the goal?" />
+            </SelectTrigger>
+            <SelectContent>
+              {PRIMARY_GOALS.map((item) => (
+                <SelectItem key={item} value={item}>{item}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {error && (
+        <p className="text-destructive text-sm mt-3">{error}</p>
+      )}
+
+      <Button 
+        onClick={handleSubmit} 
+        disabled={loading}
+        className="w-full mt-4 bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
+      >
+        <Sparkles className="w-4 h-4" />
+        {loading ? 'Scanning trends…' : 'Get AI trend suggestions'}
+      </Button>
+    </div>
   );
 };
