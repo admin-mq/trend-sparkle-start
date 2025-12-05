@@ -6,6 +6,10 @@ export interface UserProfile {
   audience: string;
   geography: string;
   tone: string;
+  tones?: string[];
+  primary_tone?: string;
+  tone_intensity?: number;
+  tone_meter_label?: string;
   content_format: string;
   primary_goal: string;
 }

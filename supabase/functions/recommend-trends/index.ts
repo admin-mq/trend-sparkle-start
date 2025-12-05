@@ -74,6 +74,12 @@ Your job:
   - recent view volume (views_last_60h_millions).
 - Pick exactly 5 trends that will perform best for this brand.
 
+Tone handling:
+- The brand tone may include multiple styles (tones array). Use primary_tone as the main voice.
+- Use tone_intensity (1–5) to control how strongly the tone is expressed:
+  1–2 mild, 3 balanced, 4–5 strong, bold, creator-grade.
+- If primary_tone is 'Naughty', allow premium A-rated innuendo but keep it non-explicit and brand-safe.
+
 Rules:
 - ALWAYS include the 2 trends with the highest views_last_60h_millions in the final 5.
 - For the other 3:
