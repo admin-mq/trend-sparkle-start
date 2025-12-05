@@ -1,12 +1,15 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { UserProfile, RecommendedTrend } from "@/types/trends";
-import { Sparkles, Zap } from "lucide-react";
+import { Sparkles, Zap, ChevronDown, Flame, Skull, Zap as ZapIcon, MessageCircle, PartyPopper, Rocket, Crown, GraduationCap, Briefcase, Minimize2, Coffee } from "lucide-react";
 
 interface BrandProfileFormProps {
   onRecommendationsReceived: (recommendations: RecommendedTrend[]) => void;
@@ -63,7 +66,6 @@ const GEOGRAPHIES = [
 ];
 
 const TONES = [
-  "Witty but classy",
   "Casual",
   "Professional",
   "Educational",
@@ -75,9 +77,72 @@ const TONES = [
   "Wholesome",
   "Luxury / premium",
   "Naughty",
-  "Savage",
-  "Other"
+  "Savage"
 ];
+
+// Priority order for determining primary tone (highest priority first)
+const TONE_PRIORITY: string[] = [
+  "Naughty",
+  "Savage",
+  "Bold / edgy",
+  "Sarcastic",
+  "Playful",
+  "High-energy",
+  "Luxury / premium",
+  "Educational",
+  "Professional",
+  "Minimal & clean",
+  "Wholesome",
+  "Casual"
+];
+
+// Meter label mapping
+const TONE_METER_LABELS: Record<string, string> = {
+  "Naughty": "Spice meter",
+  "Savage": "Roast meter",
+  "Bold / edgy": "Edge meter",
+  "Sarcastic": "Sass meter",
+  "Playful": "Fun meter",
+  "High-energy": "Hype meter",
+  "Luxury / premium": "Prestige meter",
+  "Educational": "Depth meter",
+  "Professional": "Formality meter",
+  "Minimal & clean": "Minimalism meter",
+  "Wholesome": "Warmth meter",
+  "Casual": "Vibe meter"
+};
+
+// Helper text for each meter
+const TONE_METER_HELPER: Record<string, string> = {
+  "Naughty": "1 = cheeky · 3 = bold innuendo · 5 = A-rated brand energy (non-explicit)",
+  "Savage": "1 = light banter · 3 = sharp humour · 5 = ruthless but brand-safe",
+  "Bold / edgy": "1 = slightly provocative · 3 = attention-grabbing · 5 = unapologetically bold",
+  "Sarcastic": "1 = subtle wit · 3 = dry humour · 5 = maximum snark",
+  "Playful": "1 = light-hearted · 3 = fun & bouncy · 5 = full goofball energy",
+  "High-energy": "1 = upbeat · 3 = excited · 5 = hype overload",
+  "Luxury / premium": "1 = refined · 3 = exclusive · 5 = ultra-aspirational",
+  "Educational": "1 = casual tips · 3 = informative · 5 = deep-dive expert",
+  "Professional": "1 = approachable · 3 = polished · 5 = corporate formal",
+  "Minimal & clean": "1 = slightly sparse · 3 = clean aesthetic · 5 = ultra-minimal",
+  "Wholesome": "1 = friendly · 3 = heartwarming · 5 = pure wholesome vibes",
+  "Casual": "1 = relaxed · 3 = conversational · 5 = ultra-chill"
+};
+
+// Icons for each tone
+const TONE_ICONS: Record<string, React.ReactNode> = {
+  "Naughty": <Flame className="w-4 h-4" />,
+  "Savage": <Skull className="w-4 h-4" />,
+  "Bold / edgy": <ZapIcon className="w-4 h-4" />,
+  "Sarcastic": <MessageCircle className="w-4 h-4" />,
+  "Playful": <PartyPopper className="w-4 h-4" />,
+  "High-energy": <Rocket className="w-4 h-4" />,
+  "Luxury / premium": <Crown className="w-4 h-4" />,
+  "Educational": <GraduationCap className="w-4 h-4" />,
+  "Professional": <Briefcase className="w-4 h-4" />,
+  "Minimal & clean": <Minimize2 className="w-4 h-4" />,
+  "Wholesome": <Coffee className="w-4 h-4" />,
+  "Casual": <Coffee className="w-4 h-4" />
+};
 
 const CONTENT_FORMATS = [
   "Short-form video (Reels / TikTok / Shorts)",
@@ -105,25 +170,68 @@ export const BrandProfileForm = ({
   loading,
   setLoading
 }: BrandProfileFormProps) => {
-  const [userProfile, setUserProfile] = useState<UserProfile>({
+  const [userProfile, setUserProfile] = useState<Omit<UserProfile, 'tone' | 'tones' | 'primary_tone' | 'tone_intensity' | 'tone_meter_label'>>({
     brand_name: '',
     business_summary: '',
     industry: '',
     niche: '',
     audience: '',
     geography: '',
-    tone: '',
     content_format: '',
     primary_goal: ''
   });
 
+  const [selectedTones, setSelectedTones] = useState<string[]>([]);
+  const [toneIntensity, setToneIntensity] = useState<number>(3);
   const [error, setError] = useState<string | null>(null);
 
-  const handleInputChange = (field: keyof UserProfile, value: string) => {
+  // Derive primary tone based on priority
+  const primaryTone = useMemo(() => {
+    if (selectedTones.length === 0) return null;
+    for (const tone of TONE_PRIORITY) {
+      if (selectedTones.includes(tone)) {
+        return tone;
+      }
+    }
+    return selectedTones[0];
+  }, [selectedTones]);
+
+  const toneMeterLabel = primaryTone ? TONE_METER_LABELS[primaryTone] : null;
+  const toneMeterHelper = primaryTone ? TONE_METER_HELPER[primaryTone] : null;
+
+  const handleInputChange = (field: keyof typeof userProfile, value: string) => {
     setUserProfile(prev => ({ ...prev, [field]: value }));
     if (field === 'brand_name') {
       onBrandNameChange(value);
     }
+  };
+
+  const handleToneToggle = (tone: string) => {
+    setSelectedTones(prev => {
+      if (prev.includes(tone)) {
+        return prev.filter(t => t !== tone);
+      }
+      return [...prev, tone];
+    });
+  };
+
+  const buildUserProfile = (): UserProfile => {
+    // Build the tone string for backward compatibility
+    let toneString = "casual";
+    if (selectedTones.length === 1) {
+      toneString = selectedTones[0];
+    } else if (selectedTones.length > 1) {
+      toneString = selectedTones.join(" + ");
+    }
+
+    return {
+      ...userProfile,
+      tone: toneString,
+      tones: selectedTones.length > 0 ? selectedTones : ["casual"],
+      primary_tone: primaryTone || "casual",
+      tone_intensity: toneIntensity,
+      tone_meter_label: toneMeterLabel || "Vibe meter"
+    };
   };
 
   const handleSubmit = async () => {
@@ -134,11 +242,13 @@ export const BrandProfileForm = ({
 
     setLoading(true);
     setError(null);
-    onUserProfileChange(userProfile);
+    
+    const fullProfile = buildUserProfile();
+    onUserProfileChange(fullProfile);
 
     try {
       const { data, error: functionError } = await supabase.functions.invoke('recommend-trends', {
-        body: { user_profile: userProfile }
+        body: { user_profile: fullProfile }
       });
 
       if (functionError) {
@@ -248,19 +358,81 @@ export const BrandProfileForm = ({
           </div>
         </div>
 
+        {/* Multi-select Tone */}
         <div className="space-y-2">
           <Label className="text-xs text-muted-foreground uppercase tracking-wider">Tone</Label>
-          <Select value={userProfile.tone} onValueChange={(v) => handleInputChange('tone', v)}>
-            <SelectTrigger className="bg-secondary/50 border-border/50">
-              <SelectValue placeholder="Select your vibe" />
-            </SelectTrigger>
-            <SelectContent>
-              {TONES.map((item) => (
-                <SelectItem key={item} value={item}>{item}</SelectItem>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-full justify-between bg-secondary/50 border-border/50 hover:bg-secondary/70 text-left font-normal"
+              >
+                <span className={selectedTones.length === 0 ? "text-muted-foreground" : ""}>
+                  {selectedTones.length === 0 
+                    ? "Select tone(s)" 
+                    : selectedTones.length === 1 
+                      ? selectedTones[0]
+                      : `${selectedTones.length} tones selected`}
+                </span>
+                <ChevronDown className="w-4 h-4 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[280px] p-2 bg-card border-border" align="start">
+              <div className="space-y-1 max-h-[300px] overflow-y-auto">
+                {TONES.map((tone) => (
+                  <div
+                    key={tone}
+                    className="flex items-center gap-3 px-2 py-2 rounded-md hover:bg-secondary/50 cursor-pointer"
+                    onClick={() => handleToneToggle(tone)}
+                  >
+                    <Checkbox
+                      checked={selectedTones.includes(tone)}
+                      onCheckedChange={() => handleToneToggle(tone)}
+                      className="pointer-events-none"
+                    />
+                    <span className="text-sm">{tone}</span>
+                  </div>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+          
+          {/* Selected tones pills */}
+          {selectedTones.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {selectedTones.map((tone) => (
+                <span
+                  key={tone}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-primary/20 text-primary cursor-pointer hover:bg-primary/30"
+                  onClick={() => handleToneToggle(tone)}
+                >
+                  {tone}
+                  <span className="text-primary/60">×</span>
+                </span>
               ))}
-            </SelectContent>
-          </Select>
+            </div>
+          )}
         </div>
+
+        {/* Dynamic Tone Meter */}
+        {primaryTone && (
+          <div className="space-y-3 p-3 rounded-lg bg-secondary/30 border border-border/50">
+            <div className="flex items-center gap-2">
+              <span className="text-primary">{TONE_ICONS[primaryTone]}</span>
+              <Label className="text-sm font-medium text-foreground">{toneMeterLabel}</Label>
+              <span className="ml-auto text-sm font-semibold text-primary">{toneIntensity}/5</span>
+            </div>
+            <Slider
+              value={[toneIntensity]}
+              onValueChange={([val]) => setToneIntensity(val)}
+              min={1}
+              max={5}
+              step={1}
+              className="w-full"
+            />
+            <p className="text-xs text-muted-foreground">{toneMeterHelper}</p>
+          </div>
+        )}
 
         <div className="space-y-2">
           <Label className="text-xs text-muted-foreground uppercase tracking-wider">Content format</Label>
