@@ -1,5 +1,6 @@
 export interface UserProfile {
   brand_name: string;
+  business_summary?: string;
   industry: string;
   niche: string;
   audience: string;

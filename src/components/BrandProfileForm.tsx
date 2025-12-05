@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { UserProfile, RecommendedTrend } from "@/types/trends";
@@ -16,29 +17,26 @@ interface BrandProfileFormProps {
 }
 
 const INDUSTRIES = [
-  "Food & beverage",
-  "Fashion & beauty",
-  "Fitness & wellness",
-  "Tech / SaaS",
-  "Education",
-  "Finance",
-  "Gaming",
-  "Music & entertainment",
-  "Travel & hospitality",
-  "Ecommerce / DTC",
-  "Other"
-];
-
-const NICHES = [
-  "Baking",
-  "Streetwear",
-  "Relationships",
-  "Motorsports",
-  "Interior design",
-  "Crypto",
-  "News & memes",
-  "Health tips",
-  "Parenting",
+  "Agriculture & Forestry (farming, dairy, fisheries, timber)",
+  "Mining & Metals (coal, iron ore, precious metals)",
+  "Oil, Gas & Energy (exploration, refining, renewables, utilities)",
+  "Manufacturing (automotive, electronics, textiles, machinery)",
+  "Construction & Real Estate (infrastructure, residential, commercial)",
+  "Transportation & Logistics (shipping, airlines, warehousing, last-mile)",
+  "Retail & E-commerce (grocery, apparel, marketplaces)",
+  "FMCG / Consumer Goods (food, beverages, personal care)",
+  "Healthcare & Pharmaceuticals (hospitals, biotech, medical devices)",
+  "Finance & Insurance (banking, asset management, fintech, underwriting)",
+  "Technology & Software (SaaS, AI, cybersecurity, hardware)",
+  "Telecommunications (mobile networks, broadband, satellite)",
+  "Media, Entertainment & Gaming (streaming, music, esports)",
+  "Education & Training (schools, edtech, professional upskilling)",
+  "Hospitality & Tourism (hotels, travel services, events)",
+  "Food Services (restaurants, cloud kitchens, catering)",
+  "Professional Services (consulting, legal, accounting, HR)",
+  "Public Sector & Defense (government services, aerospace, security)",
+  "Chemicals & Materials (industrial chemicals, plastics, specialty materials)",
+  "Water & Waste Management (sanitation, recycling, circular economy)",
   "Other"
 ];
 
@@ -66,13 +64,19 @@ const GEOGRAPHIES = [
 
 const TONES = [
   "Witty but classy",
-  "Professional",
   "Casual",
-  "Bold / edgy",
+  "Professional",
   "Educational",
-  "Empathetic",
   "High-energy",
-  "Minimal & clean"
+  "Minimal & clean",
+  "Bold / edgy",
+  "Playful",
+  "Sarcastic",
+  "Wholesome",
+  "Luxury / premium",
+  "Naughty",
+  "Savage",
+  "Other"
 ];
 
 const CONTENT_FORMATS = [
@@ -103,6 +107,7 @@ export const BrandProfileForm = ({
 }: BrandProfileFormProps) => {
   const [userProfile, setUserProfile] = useState<UserProfile>({
     brand_name: '',
+    business_summary: '',
     industry: '',
     niche: '',
     audience: '',
@@ -175,34 +180,42 @@ export const BrandProfileForm = ({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Industry</Label>
-            <Select value={userProfile.industry} onValueChange={(v) => handleInputChange('industry', v)}>
-              <SelectTrigger className="bg-secondary/50 border-border/50">
-                <SelectValue placeholder="Select" />
-              </SelectTrigger>
-              <SelectContent>
-                {INDUSTRIES.map((item) => (
-                  <SelectItem key={item} value={item}>{item}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="business_summary" className="text-xs text-muted-foreground uppercase tracking-wider">Business summary (optional)</Label>
+          <Textarea
+            id="business_summary"
+            value={userProfile.business_summary || ''}
+            onChange={(e) => handleInputChange('business_summary', e.target.value)}
+            placeholder="Describe your business in 1–2 lines"
+            className="bg-secondary/50 border-border/50 focus:border-primary min-h-[60px] resize-none"
+            rows={2}
+          />
+        </div>
 
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Niche</Label>
-            <Select value={userProfile.niche} onValueChange={(v) => handleInputChange('niche', v)}>
-              <SelectTrigger className="bg-secondary/50 border-border/50">
-                <SelectValue placeholder="Select" />
-              </SelectTrigger>
-              <SelectContent>
-                {NICHES.map((item) => (
-                  <SelectItem key={item} value={item}>{item}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground uppercase tracking-wider">Industry</Label>
+          <Select value={userProfile.industry} onValueChange={(v) => handleInputChange('industry', v)}>
+            <SelectTrigger className="bg-secondary/50 border-border/50">
+              <SelectValue placeholder="Select industry" />
+            </SelectTrigger>
+            <SelectContent className="max-h-[300px]">
+              {INDUSTRIES.map((item) => (
+                <SelectItem key={item} value={item}>{item}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="niche" className="text-xs text-muted-foreground uppercase tracking-wider">Niche (optional)</Label>
+          <Textarea
+            id="niche"
+            value={userProfile.niche}
+            onChange={(e) => handleInputChange('niche', e.target.value)}
+            placeholder="Optional: add a niche or sub-category in 1 line"
+            className="bg-secondary/50 border-border/50 focus:border-primary min-h-[50px] resize-none"
+            rows={2}
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
