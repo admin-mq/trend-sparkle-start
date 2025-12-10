@@ -1,14 +1,16 @@
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { RecommendedTrend } from "@/types/trends";
-import { TrendingUp, Eye, ArrowRight } from "lucide-react";
+import { TrendingUp, Eye, ArrowRight, Lock, Crown } from "lucide-react";
 
 interface RecommendedTrendsProps {
   recommendations: RecommendedTrend[];
   brandName: string;
   onViewDirections: (trend: RecommendedTrend) => void;
+  isLocked?: boolean;
 }
 
-export const RecommendedTrends = ({ recommendations, brandName, onViewDirections }: RecommendedTrendsProps) => {
+export const RecommendedTrends = ({ recommendations, brandName, onViewDirections, isLocked = false }: RecommendedTrendsProps) => {
   if (recommendations.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center py-12">
@@ -63,15 +65,29 @@ export const RecommendedTrends = ({ recommendations, brandName, onViewDirections
               {trend.angle_summary}
             </p>
 
-            <Button 
-              onClick={() => onViewDirections(trend)}
-              variant="ghost"
-              size="sm"
-              className="mt-3 text-primary hover:text-primary hover:bg-primary/10 gap-1"
-            >
-              View creative directions
-              <ArrowRight className="w-3 h-3" />
-            </Button>
+            {isLocked ? (
+              <Link to="/auth">
+                <Button 
+                  variant="ghost"
+                  size="sm"
+                  className="mt-3 text-muted-foreground hover:text-foreground gap-1"
+                >
+                  <Lock className="w-3 h-3" />
+                  Upgrade to Pro
+                  <Crown className="w-3 h-3" />
+                </Button>
+              </Link>
+            ) : (
+              <Button 
+                onClick={() => onViewDirections(trend)}
+                variant="ghost"
+                size="sm"
+                className="mt-3 text-primary hover:text-primary hover:bg-primary/10 gap-1"
+              >
+                View creative directions
+                <ArrowRight className="w-3 h-3" />
+              </Button>
+            )}
           </div>
         ))}
       </div>

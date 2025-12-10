@@ -1,15 +1,17 @@
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { CreativeDirection } from "@/types/trends";
-import { Lightbulb, ArrowLeft, ArrowRight, Video, Image, Layers } from "lucide-react";
+import { Lightbulb, ArrowLeft, ArrowRight, Video, Lock, Crown } from "lucide-react";
 
 interface CreativeDirectionsProps {
   trendName: string;
   directions: CreativeDirection[];
   onViewBlueprint: (direction: CreativeDirection) => void;
   onBack: () => void;
+  isLocked?: boolean;
 }
 
-export const CreativeDirections = ({ trendName, directions, onViewBlueprint, onBack }: CreativeDirectionsProps) => {
+export const CreativeDirections = ({ trendName, directions, onViewBlueprint, onBack, isLocked = false }: CreativeDirectionsProps) => {
   if (directions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center py-12">
@@ -73,15 +75,29 @@ export const CreativeDirections = ({ trendName, directions, onViewBlueprint, onB
               <p className="text-xs text-accent font-medium">
                 CTA: {direction.suggested_cta}
               </p>
-              <Button 
-                onClick={() => onViewBlueprint(direction)}
-                variant="ghost"
-                size="sm"
-                className="text-primary hover:text-primary hover:bg-primary/10 gap-1"
-              >
-                Build blueprint
-                <ArrowRight className="w-3 h-3" />
-              </Button>
+              {isLocked ? (
+                <Link to="/auth">
+                  <Button 
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground hover:text-foreground gap-1"
+                  >
+                    <Lock className="w-3 h-3" />
+                    Upgrade to Pro
+                    <Crown className="w-3 h-3" />
+                  </Button>
+                </Link>
+              ) : (
+                <Button 
+                  onClick={() => onViewBlueprint(direction)}
+                  variant="ghost"
+                  size="sm"
+                  className="text-primary hover:text-primary hover:bg-primary/10 gap-1"
+                >
+                  Build blueprint
+                  <ArrowRight className="w-3 h-3" />
+                </Button>
+              )}
             </div>
           </div>
         ))}
