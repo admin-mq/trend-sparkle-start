@@ -5,17 +5,9 @@ import { CreativeDirections } from "@/components/CreativeDirections";
 import { ExecutionBlueprint } from "@/components/ExecutionBlueprint";
 import { WorkspaceStepper, WorkspaceStep } from "@/components/WorkspaceStepper";
 import { WorkspaceLoading } from "@/components/WorkspaceLoading";
-import { UserMenu } from "@/components/UserMenu";
-import { LoginPromptModal } from "@/components/LoginPromptModal";
-import { useAuth } from "@/hooks/useAuth";
-import { useFreeRunGate } from "@/hooks/useFreeRunGate";
 import { RecommendedTrend, CreativeDirection, UserProfile, DetailedDirection } from "@/types/trends";
 import { Sparkles } from "lucide-react";
-
 const Index = () => {
-  const { user, plan } = useAuth();
-  const { hasUsedFree, markFreeUsed, showLoginModal, openLoginModal, closeLoginModal } = useFreeRunGate();
-
   // Step navigation
   const [activeStep, setActiveStep] = useState<WorkspaceStep>("trends");
 
@@ -38,47 +30,14 @@ const Index = () => {
   const [blueprintLoading, setBlueprintLoading] = useState(false);
   const [blueprintError, setBlueprintError] = useState<string | null>(null);
   const [trendHashtags, setTrendHashtags] = useState<string>('');
-
-  // Gating logic
-  const isLoggedIn = !!user;
-  const isPaidPlan = plan === 'Pro' || plan === 'Premium' || plan === 'pro' || plan === 'premium';
-  const isFreePlan = isLoggedIn && !isPaidPlan;
-  
-  // Can generate: anonymous (first run) OR paid user
-  const canGenerate = () => {
-    if (!isLoggedIn) {
-      // Anonymous: allow only if free run not used
-      return !hasUsedFree();
-    }
-    // Logged in: only paid plans
-    return isPaidPlan;
-  };
-
   const handleRecommendationsReceived = (newRecommendations: RecommendedTrend[]) => {
     setRecommendations(newRecommendations);
     setActiveStep("trends");
     // Clear downstream state
     setCreativeDirections([]);
     setDetailedDirection(null);
-
-    // Mark free run as used for anonymous users and show modal
-    if (!isLoggedIn && !hasUsedFree()) {
-      markFreeUsed();
-      openLoginModal();
-    }
   };
-
   const handleViewDirections = async (trend: RecommendedTrend) => {
-    // Gating check for subsequent actions
-    if (!isLoggedIn && hasUsedFree()) {
-      openLoginModal();
-      return;
-    }
-    if (isFreePlan) {
-      // Blocked for free logged-in users - handled by button state
-      return;
-    }
-
     if (!userProfile) {
       setDirectionsError('User profile is required');
       return;
@@ -113,17 +72,7 @@ const Index = () => {
       setDirectionsLoading(false);
     }
   };
-
   const handleViewBlueprint = async (direction: CreativeDirection) => {
-    // Gating check
-    if (!isLoggedIn && hasUsedFree()) {
-      openLoginModal();
-      return;
-    }
-    if (isFreePlan) {
-      return;
-    }
-
     if (!userProfile) {
       setBlueprintError('User profile is required');
       return;
@@ -157,59 +106,28 @@ const Index = () => {
       setBlueprintLoading(false);
     }
   };
-
   const isLoading = trendsLoading || directionsLoading || blueprintLoading;
-
   const renderWorkspaceContent = () => {
     switch (activeStep) {
       case "trends":
-        return (
-          <RecommendedTrends 
-            recommendations={recommendations} 
-            brandName={brandName} 
-            onViewDirections={handleViewDirections}
-            isLocked={isFreePlan}
-          />
-        );
+        return <RecommendedTrends recommendations={recommendations} brandName={brandName} onViewDirections={handleViewDirections} />;
       case "directions":
         if (directionsError) {
-          return (
-            <div className="flex items-center justify-center h-full">
+          return <div className="flex items-center justify-center h-full">
               <p className="text-destructive">{directionsError}</p>
-            </div>
-          );
+            </div>;
         }
-        return (
-          <CreativeDirections 
-            trendName={selectedTrendName} 
-            directions={creativeDirections} 
-            onViewBlueprint={handleViewBlueprint} 
-            onBack={() => setActiveStep("trends")}
-            isLocked={isFreePlan}
-          />
-        );
+        return <CreativeDirections trendName={selectedTrendName} directions={creativeDirections} onViewBlueprint={handleViewBlueprint} onBack={() => setActiveStep("trends")} />;
       case "blueprint":
         if (blueprintError) {
-          return (
-            <div className="flex items-center justify-center h-full">
+          return <div className="flex items-center justify-center h-full">
               <p className="text-destructive">{blueprintError}</p>
-            </div>
-          );
+            </div>;
         }
-        return (
-          <ExecutionBlueprint 
-            trendName={selectedTrendName} 
-            ideaTitle={selectedIdeaTitle} 
-            blueprint={detailedDirection} 
-            trendHashtags={trendHashtags} 
-            onBack={() => setActiveStep("directions")} 
-          />
-        );
+        return <ExecutionBlueprint trendName={selectedTrendName} ideaTitle={selectedIdeaTitle} blueprint={detailedDirection} trendHashtags={trendHashtags} onBack={() => setActiveStep("directions")} />;
     }
   };
-
-  return (
-    <main className="min-h-screen bg-background studio-glow">
+  return <main className="min-h-screen bg-background studio-glow">
       <div className="h-screen flex flex-col p-4 lg:p-6 max-w-[1600px] mx-auto">
         {/* Header */}
         <header className="flex items-center justify-between mb-6">
@@ -222,12 +140,9 @@ const Index = () => {
               <p className="text-xs text-muted-foreground">Turn live social trends into ready-to-post content</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="px-2 py-1 bg-primary/10 text-primary rounded-full">Social Media Inspired</span>
-              <span className="px-2 py-1 bg-secondary rounded-full">Early beta</span>
-            </div>
-            <UserMenu />
+          <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="px-2 py-1 bg-primary/10 text-primary rounded-full">Social Media Inspired</span>
+            <span className="px-2 py-1 bg-secondary rounded-full">Early beta</span>
           </div>
         </header>
 
@@ -236,16 +151,7 @@ const Index = () => {
           {/* Left: Brand Profile */}
           <aside className="w-80 lg:w-96 flex-shrink-0">
             <div className="h-full bg-card rounded-xl border border-border p-5 shadow-card">
-              <BrandProfileForm 
-                onRecommendationsReceived={handleRecommendationsReceived} 
-                onBrandNameChange={setBrandName} 
-                onUserProfileChange={setUserProfile} 
-                loading={trendsLoading} 
-                setLoading={setTrendsLoading}
-                canGenerate={canGenerate()}
-                isFreePlan={isFreePlan}
-                onLoginRequired={openLoginModal}
-              />
+              <BrandProfileForm onRecommendationsReceived={handleRecommendationsReceived} onBrandNameChange={setBrandName} onUserProfileChange={setUserProfile} loading={trendsLoading} setLoading={setTrendsLoading} />
             </div>
           </aside>
 
@@ -254,13 +160,7 @@ const Index = () => {
             <div className="bg-card rounded-xl border border-border shadow-card flex-1 flex flex-col overflow-hidden">
               {/* Stepper */}
               <div className="p-4 border-b border-border flex items-center justify-between">
-                <WorkspaceStepper 
-                  activeStep={activeStep} 
-                  hasTrends={recommendations.length > 0} 
-                  hasDirections={creativeDirections.length > 0} 
-                  hasBlueprint={detailedDirection !== null} 
-                  onStepClick={setActiveStep} 
-                />
+                <WorkspaceStepper activeStep={activeStep} hasTrends={recommendations.length > 0} hasDirections={creativeDirections.length > 0} hasBlueprint={detailedDirection !== null} onStepClick={setActiveStep} />
               </div>
 
               {/* Content area */}
@@ -272,11 +172,6 @@ const Index = () => {
           </section>
         </div>
       </div>
-
-      {/* Login prompt modal */}
-      <LoginPromptModal open={showLoginModal} onClose={closeLoginModal} />
-    </main>
-  );
+    </main>;
 };
-
 export default Index;

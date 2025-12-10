@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { UserProfile, RecommendedTrend } from "@/types/trends";
-import { Sparkles, Zap, ChevronDown, Flame, Skull, Zap as ZapIcon, MessageCircle, PartyPopper, Rocket, Crown, GraduationCap, Briefcase, Minimize2, Coffee, Lock } from "lucide-react";
+import { Sparkles, Zap, ChevronDown, Flame, Skull, Zap as ZapIcon, MessageCircle, PartyPopper, Rocket, Crown, GraduationCap, Briefcase, Minimize2, Coffee } from "lucide-react";
 
 interface BrandProfileFormProps {
   onRecommendationsReceived: (recommendations: RecommendedTrend[]) => void;
@@ -17,9 +17,6 @@ interface BrandProfileFormProps {
   onUserProfileChange: (profile: UserProfile) => void;
   loading: boolean;
   setLoading: (loading: boolean) => void;
-  canGenerate?: boolean;
-  isFreePlan?: boolean;
-  onLoginRequired?: () => void;
 }
 
 const INDUSTRIES = [
@@ -171,10 +168,7 @@ export const BrandProfileForm = ({
   onBrandNameChange, 
   onUserProfileChange,
   loading,
-  setLoading,
-  canGenerate = true,
-  isFreePlan = false,
-  onLoginRequired
+  setLoading
 }: BrandProfileFormProps) => {
   const [userProfile, setUserProfile] = useState<Omit<UserProfile, 'tone' | 'tones' | 'primary_tone' | 'tone_intensity' | 'tone_meter_label'>>({
     brand_name: '',
@@ -473,35 +467,14 @@ export const BrandProfileForm = ({
         <p className="text-destructive text-sm mt-3">{error}</p>
       )}
 
-      {isFreePlan ? (
-        <div className="mt-4 p-3 rounded-lg bg-secondary/30 border border-border/50 text-center">
-          <p className="text-sm text-muted-foreground mb-2">Upgrade to generate more trends</p>
-          <Button 
-            onClick={() => window.location.href = '/auth'}
-            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
-          >
-            <Lock className="w-4 h-4" />
-            Upgrade to Pro
-          </Button>
-        </div>
-      ) : !canGenerate ? (
-        <Button 
-          onClick={() => onLoginRequired?.()}
-          className="w-full mt-4 bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
-        >
-          <Sparkles className="w-4 h-4" />
-          Log in for more trends
-        </Button>
-      ) : (
-        <Button 
-          onClick={handleSubmit} 
-          disabled={loading}
-          className="w-full mt-4 bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
-        >
-          <Sparkles className="w-4 h-4" />
-          {loading ? 'Scanning trends…' : 'Get AI trend suggestions'}
-        </Button>
-      )}
+      <Button 
+        onClick={handleSubmit} 
+        disabled={loading}
+        className="w-full mt-4 bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
+      >
+        <Sparkles className="w-4 h-4" />
+        {loading ? 'Scanning trends…' : 'Get AI trend suggestions'}
+      </Button>
     </div>
   );
 };
