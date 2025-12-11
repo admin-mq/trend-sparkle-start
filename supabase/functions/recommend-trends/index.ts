@@ -17,8 +17,8 @@ serve(async (req) => {
   }
 
   try {
-    const { user_profile } = await req.json();
-    console.log('Received user_profile:', user_profile);
+    const { user_profile, user_id } = await req.json();
+    console.log('Received user_profile:', user_profile, 'user_id:', user_id || 'anonymous');
 
     if (!user_profile || !user_profile.brand_name) {
       return new Response(

@@ -5,9 +5,13 @@ import { CreativeDirections } from "@/components/CreativeDirections";
 import { ExecutionBlueprint } from "@/components/ExecutionBlueprint";
 import { WorkspaceStepper, WorkspaceStep } from "@/components/WorkspaceStepper";
 import { WorkspaceLoading } from "@/components/WorkspaceLoading";
+import { UserMenu } from "@/components/UserMenu";
 import { RecommendedTrend, CreativeDirection, UserProfile, DetailedDirection } from "@/types/trends";
 import { Sparkles } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+
 const Index = () => {
+  const { user } = useAuth();
   // Step navigation
   const [activeStep, setActiveStep] = useState<WorkspaceStep>("trends");
 
@@ -58,7 +62,8 @@ const Index = () => {
         body: JSON.stringify({
           user_profile: userProfile,
           trend_id: trend.trend_id,
-          trend_name: trend.trend_name
+          trend_name: trend.trend_name,
+          user_id: user?.id || null
         })
       });
       if (!response.ok) {
@@ -91,7 +96,8 @@ const Index = () => {
         body: JSON.stringify({
           user_profile: userProfile,
           trend_id: selectedTrendId,
-          chosen_direction: direction
+          chosen_direction: direction,
+          user_id: user?.id || null
         })
       });
       if (!response.ok) {
@@ -140,9 +146,12 @@ const Index = () => {
               <p className="text-xs text-muted-foreground">Turn live social trends into ready-to-post content</p>
             </div>
           </div>
-          <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="px-2 py-1 bg-primary/10 text-primary rounded-full">Social Media Inspired</span>
-            <span className="px-2 py-1 bg-secondary rounded-full">Early beta</span>
+          <div className="flex items-center gap-4">
+            <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="px-2 py-1 bg-primary/10 text-primary rounded-full">Social Media Inspired</span>
+              <span className="px-2 py-1 bg-secondary rounded-full">Early beta</span>
+            </div>
+            <UserMenu />
           </div>
         </header>
 

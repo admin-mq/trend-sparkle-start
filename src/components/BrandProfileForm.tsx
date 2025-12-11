@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { UserProfile, RecommendedTrend } from "@/types/trends";
+import { useAuth } from "@/hooks/useAuth";
 import { Sparkles, Zap, ChevronDown, Flame, Skull, Zap as ZapIcon, MessageCircle, PartyPopper, Rocket, Crown, GraduationCap, Briefcase, Minimize2, Coffee } from "lucide-react";
 
 interface BrandProfileFormProps {
@@ -170,6 +171,7 @@ export const BrandProfileForm = ({
   loading,
   setLoading
 }: BrandProfileFormProps) => {
+  const { user } = useAuth();
   const [userProfile, setUserProfile] = useState<Omit<UserProfile, 'tone' | 'tones' | 'primary_tone' | 'tone_intensity' | 'tone_meter_label'>>({
     brand_name: '',
     business_summary: '',
@@ -248,7 +250,7 @@ export const BrandProfileForm = ({
 
     try {
       const { data, error: functionError } = await supabase.functions.invoke('recommend-trends', {
-        body: { user_profile: fullProfile }
+        body: { user_profile: fullProfile, user_id: user?.id || null }
       });
 
       if (functionError) {

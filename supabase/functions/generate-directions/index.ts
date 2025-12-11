@@ -17,8 +17,8 @@ serve(async (req) => {
   }
 
   try {
-    const { user_profile, trend_id, trend_name } = await req.json();
-    console.log('Received request for generate-directions:', { user_profile, trend_id, trend_name });
+    const { user_profile, trend_id, trend_name, user_id } = await req.json();
+    console.log('Received request for generate-directions:', { user_profile, trend_id, trend_name, user_id: user_id || 'anonymous' });
 
     if (!user_profile || !user_profile.brand_name) {
       return new Response(
