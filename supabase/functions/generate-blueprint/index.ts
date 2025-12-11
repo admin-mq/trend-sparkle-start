@@ -17,8 +17,8 @@ serve(async (req) => {
   }
 
   try {
-    const { user_profile, trend_id, chosen_direction } = await req.json();
-    console.log('Received request for generate-blueprint:', { user_profile, trend_id, chosen_direction });
+    const { user_profile, trend_id, chosen_direction, user_id } = await req.json();
+    console.log('Received request for generate-blueprint:', { user_profile, trend_id, chosen_direction, user_id: user_id || 'anonymous' });
 
     if (!user_profile || !user_profile.brand_name) {
       return new Response(
