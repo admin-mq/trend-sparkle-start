@@ -11,6 +11,52 @@ const corsHeaders = {
 const EXTERNAL_SUPABASE_URL = "https://njnnpdrevbkhbhzwccuz.supabase.co";
 const EXTERNAL_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qbm5wZHJldmJraGJoendjY3V6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQzOTg3ODQsImV4cCI6MjA3OTk3NDc4NH0.WKuei-3pR2TphEKjSOOhvNlECrX93Jt9NE5SK2TcD-M";
 
+type BrandMemory = {
+  user_id: string | null;
+  brand_name: string;
+  business_summary?: string | null;
+  voice_profile_text?: string | null;
+  do_list?: string[] | null;
+  dont_list?: string[] | null;
+  preferred_formats?: string[] | null;
+  tone_preferences?: any | null;
+};
+
+async function getBrandMemory(
+  supabase: any,
+  userId: string | null,
+  brandName: string
+): Promise<BrandMemory | null> {
+  if (userId) {
+    const { data: userMemory } = await supabase
+      .from("brand_memory")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("brand_name", brandName)
+      .maybeSingle();
+
+    if (userMemory) return userMemory;
+
+    const { data: sharedMemory } = await supabase
+      .from("brand_memory")
+      .select("*")
+      .is("user_id", null)
+      .eq("brand_name", brandName)
+      .maybeSingle();
+
+    return sharedMemory;
+  }
+
+  const { data } = await supabase
+    .from("brand_memory")
+    .select("*")
+    .is("user_id", null)
+    .eq("brand_name", brandName)
+    .maybeSingle();
+
+  return data;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -43,6 +89,12 @@ serve(async (req) => {
 
     // Initialize external Supabase client
     const externalSupabase = createClient(EXTERNAL_SUPABASE_URL, EXTERNAL_SUPABASE_ANON_KEY);
+
+    // Fetch brand memory
+    const userId = user_id || null;
+    const brandName = user_profile.brand_name || "Unknown Brand";
+    const brandMemory = await getBrandMemory(externalSupabase, userId, brandName);
+    console.log('Brand memory:', brandMemory ? 'found' : 'not found');
 
     // Fetch the full trend record including description
     const { data: trendData, error: trendError } = await externalSupabase
@@ -88,6 +140,11 @@ You receive:
 - ONE trend, with a detailed description of why it is viral now,
 - ONE selected creative direction (title, summary, hook, visual_idea, CTA),
 - the content_format (video, carousel, etc.).
+
+Brand memory is provided as a style guide. Use it as the highest priority for voice and tone:
+- Match the rhythm and attitude described in voice_profile_text.
+- Follow do_list and avoid dont_list.
+- If tone_preferences exist, use primary_tones and intensity_preference as extra guidance together with the current tone and tone_intensity controls.
 
 Tone handling:
 - The brand tone may include multiple styles (tones array). Use primary_tone as the main voice.
@@ -163,6 +220,9 @@ Respond ONLY with JSON.`;
       const userMessage = `
 Here is the brand profile:
 ${JSON.stringify(user_profile, null, 2)}
+
+Here is the brand memory (style guide):
+${JSON.stringify(brandMemory, null, 2)}
 
 Here is the trend (with a description of why it's currently viral):
 ${JSON.stringify(trend, null, 2)}
