@@ -195,18 +195,20 @@ const Index = () => {
             </div>
           </aside>
 
-          {/* Right: Workspace */}
-          <section className="flex-1 flex flex-col min-w-0">
-            <div className="bg-card rounded-xl border border-border shadow-card flex-1 flex flex-col overflow-hidden">
+          {/* Right: Workspace - fills remaining space */}
+          <section className="flex-1 min-w-0 flex flex-col">
+            <div className="bg-card rounded-xl border border-border shadow-card flex-1 flex flex-col overflow-hidden w-full">
               {/* Stepper */}
               <div className="p-3 border-b border-border flex items-center justify-between">
                 <WorkspaceStepper activeStep={activeStep} hasTrends={recommendations.length > 0} hasDirections={creativeDirections.length > 0} hasBlueprint={detailedDirection !== null} onStepClick={setActiveStep} />
               </div>
 
-              {/* Content area */}
-              <div className="flex-1 p-4 relative overflow-hidden">
+              {/* Content area - fills the workspace */}
+              <div className="flex-1 p-4 relative overflow-hidden w-full">
                 {isLoading && <WorkspaceLoading step={activeStep} />}
-                {renderWorkspaceContent()}
+                <div className="h-full w-full">
+                  {renderWorkspaceContent()}
+                </div>
               </div>
             </div>
           </section>

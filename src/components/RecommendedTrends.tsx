@@ -11,12 +11,12 @@ interface RecommendedTrendsProps {
 export const RecommendedTrends = ({ recommendations, brandName, onViewDirections }: RecommendedTrendsProps) => {
   if (recommendations.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-center py-12">
+      <div className="flex flex-col items-center justify-center h-full w-full text-center py-12">
         <div className="w-16 h-16 rounded-2xl bg-secondary/50 flex items-center justify-center mb-4">
           <TrendingUp className="w-8 h-8 text-muted-foreground" />
         </div>
         <h3 className="text-lg font-medium text-foreground mb-2">No trends yet</h3>
-        <p className="text-muted-foreground text-sm max-w-sm">
+        <p className="text-muted-foreground text-sm max-w-md">
           Fill in your brand profile and click "Get AI trend suggestions" to discover what's trending for you.
         </p>
       </div>
@@ -24,15 +24,15 @@ export const RecommendedTrends = ({ recommendations, brandName, onViewDirections
   }
 
   return (
-    <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center justify-between mb-2">
+    <div className="h-full w-full flex flex-col animate-fade-in">
+      <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm text-muted-foreground uppercase tracking-wider">
           {brandName ? `Trending for ${brandName}` : 'Recommended trends'}
         </h3>
         <span className="text-xs text-muted-foreground">{recommendations.length} trends</span>
       </div>
       
-      <div className="space-y-3 max-h-[calc(100vh-320px)] overflow-y-auto pr-2">
+      <div className="flex-1 space-y-3 overflow-y-auto pr-2">
         {recommendations.map((trend) => (
           <div key={trend.trend_id} className="post-card p-4 hover:shadow-glow transition-shadow">
             <div className="flex items-start justify-between gap-3">
