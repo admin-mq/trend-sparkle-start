@@ -9,6 +9,8 @@ import { UserMenu } from "@/components/UserMenu";
 import { RecommendedTrend, CreativeDirection, UserProfile, DetailedDirection } from "@/types/trends";
 import { Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { BrandMemory, updateBrandMemory } from "@/lib/brandMemory";
+import { toast } from "sonner";
 
 const Index = () => {
   const { user } = useAuth();
@@ -34,6 +36,33 @@ const Index = () => {
   const [blueprintLoading, setBlueprintLoading] = useState(false);
   const [blueprintError, setBlueprintError] = useState<string | null>(null);
   const [trendHashtags, setTrendHashtags] = useState<string>('');
+  
+  // Brand memory for learning from feedback
+  const [brandMemory, setBrandMemory] = useState<BrandMemory | null>(null);
+
+  const handleFeedback = async (params: {
+    outputType: "hook" | "caption" | "blueprint";
+    newOutput: string;
+    userFeedback: "love" | "ok" | "dislike";
+  }) => {
+    if (!userProfile?.brand_name) return;
+
+    const result = await updateBrandMemory({
+      brand_profile: userProfile,
+      current_memory: brandMemory,
+      new_output: params.newOutput,
+      output_type: params.outputType,
+      user_feedback: params.userFeedback,
+      user_id: user?.id || null,
+    });
+
+    if (result.success && result.updated_memory) {
+      setBrandMemory(result.updated_memory);
+      toast.success("Feedback saved! AI will learn from this.");
+    } else {
+      console.error("Failed to update brand memory:", result.error);
+    }
+  };
   const handleRecommendationsReceived = (newRecommendations: RecommendedTrend[]) => {
     setRecommendations(newRecommendations);
     setActiveStep("trends");
@@ -123,14 +152,14 @@ const Index = () => {
               <p className="text-destructive">{directionsError}</p>
             </div>;
         }
-        return <CreativeDirections trendName={selectedTrendName} directions={creativeDirections} onViewBlueprint={handleViewBlueprint} onBack={() => setActiveStep("trends")} />;
+        return <CreativeDirections trendName={selectedTrendName} directions={creativeDirections} onViewBlueprint={handleViewBlueprint} onBack={() => setActiveStep("trends")} onFeedback={handleFeedback} />;
       case "blueprint":
         if (blueprintError) {
           return <div className="flex items-center justify-center h-full">
               <p className="text-destructive">{blueprintError}</p>
             </div>;
         }
-        return <ExecutionBlueprint trendName={selectedTrendName} ideaTitle={selectedIdeaTitle} blueprint={detailedDirection} trendHashtags={trendHashtags} onBack={() => setActiveStep("directions")} />;
+        return <ExecutionBlueprint trendName={selectedTrendName} ideaTitle={selectedIdeaTitle} blueprint={detailedDirection} trendHashtags={trendHashtags} onBack={() => setActiveStep("directions")} onFeedback={handleFeedback} />;
     }
   };
   return <main className="min-h-screen bg-background studio-glow">
