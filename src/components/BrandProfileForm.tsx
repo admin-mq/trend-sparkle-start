@@ -21,26 +21,16 @@ interface BrandProfileFormProps {
 }
 
 const INDUSTRIES = [
-  "Agriculture & Forestry (farming, dairy, fisheries, timber)",
-  "Mining & Metals (coal, iron ore, precious metals)",
-  "Oil, Gas & Energy (exploration, refining, renewables, utilities)",
-  "Manufacturing (automotive, electronics, textiles, machinery)",
-  "Construction & Real Estate (infrastructure, residential, commercial)",
-  "Transportation & Logistics (shipping, airlines, warehousing, last-mile)",
-  "Retail & E-commerce (grocery, apparel, marketplaces)",
-  "FMCG / Consumer Goods (food, beverages, personal care)",
-  "Healthcare & Pharmaceuticals (hospitals, biotech, medical devices)",
-  "Finance & Insurance (banking, asset management, fintech, underwriting)",
-  "Technology & Software (SaaS, AI, cybersecurity, hardware)",
-  "Telecommunications (mobile networks, broadband, satellite)",
-  "Media, Entertainment & Gaming (streaming, music, esports)",
-  "Education & Training (schools, edtech, professional upskilling)",
-  "Hospitality & Tourism (hotels, travel services, events)",
-  "Food Services (restaurants, cloud kitchens, catering)",
-  "Professional Services (consulting, legal, accounting, HR)",
-  "Public Sector & Defense (government services, aerospace, security)",
-  "Chemicals & Materials (industrial chemicals, plastics, specialty materials)",
-  "Water & Waste Management (sanitation, recycling, circular economy)",
+  "Retail & E-commerce",
+  "FMCG / Consumer Goods",
+  "Technology & Software (SaaS/AI)",
+  "Media, Entertainment & Gaming",
+  "Healthcare & Pharmaceuticals",
+  "Finance & Insurance",
+  "Hospitality & Tourism",
+  "Food Services (restaurants/cloud kitchens)",
+  "Professional Services (consulting/legal/HR)",
+  "Education & Training (edtech/upskilling)",
   "Other"
 ];
 
@@ -182,6 +172,7 @@ export const BrandProfileForm = ({
     content_format: '',
     primary_goal: ''
   });
+  const [customIndustry, setCustomIndustry] = useState('');
 
   const [selectedTones, setSelectedTones] = useState<string[]>([]);
   const [toneIntensity, setToneIntensity] = useState<number>(3);
@@ -226,8 +217,14 @@ export const BrandProfileForm = ({
       toneString = selectedTones.join(" + ");
     }
 
+    // Use custom industry text if "Other" is selected
+    const finalIndustry = userProfile.industry === "Other" && customIndustry.trim() 
+      ? customIndustry.trim() 
+      : userProfile.industry;
+
     return {
       ...userProfile,
+      industry: finalIndustry,
       tone: toneString,
       tones: selectedTones.length > 0 ? selectedTones : ["casual"],
       primary_tone: primaryTone || "casual",
@@ -310,12 +307,20 @@ export const BrandProfileForm = ({
             <SelectTrigger className="bg-secondary/50 border-border/50">
               <SelectValue placeholder="Select industry" />
             </SelectTrigger>
-            <SelectContent className="max-h-[300px]">
+            <SelectContent>
               {INDUSTRIES.map((item) => (
                 <SelectItem key={item} value={item}>{item}</SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {userProfile.industry === "Other" && (
+            <Input
+              value={customIndustry}
+              onChange={(e) => setCustomIndustry(e.target.value)}
+              placeholder="Specify your industry"
+              className="bg-secondary/50 border-border/50 focus:border-primary mt-2"
+            />
+          )}
         </div>
 
         <div className="space-y-2">

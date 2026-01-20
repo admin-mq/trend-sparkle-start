@@ -11,6 +11,7 @@ import { Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { BrandMemory, updateBrandMemory } from "@/lib/brandMemory";
 import { toast } from "sonner";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const Index = () => {
   const { user } = useAuth();
@@ -163,32 +164,33 @@ const Index = () => {
     }
   };
   return <main className="min-h-screen bg-background studio-glow">
-      <div className="h-screen flex flex-col p-4 lg:p-6 max-w-[1600px] mx-auto">
+      <div className="h-screen flex flex-col p-3 lg:p-4 w-full max-w-7xl mx-auto">
         {/* Header */}
-        <header className="flex items-center justify-between mb-6">
+        <header className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-glow">
-              <Sparkles className="w-5 h-5 text-primary-foreground" />
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-glow">
+              <Sparkles className="w-4 h-4 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-foreground">Trend Quest</h1>
-              <p className="text-xs text-muted-foreground">Turn live social trends into ready-to-post content</p>
+              <h1 className="text-lg font-bold text-foreground">Trend Quest</h1>
+              <p className="text-xs text-muted-foreground hidden sm:block">Turn live social trends into ready-to-post content</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground">
               <span className="px-2 py-1 bg-primary/10 text-primary rounded-full">Social Media Inspired</span>
               <span className="px-2 py-1 bg-secondary rounded-full">Early beta</span>
             </div>
+            <ThemeToggle />
             <UserMenu />
           </div>
         </header>
 
         {/* Main content: two columns */}
-        <div className="flex-1 flex gap-4 lg:gap-6 min-h-0">
+        <div className="flex-1 flex flex-col lg:flex-row gap-4 min-h-0">
           {/* Left: Brand Profile */}
-          <aside className="w-80 lg:w-96 flex-shrink-0">
-            <div className="h-full bg-card rounded-xl border border-border p-5 shadow-card">
+          <aside className="w-full lg:w-[360px] xl:w-[380px] flex-shrink-0">
+            <div className="h-full bg-card rounded-xl border border-border p-4 shadow-card">
               <BrandProfileForm onRecommendationsReceived={handleRecommendationsReceived} onBrandNameChange={setBrandName} onUserProfileChange={setUserProfile} loading={trendsLoading} setLoading={setTrendsLoading} />
             </div>
           </aside>
@@ -197,12 +199,12 @@ const Index = () => {
           <section className="flex-1 flex flex-col min-w-0">
             <div className="bg-card rounded-xl border border-border shadow-card flex-1 flex flex-col overflow-hidden">
               {/* Stepper */}
-              <div className="p-4 border-b border-border flex items-center justify-between">
+              <div className="p-3 border-b border-border flex items-center justify-between">
                 <WorkspaceStepper activeStep={activeStep} hasTrends={recommendations.length > 0} hasDirections={creativeDirections.length > 0} hasBlueprint={detailedDirection !== null} onStepClick={setActiveStep} />
               </div>
 
               {/* Content area */}
-              <div className="flex-1 p-4 lg:p-6 relative overflow-hidden">
+              <div className="flex-1 p-4 relative overflow-hidden">
                 {isLoading && <WorkspaceLoading step={activeStep} />}
                 {renderWorkspaceContent()}
               </div>
