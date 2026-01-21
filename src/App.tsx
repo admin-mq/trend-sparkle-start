@@ -14,6 +14,7 @@ import Analytics from "./pages/Analytics";
 import PaidCampaigns from "./pages/PaidCampaigns";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -38,6 +39,7 @@ const App = () => (
             <Route path="/pr" element={<PR />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/paid-campaigns" element={<PaidCampaigns />} />
+            <Route path="/profile" element={<Profile />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/admin" element={<Admin />} />
           </Route>

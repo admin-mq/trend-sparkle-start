@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { BrandProfileForm } from "@/components/BrandProfileForm";
+import { ProfileSummaryCard } from "@/components/ProfileSummaryCard";
+import { ProfileMissingCard } from "@/components/ProfileMissingCard";
 import { RecommendedTrends } from "@/components/RecommendedTrends";
 import { CreativeDirections } from "@/components/CreativeDirections";
 import { ExecutionBlueprint } from "@/components/ExecutionBlueprint";
@@ -7,11 +9,15 @@ import { WorkspaceStepper, WorkspaceStep } from "@/components/WorkspaceStepper";
 import { WorkspaceLoading } from "@/components/WorkspaceLoading";
 import { RecommendedTrend, CreativeDirection, UserProfile, DetailedDirection } from "@/types/trends";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserProfile } from "@/hooks/useUserProfile";
 import { BrandMemory, updateBrandMemory } from "@/lib/brandMemory";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 const TrendQuest = () => {
   const { user } = useAuth();
+  const { profile, loading: profileLoading, isAuthenticated } = useUserProfile();
+  
   // Step navigation
   const [activeStep, setActiveStep] = useState<WorkspaceStep>("trends");
 
@@ -37,6 +43,39 @@ const TrendQuest = () => {
   
   // Brand memory for learning from feedback
   const [brandMemory, setBrandMemory] = useState<BrandMemory | null>(null);
+
+  // Check if user has a complete profile
+  const hasCompleteProfile = profile && profile.brand_name;
+
+  // Build UserProfile from saved profile data
+  const buildProfileFromSaved = (): UserProfile => {
+    const industry = profile?.industry === "Other" && profile?.industry_other
+      ? profile.industry_other
+      : (profile?.industry || "");
+
+    return {
+      brand_name: profile?.brand_name || "",
+      business_summary: profile?.business_summary || "",
+      industry: industry,
+      niche: "",
+      audience: "",
+      geography: profile?.geography || "",
+      content_format: "",
+      primary_goal: "",
+      tone: "casual",
+      tones: ["casual"],
+      primary_tone: "casual",
+      tone_intensity: 3,
+      tone_meter_label: "Vibe meter"
+    };
+  };
+
+  // Update brand name when profile loads
+  useEffect(() => {
+    if (hasCompleteProfile && profile.brand_name) {
+      setBrandName(profile.brand_name);
+    }
+  }, [hasCompleteProfile, profile]);
 
   const handleFeedback = async (params: {
     outputType: "hook" | "caption" | "blueprint";
@@ -68,6 +107,38 @@ const TrendQuest = () => {
     // Clear downstream state
     setCreativeDirections([]);
     setDetailedDirection(null);
+  };
+
+  // Quick action using saved profile
+  const handleGetTrendsFromProfile = async () => {
+    if (!hasCompleteProfile) return;
+
+    const fullProfile = buildProfileFromSaved();
+    setUserProfile(fullProfile);
+    setBrandName(profile.brand_name!);
+    setTrendsLoading(true);
+
+    try {
+      const { data, error: functionError } = await supabase.functions.invoke('recommend-trends', {
+        body: { user_profile: fullProfile, user_id: user?.id || null }
+      });
+
+      if (functionError) {
+        console.error('Edge function error:', functionError);
+        throw new Error('Failed to load recommendations');
+      }
+
+      if (!data || !data.recommended_trends) {
+        throw new Error('Invalid response from recommendation service');
+      }
+
+      handleRecommendationsReceived(data.recommended_trends);
+    } catch (err) {
+      console.error('Error fetching recommendations:', err);
+      toast.error('Failed to load recommendations');
+    } finally {
+      setTrendsLoading(false);
+    }
   };
 
   const handleViewDirections = async (trend: RecommendedTrend) => {
@@ -170,20 +241,59 @@ const TrendQuest = () => {
     }
   };
 
+  // Determine what to show in the left panel
+  const renderLeftPanel = () => {
+    // If profile is loading, show nothing special
+    if (profileLoading) {
+      return (
+        <div className="h-full bg-card rounded-xl border border-border p-4 shadow-card flex items-center justify-center">
+          <div className="animate-pulse text-muted-foreground">Loading...</div>
+        </div>
+      );
+    }
+
+    // If user is logged in and has a complete profile, show summary card
+    if (isAuthenticated && hasCompleteProfile) {
+      return (
+        <div className="h-full bg-card rounded-xl border border-border p-4 shadow-card">
+          <ProfileSummaryCard 
+            profile={profile} 
+            onGetTrends={handleGetTrendsFromProfile}
+            loading={trendsLoading}
+          />
+        </div>
+      );
+    }
+
+    // If user is logged in but no profile, show prompt to complete profile
+    if (isAuthenticated && !hasCompleteProfile) {
+      return (
+        <div className="h-full bg-card rounded-xl border border-border shadow-card">
+          <ProfileMissingCard />
+        </div>
+      );
+    }
+
+    // Not logged in: show full form as fallback
+    return (
+      <div className="h-full bg-card rounded-xl border border-border p-4 shadow-card">
+        <BrandProfileForm 
+          onRecommendationsReceived={handleRecommendationsReceived} 
+          onBrandNameChange={setBrandName} 
+          onUserProfileChange={setUserProfile} 
+          loading={trendsLoading} 
+          setLoading={setTrendsLoading} 
+        />
+      </div>
+    );
+  };
+
   return (
     <div className="h-full p-4 lg:p-6">
       <div className="h-full flex flex-col lg:flex-row gap-4 max-w-7xl mx-auto">
-        {/* Left: Brand Profile */}
+        {/* Left: Profile/Brand Panel */}
         <aside className="w-full lg:w-[360px] xl:w-[380px] flex-shrink-0">
-          <div className="h-full bg-card rounded-xl border border-border p-4 shadow-card">
-            <BrandProfileForm 
-              onRecommendationsReceived={handleRecommendationsReceived} 
-              onBrandNameChange={setBrandName} 
-              onUserProfileChange={setUserProfile} 
-              loading={trendsLoading} 
-              setLoading={setTrendsLoading} 
-            />
-          </div>
+          {renderLeftPanel()}
         </aside>
 
         {/* Right: Workspace */}

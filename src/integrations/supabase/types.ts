@@ -68,6 +68,57 @@ export type Database = {
         }
         Relationships: []
       }
+      user_profiles: {
+        Row: {
+          brand_name: string | null
+          business_summary: string | null
+          full_name: string | null
+          geography: string | null
+          industry: string | null
+          industry_other: string | null
+          instagram: string | null
+          linkedin: string | null
+          logo_url: string | null
+          tiktok: string | null
+          updated_at: string | null
+          user_id: string
+          website: string | null
+          youtube: string | null
+        }
+        Insert: {
+          brand_name?: string | null
+          business_summary?: string | null
+          full_name?: string | null
+          geography?: string | null
+          industry?: string | null
+          industry_other?: string | null
+          instagram?: string | null
+          linkedin?: string | null
+          logo_url?: string | null
+          tiktok?: string | null
+          updated_at?: string | null
+          user_id: string
+          website?: string | null
+          youtube?: string | null
+        }
+        Update: {
+          brand_name?: string | null
+          business_summary?: string | null
+          full_name?: string | null
+          geography?: string | null
+          industry?: string | null
+          industry_other?: string | null
+          instagram?: string | null
+          linkedin?: string | null
+          logo_url?: string | null
+          tiktok?: string | null
+          updated_at?: string | null
+          user_id?: string
+          website?: string | null
+          youtube?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
