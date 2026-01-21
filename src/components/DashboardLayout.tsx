@@ -35,6 +35,7 @@ const mainNavItems = [
 ];
 
 const bottomNavItems = [
+  { path: "/profile", label: "Profile", icon: Users },
   { path: "/settings", label: "Settings", icon: Settings },
   { path: "/admin", label: "Admin", icon: Shield },
 ];
