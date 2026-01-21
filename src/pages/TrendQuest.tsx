@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
-import { BrandProfileForm } from "@/components/BrandProfileForm";
-import { ProfileSummaryCard } from "@/components/ProfileSummaryCard";
-import { ProfileMissingCard } from "@/components/ProfileMissingCard";
+import { BrandSelector } from "@/components/BrandSelector";
 import { RecommendedTrends } from "@/components/RecommendedTrends";
 import { CreativeDirections } from "@/components/CreativeDirections";
 import { ExecutionBlueprint } from "@/components/ExecutionBlueprint";
@@ -9,14 +7,17 @@ import { WorkspaceStepper, WorkspaceStep } from "@/components/WorkspaceStepper";
 import { WorkspaceLoading } from "@/components/WorkspaceLoading";
 import { RecommendedTrend, CreativeDirection, UserProfile, DetailedDirection } from "@/types/trends";
 import { useAuth } from "@/hooks/useAuth";
-import { useUserProfile } from "@/hooks/useUserProfile";
+import { useBrandProfiles, BrandProfile } from "@/hooks/useBrandProfiles";
 import { BrandMemory, updateBrandMemory } from "@/lib/brandMemory";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
 const TrendQuest = () => {
   const { user } = useAuth();
-  const { profile, loading: profileLoading, isAuthenticated } = useUserProfile();
+  const { brands, loading: brandsLoading } = useBrandProfiles();
+  
+  // Selected brand
+  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   
   // Step navigation
   const [activeStep, setActiveStep] = useState<WorkspaceStep>("trends");
@@ -44,22 +45,26 @@ const TrendQuest = () => {
   // Brand memory for learning from feedback
   const [brandMemory, setBrandMemory] = useState<BrandMemory | null>(null);
 
-  // Check if user has a complete profile
-  const hasCompleteProfile = profile && profile.brand_name;
+  // Auto-select first brand if only one exists
+  useEffect(() => {
+    if (brands.length > 0 && !selectedBrandId) {
+      setSelectedBrandId(brands[0].id);
+    }
+  }, [brands, selectedBrandId]);
 
-  // Build UserProfile from saved profile data
-  const buildProfileFromSaved = (): UserProfile => {
-    const industry = profile?.industry === "Other" && profile?.industry_other
-      ? profile.industry_other
-      : (profile?.industry || "");
+  // Build UserProfile from selected brand
+  const buildProfileFromBrand = (brand: BrandProfile): UserProfile => {
+    const industry = brand.industry === "Other" && brand.industry_other
+      ? brand.industry_other
+      : (brand.industry || "");
 
     return {
-      brand_name: profile?.brand_name || "",
-      business_summary: profile?.business_summary || "",
+      brand_name: brand.brand_name,
+      business_summary: brand.business_summary || "",
       industry: industry,
       niche: "",
       audience: "",
-      geography: profile?.geography || "",
+      geography: brand.geography || "",
       content_format: "",
       primary_goal: "",
       tone: "casual",
@@ -70,12 +75,19 @@ const TrendQuest = () => {
     };
   };
 
-  // Update brand name when profile loads
+  // Update brand name and profile when brand selection changes
   useEffect(() => {
-    if (hasCompleteProfile && profile.brand_name) {
-      setBrandName(profile.brand_name);
+    if (selectedBrandId) {
+      const brand = brands.find(b => b.id === selectedBrandId);
+      if (brand) {
+        setBrandName(brand.brand_name);
+        setUserProfile(buildProfileFromBrand(brand));
+      }
+    } else {
+      setBrandName('');
+      setUserProfile(null);
     }
-  }, [hasCompleteProfile, profile]);
+  }, [selectedBrandId, brands]);
 
   const handleFeedback = async (params: {
     outputType: "hook" | "caption" | "blueprint";
@@ -109,18 +121,15 @@ const TrendQuest = () => {
     setDetailedDirection(null);
   };
 
-  // Quick action using saved profile
-  const handleGetTrendsFromProfile = async () => {
-    if (!hasCompleteProfile) return;
+  // Get trends using selected brand
+  const handleGetTrends = async () => {
+    if (!selectedBrandId || !userProfile) return;
 
-    const fullProfile = buildProfileFromSaved();
-    setUserProfile(fullProfile);
-    setBrandName(profile.brand_name!);
     setTrendsLoading(true);
 
     try {
       const { data, error: functionError } = await supabase.functions.invoke('recommend-trends', {
-        body: { user_profile: fullProfile, user_id: user?.id || null }
+        body: { user_profile: userProfile, user_id: user?.id || null }
       });
 
       if (functionError) {
@@ -241,59 +250,19 @@ const TrendQuest = () => {
     }
   };
 
-  // Determine what to show in the left panel
-  const renderLeftPanel = () => {
-    // If profile is loading, show nothing special
-    if (profileLoading) {
-      return (
-        <div className="h-full bg-card rounded-xl border border-border p-4 shadow-card flex items-center justify-center">
-          <div className="animate-pulse text-muted-foreground">Loading...</div>
-        </div>
-      );
-    }
-
-    // If user is logged in and has a complete profile, show summary card
-    if (isAuthenticated && hasCompleteProfile) {
-      return (
-        <div className="h-full bg-card rounded-xl border border-border p-4 shadow-card">
-          <ProfileSummaryCard 
-            profile={profile} 
-            onGetTrends={handleGetTrendsFromProfile}
-            loading={trendsLoading}
-          />
-        </div>
-      );
-    }
-
-    // If user is logged in but no profile, show prompt to complete profile
-    if (isAuthenticated && !hasCompleteProfile) {
-      return (
-        <div className="h-full bg-card rounded-xl border border-border shadow-card">
-          <ProfileMissingCard />
-        </div>
-      );
-    }
-
-    // Not logged in: show full form as fallback
-    return (
-      <div className="h-full bg-card rounded-xl border border-border p-4 shadow-card">
-        <BrandProfileForm 
-          onRecommendationsReceived={handleRecommendationsReceived} 
-          onBrandNameChange={setBrandName} 
-          onUserProfileChange={setUserProfile} 
-          loading={trendsLoading} 
-          setLoading={setTrendsLoading} 
-        />
-      </div>
-    );
-  };
-
   return (
     <div className="h-full p-4 lg:p-6">
       <div className="h-full flex flex-col lg:flex-row gap-4 max-w-7xl mx-auto">
-        {/* Left: Profile/Brand Panel */}
+        {/* Left: Brand Selector Panel */}
         <aside className="w-full lg:w-[360px] xl:w-[380px] flex-shrink-0">
-          {renderLeftPanel()}
+          <BrandSelector
+            brands={brands}
+            selectedBrandId={selectedBrandId}
+            onSelectBrand={setSelectedBrandId}
+            onGetTrends={handleGetTrends}
+            loading={trendsLoading}
+            brandsLoading={brandsLoading}
+          />
         </aside>
 
         {/* Right: Workspace */}
