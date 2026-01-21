@@ -6,10 +6,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useUserProfile } from "@/hooks/useUserProfile";
-import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { User, Building2, Globe, Upload, Link, Save, Loader2, LogIn } from "lucide-react";
-import { Link as RouterLink } from "react-router-dom";
+import { User, Building2, Globe, Upload, Link, Save, Loader2 } from "lucide-react";
 
 const INDUSTRIES = [
   "Retail & E-commerce",
@@ -37,7 +35,6 @@ const GEOGRAPHIES = [
 ];
 
 const Profile = () => {
-  const { user, loading: authLoading } = useAuth();
   const { profile, loading, saveProfile, uploadLogo } = useUserProfile();
   
   const [formData, setFormData] = useState({
@@ -129,33 +126,10 @@ const Profile = () => {
     }
   };
 
-  if (authLoading || loading) {
+  if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="h-full flex items-center justify-center p-6">
-        <Card className="max-w-md w-full">
-          <CardHeader className="text-center">
-            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-              <LogIn className="w-6 h-6 text-primary" />
-            </div>
-            <CardTitle>Sign in to access your Profile</CardTitle>
-            <CardDescription>
-              Create a profile to save your brand information and use it across all tools.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-center">
-            <p className="text-sm text-muted-foreground">
-              Use the login option to get started.
-            </p>
-          </CardContent>
-        </Card>
       </div>
     );
   }
