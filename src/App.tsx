@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import Dashboard from "./pages/Dashboard";
 import TrendQuest from "./pages/TrendQuest";
 import HashtagAnalysis from "./pages/HashtagAnalysis";
 import TrendingAudios from "./pages/TrendingAudios";
@@ -26,11 +27,12 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          {/* Redirect root to trend-quest */}
-          <Route path="/" element={<Navigate to="/trend-quest" replace />} />
+          {/* Redirect root to dashboard */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
           
           {/* Dashboard layout with nested routes */}
           <Route element={<DashboardLayout />}>
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/trend-quest" element={<TrendQuest />} />
             <Route path="/hashtag-analysis" element={<HashtagAnalysis />} />
             <Route path="/trending-audios" element={<TrendingAudios />} />

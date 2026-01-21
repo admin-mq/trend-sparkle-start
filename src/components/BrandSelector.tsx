@@ -148,12 +148,10 @@ export const BrandSelector = ({
             </div>
           )}
 
-          {/* Trend Quest Inputs */}
           {selectedBrand && (
             <TrendQuestInputs
               values={inputValues}
               onChange={onInputChange}
-              defaultRegion={selectedBrand.geography}
             />
           )}
 

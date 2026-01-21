@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-import { X, Users, Megaphone, Target, Palette, Globe } from "lucide-react";
+import { X, Users, Megaphone, Target, Palette } from "lucide-react";
 
 const AUDIENCE_OPTIONS = [
   "Gen Z",
@@ -56,15 +56,6 @@ const TONE_OPTIONS = [
   "savage"
 ] as const;
 
-const REGION_OPTIONS = [
-  "Global",
-  "US",
-  "UK",
-  "Europe",
-  "India",
-  "Middle East",
-  "Other"
-] as const;
 
 // Priority order for determining primary tone (highest to lowest)
 const TONE_PRIORITY: string[] = [
@@ -121,17 +112,14 @@ export interface TrendQuestInputValues {
   primary_goal: string;
   tones: string[];
   tone_intensity: number;
-  region: string;
-  region_other: string;
 }
 
 interface TrendQuestInputsProps {
   values: TrendQuestInputValues;
   onChange: (values: TrendQuestInputValues) => void;
-  defaultRegion?: string;
 }
 
-export const TrendQuestInputs = ({ values, onChange, defaultRegion }: TrendQuestInputsProps) => {
+export const TrendQuestInputs = ({ values, onChange }: TrendQuestInputsProps) => {
   // Compute primary tone based on priority
   const primaryTone = TONE_PRIORITY.find(t => values.tones.includes(t)) || values.tones[0] || "casual";
   const meterLabel = TONE_METER_LABELS[primaryTone] || "Vibe meter";
@@ -279,31 +267,6 @@ export const TrendQuestInputs = ({ values, onChange, defaultRegion }: TrendQuest
         </div>
       </div>
 
-      {/* Region Preference */}
-      <div className="space-y-1.5">
-        <Label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <Globe className="w-3 h-3" />
-          Region Preference
-        </Label>
-        <Select value={values.region} onValueChange={(v) => handleChange("region", v)}>
-          <SelectTrigger className="h-9">
-            <SelectValue placeholder="Select region" />
-          </SelectTrigger>
-          <SelectContent>
-            {REGION_OPTIONS.map((opt) => (
-              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {values.region === "Other" && (
-          <Input
-            placeholder="Specify region"
-            value={values.region_other}
-            onChange={(e) => handleChange("region_other", e.target.value)}
-            className="h-8 text-sm mt-1"
-          />
-        )}
-      </div>
     </div>
   );
 };
