@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      brand_profiles: {
+        Row: {
+          brand_name: string
+          business_summary: string | null
+          created_at: string
+          geography: string | null
+          id: string
+          industry: string | null
+          industry_other: string | null
+          logo_url: string | null
+          session_id: string
+          updated_at: string
+        }
+        Insert: {
+          brand_name: string
+          business_summary?: string | null
+          created_at?: string
+          geography?: string | null
+          id?: string
+          industry?: string | null
+          industry_other?: string | null
+          logo_url?: string | null
+          session_id: string
+          updated_at?: string
+        }
+        Update: {
+          brand_name?: string
+          business_summary?: string | null
+          created_at?: string
+          geography?: string | null
+          id?: string
+          industry?: string | null
+          industry_other?: string | null
+          logo_url?: string | null
+          session_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string

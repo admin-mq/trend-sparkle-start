@@ -1,94 +1,111 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useUserProfile } from "@/hooks/useUserProfile";
+import { useBrandProfiles, BrandProfileInput } from "@/hooks/useBrandProfiles";
 import { toast } from "sonner";
-import { User, Building2, Globe, Upload, Link, Save, Loader2 } from "lucide-react";
+import { Building2, Globe, Upload, Save, Loader2, Plus, Pencil, Trash2, X, Briefcase } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const INDUSTRIES = [
   "Retail & E-commerce",
-  "FMCG / Consumer Goods",
+  "FMCG/Consumer Goods",
   "Technology & Software (SaaS/AI)",
-  "Media, Entertainment & Gaming",
+  "Media/Entertainment & Gaming",
   "Healthcare & Pharmaceuticals",
   "Finance & Insurance",
   "Hospitality & Tourism",
-  "Food Services (restaurants/cloud kitchens)",
-  "Professional Services (consulting/legal/HR)",
-  "Education & Training (edtech/upskilling)",
+  "Food Services",
+  "Professional Services",
+  "Education & Training",
   "Other"
 ];
 
 const GEOGRAPHIES = [
   "Global",
-  "US & Canada",
-  "UK & Europe",
-  "India",
-  "Middle East",
-  "Southeast Asia",
+  "North America",
+  "Europe",
+  "Asia Pacific",
   "Latin America",
-  "Custom"
+  "Middle East & Africa",
+  "United States",
+  "United Kingdom",
+  "India",
+  "Australia"
 ];
 
 const Profile = () => {
-  const { profile, loading, saveProfile, uploadLogo } = useUserProfile();
+  const { brands, loading, createBrand, updateBrand, deleteBrand, uploadLogo } = useBrandProfiles();
   
-  const [formData, setFormData] = useState({
-    full_name: "",
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  
+  const [formData, setFormData] = useState<BrandProfileInput>({
     brand_name: "",
     industry: "",
     industry_other: "",
     geography: "",
     business_summary: "",
-    website: "",
-    instagram: "",
-    tiktok: "",
-    youtube: "",
-    linkedin: "",
+    logo_url: ""
   });
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (profile) {
-      setFormData({
-        full_name: profile.full_name || "",
-        brand_name: profile.brand_name || "",
-        industry: profile.industry || "",
-        industry_other: profile.industry_other || "",
-        geography: profile.geography || "",
-        business_summary: profile.business_summary || "",
-        website: profile.website || "",
-        instagram: profile.instagram || "",
-        tiktok: profile.tiktok || "",
-        youtube: profile.youtube || "",
-        linkedin: profile.linkedin || "",
-      });
-      setLogoUrl(profile.logo_url);
-    }
-  }, [profile]);
+  const resetForm = () => {
+    setFormData({
+      brand_name: "",
+      industry: "",
+      industry_other: "",
+      geography: "",
+      business_summary: "",
+      logo_url: ""
+    });
+    setEditingId(null);
+    setIsCreating(false);
+  };
 
-  const handleChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const startEditing = (brand: typeof brands[0]) => {
+    setFormData({
+      brand_name: brand.brand_name,
+      industry: brand.industry || "",
+      industry_other: brand.industry_other || "",
+      geography: brand.geography || "",
+      business_summary: brand.business_summary || "",
+      logo_url: brand.logo_url || ""
+    });
+    setEditingId(brand.id);
+    setIsCreating(false);
+  };
+
+  const startCreating = () => {
+    resetForm();
+    setIsCreating(true);
   };
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
+    if (!file.type.startsWith("image/")) {
       toast.error("Please upload an image file");
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Image must be less than 5MB");
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Image must be less than 2MB");
       return;
     }
 
@@ -98,31 +115,51 @@ const Profile = () => {
 
     if (error) {
       toast.error(error);
-    } else if (url) {
-      setLogoUrl(url);
-      toast.success("Logo uploaded!");
+      return;
+    }
+
+    if (url) {
+      setFormData(prev => ({ ...prev, logo_url: url }));
+      toast.success("Logo uploaded");
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
+  const handleSave = async () => {
     if (!formData.brand_name.trim()) {
       toast.error("Brand name is required");
       return;
     }
 
     setSaving(true);
-    const { success, error } = await saveProfile({
-      ...formData,
-      logo_url: logoUrl,
-    });
-    setSaving(false);
 
-    if (success) {
-      toast.success("Profile saved");
+    if (editingId) {
+      const { success, error } = await updateBrand(editingId, formData);
+      if (success) {
+        toast.success("Brand profile updated");
+        resetForm();
+      } else {
+        toast.error(error || "Failed to update");
+      }
     } else {
-      toast.error(error || "Failed to save profile");
+      const { success, error } = await createBrand(formData);
+      if (success) {
+        toast.success("Brand profile created");
+        resetForm();
+      } else {
+        toast.error(error || "Failed to create");
+      }
+    }
+
+    setSaving(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    const { success, error } = await deleteBrand(id);
+    if (success) {
+      toast.success("Brand profile deleted");
+      if (editingId === id) resetForm();
+    } else {
+      toast.error(error || "Failed to delete");
     }
   };
 
@@ -134,232 +171,256 @@ const Profile = () => {
     );
   }
 
-  return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-3xl mx-auto p-4 lg:p-6 space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Profile</h1>
-          <p className="text-muted-foreground mt-1">
-            Set up your brand info once and all tools will use it automatically.
-          </p>
-        </div>
+  const isFormOpen = isCreating || editingId !== null;
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Personal & Brand Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <User className="w-4 h-4" />
-                Brand Information
-              </CardTitle>
-              <CardDescription>Basic information about you and your brand</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="full_name">Full name</Label>
-                  <Input
-                    id="full_name"
-                    value={formData.full_name}
-                    onChange={(e) => handleChange("full_name", e.target.value)}
-                    placeholder="Your name"
+  return (
+    <div className="p-6 max-w-4xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Brand Profiles</h1>
+          <p className="text-muted-foreground">Manage your brand profiles for use across all tools</p>
+        </div>
+        {!isFormOpen && (
+          <Button onClick={startCreating} className="gap-2">
+            <Plus className="w-4 h-4" />
+            Add New Brand
+          </Button>
+        )}
+      </div>
+
+      {/* Brand Form */}
+      {isFormOpen && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>{editingId ? "Edit Brand" : "Create New Brand"}</CardTitle>
+                <CardDescription>
+                  {editingId ? "Update your brand profile details" : "Add a new brand profile"}
+                </CardDescription>
+              </div>
+              <Button variant="ghost" size="icon" onClick={resetForm}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Logo Upload */}
+            <div className="space-y-2">
+              <Label>Brand Logo</Label>
+              <div className="flex items-center gap-4">
+                {formData.logo_url ? (
+                  <img
+                    src={formData.logo_url}
+                    alt="Brand logo"
+                    className="w-16 h-16 rounded-lg object-cover border"
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="brand_name">Brand name *</Label>
+                ) : (
+                  <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center">
+                    <Building2 className="w-6 h-6 text-muted-foreground" />
+                  </div>
+                )}
+                <div>
                   <Input
-                    id="brand_name"
-                    value={formData.brand_name}
-                    onChange={(e) => handleChange("brand_name", e.target.value)}
-                    placeholder="Your brand"
-                    required
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoUpload}
+                    className="hidden"
+                    id="logo-upload"
+                    disabled={uploading}
                   />
+                  <Label
+                    htmlFor="logo-upload"
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm border rounded-md cursor-pointer hover:bg-secondary transition-colors"
+                  >
+                    {uploading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Upload className="w-4 h-4" />
+                    )}
+                    {uploading ? "Uploading..." : "Upload Logo"}
+                  </Label>
                 </div>
               </div>
+            </div>
 
-              {/* Logo Upload */}
-              <div className="space-y-2">
-                <Label>Brand logo (optional)</Label>
+            {/* Brand Name */}
+            <div className="space-y-2">
+              <Label htmlFor="brand_name">Brand Name *</Label>
+              <Input
+                id="brand_name"
+                value={formData.brand_name}
+                onChange={(e) => setFormData(prev => ({ ...prev, brand_name: e.target.value }))}
+                placeholder="Enter brand name"
+              />
+            </div>
+
+            {/* Industry */}
+            <div className="space-y-2">
+              <Label>Industry</Label>
+              <Select
+                value={formData.industry || ""}
+                onValueChange={(value) => setFormData(prev => ({ 
+                  ...prev, 
+                  industry: value,
+                  industry_other: value === "Other" ? prev.industry_other : ""
+                }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select industry" />
+                </SelectTrigger>
+                <SelectContent>
+                  {INDUSTRIES.map((industry) => (
+                    <SelectItem key={industry} value={industry}>
+                      {industry}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {formData.industry === "Other" && (
+                <Input
+                  value={formData.industry_other || ""}
+                  onChange={(e) => setFormData(prev => ({ ...prev, industry_other: e.target.value }))}
+                  placeholder="Specify your industry"
+                  className="mt-2"
+                />
+              )}
+            </div>
+
+            {/* Geography */}
+            <div className="space-y-2">
+              <Label>Geography</Label>
+              <Select
+                value={formData.geography || ""}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, geography: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select geography" />
+                </SelectTrigger>
+                <SelectContent>
+                  {GEOGRAPHIES.map((geo) => (
+                    <SelectItem key={geo} value={geo}>
+                      {geo}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Business Summary */}
+            <div className="space-y-2">
+              <Label htmlFor="business_summary">Business Summary</Label>
+              <Textarea
+                id="business_summary"
+                value={formData.business_summary || ""}
+                onChange={(e) => setFormData(prev => ({ ...prev, business_summary: e.target.value }))}
+                placeholder="Brief description of your brand (1-2 sentences)"
+                rows={2}
+              />
+            </div>
+
+            {/* Save Button */}
+            <div className="flex gap-3">
+              <Button onClick={handleSave} disabled={saving} className="gap-2">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {editingId ? "Update Brand" : "Create Brand"}
+              </Button>
+              <Button variant="outline" onClick={resetForm}>
+                Cancel
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Brand List */}
+      {brands.length === 0 && !isFormOpen ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Building2 className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">No brand profiles yet</h3>
+            <p className="text-muted-foreground mb-4">
+              Create your first brand profile to get started with Trend Quest and other tools.
+            </p>
+            <Button onClick={startCreating} className="gap-2">
+              <Plus className="w-4 h-4" />
+              Create Your First Brand
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4">
+          {brands.map((brand) => (
+            <Card key={brand.id} className={editingId === brand.id ? "ring-2 ring-primary" : ""}>
+              <CardContent className="p-4">
                 <div className="flex items-center gap-4">
-                  {logoUrl ? (
+                  {brand.logo_url ? (
                     <img
-                      src={logoUrl}
-                      alt="Brand logo"
-                      className="w-16 h-16 rounded-lg object-cover border border-border"
+                      src={brand.logo_url}
+                      alt={brand.brand_name}
+                      className="w-12 h-12 rounded-lg object-cover border"
                     />
                   ) : (
-                    <div className="w-16 h-16 rounded-lg bg-secondary flex items-center justify-center border border-border">
-                      <Building2 className="w-6 h-6 text-muted-foreground" />
+                    <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center">
+                      <Building2 className="w-5 h-5 text-muted-foreground" />
                     </div>
                   )}
-                  <div>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleLogoUpload}
-                      accept="image/*"
-                      className="hidden"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading}
-                    >
-                      {uploading ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <Upload className="w-4 h-4 mr-2" />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold truncate">{brand.brand_name}</h3>
+                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                      {brand.industry && (
+                        <span className="flex items-center gap-1">
+                          <Briefcase className="w-3 h-3" />
+                          {brand.industry === "Other" ? brand.industry_other : brand.industry}
+                        </span>
                       )}
-                      Upload logo
+                      {brand.geography && (
+                        <span className="flex items-center gap-1">
+                          <Globe className="w-3 h-3" />
+                          {brand.geography}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => startEditing(brand)}
+                    >
+                      <Pencil className="w-4 h-4" />
                     </Button>
-                    <p className="text-xs text-muted-foreground mt-1">Max 5MB, JPG/PNG</p>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Brand Profile?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently delete "{brand.brand_name}". This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDelete(brand.id)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="business_summary">Business summary (optional)</Label>
-                <Textarea
-                  id="business_summary"
-                  value={formData.business_summary}
-                  onChange={(e) => handleChange("business_summary", e.target.value)}
-                  placeholder="Describe your business in 1–2 lines"
-                  rows={2}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Industry & Geography */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Globe className="w-4 h-4" />
-                Industry & Market
-              </CardTitle>
-              <CardDescription>Help us understand your market context</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Industry</Label>
-                  <Select value={formData.industry} onValueChange={(v) => handleChange("industry", v)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select industry" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {INDUSTRIES.map((item) => (
-                        <SelectItem key={item} value={item}>{item}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Geography</Label>
-                  <Select value={formData.geography} onValueChange={(v) => handleChange("geography", v)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select geography" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {GEOGRAPHIES.map((item) => (
-                        <SelectItem key={item} value={item}>{item}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {formData.industry === "Other" && (
-                <div className="space-y-2">
-                  <Label htmlFor="industry_other">Specify industry</Label>
-                  <Input
-                    id="industry_other"
-                    value={formData.industry_other}
-                    onChange={(e) => handleChange("industry_other", e.target.value)}
-                    placeholder="Your industry"
-                  />
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Social Links */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Link className="w-4 h-4" />
-                Social Links
-              </CardTitle>
-              <CardDescription>Optional links to your website and social profiles</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="website">Website</Label>
-                <Input
-                  id="website"
-                  type="url"
-                  value={formData.website}
-                  onChange={(e) => handleChange("website", e.target.value)}
-                  placeholder="https://yoursite.com"
-                />
-              </div>
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="instagram">Instagram</Label>
-                  <Input
-                    id="instagram"
-                    value={formData.instagram}
-                    onChange={(e) => handleChange("instagram", e.target.value)}
-                    placeholder="@yourbrand"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="tiktok">TikTok</Label>
-                  <Input
-                    id="tiktok"
-                    value={formData.tiktok}
-                    onChange={(e) => handleChange("tiktok", e.target.value)}
-                    placeholder="@yourbrand"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="youtube">YouTube</Label>
-                  <Input
-                    id="youtube"
-                    value={formData.youtube}
-                    onChange={(e) => handleChange("youtube", e.target.value)}
-                    placeholder="@yourchannel"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="linkedin">LinkedIn</Label>
-                  <Input
-                    id="linkedin"
-                    value={formData.linkedin}
-                    onChange={(e) => handleChange("linkedin", e.target.value)}
-                    placeholder="company/yourbrand"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Save Button */}
-          <div className="flex justify-end">
-            <Button type="submit" disabled={saving} className="min-w-[140px]">
-              {saving ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4 mr-2" />
-              )}
-              Save Profile
-            </Button>
-          </div>
-        </form>
-      </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
