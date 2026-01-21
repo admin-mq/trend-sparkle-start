@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { 
+  LayoutDashboard,
   TrendingUp, 
   Hash, 
   Music, 
@@ -13,7 +14,7 @@ import {
   Shield,
   LogOut,
   Menu,
-  X,
+  User,
   Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const mainNavItems = [
+  { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { path: "/trend-quest", label: "Trend Quest", icon: TrendingUp },
   { path: "/hashtag-analysis", label: "Hashtag Analysis", icon: Hash },
   { path: "/trending-audios", label: "Trending Audios", icon: Music },
@@ -35,7 +37,7 @@ const mainNavItems = [
 ];
 
 const bottomNavItems = [
-  { path: "/profile", label: "Profile", icon: Users },
+  { path: "/profile", label: "Profile", icon: User },
   { path: "/settings", label: "Settings", icon: Settings },
   { path: "/admin", label: "Admin", icon: Shield },
 ];
@@ -56,7 +58,7 @@ export const DashboardLayout = () => {
       toast.error("Failed to logout");
     } else {
       toast.success("Logged out successfully");
-      navigate("/trend-quest");
+      navigate("/dashboard");
     }
   };
 

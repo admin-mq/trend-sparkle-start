@@ -25,9 +25,7 @@ const DEFAULT_INPUT_VALUES: TrendQuestInputValues = {
   content_format_other: "",
   primary_goal: "",
   tones: ["casual"],
-  tone_intensity: 3,
-  region: "Global",
-  region_other: ""
+  tone_intensity: 3
 };
 
 const TrendQuest = () => {
@@ -95,7 +93,7 @@ const TrendQuest = () => {
       industry: industry,
       niche: "",
       audience: audience,
-      geography: brand.geography || inputs.region || "",
+      geography: brand.geography || "",
       content_format: contentFormat,
       primary_goal: inputs.primary_goal,
       tone: deriveToneString(inputs.tones),
@@ -113,11 +111,6 @@ const TrendQuest = () => {
       if (brand) {
         setBrandName(brand.brand_name);
         setUserProfile(buildUserProfile(brand, inputValues));
-        
-        // Set default region from brand geography if not already set
-        if (brand.geography && inputValues.region === "Global") {
-          setInputValues(prev => ({ ...prev, region: brand.geography || "Global" }));
-        }
       }
     } else {
       setBrandName('');
