@@ -5,6 +5,12 @@ import { CreativeDirections } from "@/components/CreativeDirections";
 import { ExecutionBlueprint } from "@/components/ExecutionBlueprint";
 import { WorkspaceStepper, WorkspaceStep } from "@/components/WorkspaceStepper";
 import { WorkspaceLoading } from "@/components/WorkspaceLoading";
+import { 
+  TrendQuestInputValues, 
+  deriveToneString, 
+  getPrimaryTone, 
+  getToneMeterLabel 
+} from "@/components/TrendQuestInputs";
 import { RecommendedTrend, CreativeDirection, UserProfile, DetailedDirection } from "@/types/trends";
 import { useAuth } from "@/hooks/useAuth";
 import { useBrandProfiles, BrandProfile } from "@/hooks/useBrandProfiles";
@@ -12,12 +18,27 @@ import { BrandMemory, updateBrandMemory } from "@/lib/brandMemory";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
+const DEFAULT_INPUT_VALUES: TrendQuestInputValues = {
+  audience: "",
+  audience_other: "",
+  content_format: "",
+  content_format_other: "",
+  primary_goal: "",
+  tones: ["casual"],
+  tone_intensity: 3,
+  region: "Global",
+  region_other: ""
+};
+
 const TrendQuest = () => {
   const { user } = useAuth();
   const { brands, loading: brandsLoading } = useBrandProfiles();
   
   // Selected brand
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
+  
+  // Trend Quest inputs (non-brand fields)
+  const [inputValues, setInputValues] = useState<TrendQuestInputValues>(DEFAULT_INPUT_VALUES);
   
   // Step navigation
   const [activeStep, setActiveStep] = useState<WorkspaceStep>("trends");
@@ -52,42 +73,57 @@ const TrendQuest = () => {
     }
   }, [brands, selectedBrandId]);
 
-  // Build UserProfile from selected brand
-  const buildProfileFromBrand = (brand: BrandProfile): UserProfile => {
+  // Build UserProfile by merging brand data + trend quest inputs
+  const buildUserProfile = (brand: BrandProfile, inputs: TrendQuestInputValues): UserProfile => {
     const industry = brand.industry === "Other" && brand.industry_other
       ? brand.industry_other
       : (brand.industry || "");
+
+    const audience = inputs.audience === "Other" && inputs.audience_other
+      ? inputs.audience_other
+      : inputs.audience;
+
+    const contentFormat = inputs.content_format === "Other" && inputs.content_format_other
+      ? inputs.content_format_other
+      : inputs.content_format;
+
+    const primaryTone = getPrimaryTone(inputs.tones);
 
     return {
       brand_name: brand.brand_name,
       business_summary: brand.business_summary || "",
       industry: industry,
       niche: "",
-      audience: "",
-      geography: brand.geography || "",
-      content_format: "",
-      primary_goal: "",
-      tone: "casual",
-      tones: ["casual"],
-      primary_tone: "casual",
-      tone_intensity: 3,
-      tone_meter_label: "Vibe meter"
+      audience: audience,
+      geography: brand.geography || inputs.region || "",
+      content_format: contentFormat,
+      primary_goal: inputs.primary_goal,
+      tone: deriveToneString(inputs.tones),
+      tones: inputs.tones,
+      primary_tone: primaryTone,
+      tone_intensity: inputs.tone_intensity,
+      tone_meter_label: getToneMeterLabel(primaryTone)
     };
   };
 
-  // Update brand name and profile when brand selection changes
+  // Update brand name and profile when brand selection or inputs change
   useEffect(() => {
     if (selectedBrandId) {
       const brand = brands.find(b => b.id === selectedBrandId);
       if (brand) {
         setBrandName(brand.brand_name);
-        setUserProfile(buildProfileFromBrand(brand));
+        setUserProfile(buildUserProfile(brand, inputValues));
+        
+        // Set default region from brand geography if not already set
+        if (brand.geography && inputValues.region === "Global") {
+          setInputValues(prev => ({ ...prev, region: brand.geography || "Global" }));
+        }
       }
     } else {
       setBrandName('');
       setUserProfile(null);
     }
-  }, [selectedBrandId, brands]);
+  }, [selectedBrandId, brands, inputValues]);
 
   const handleFeedback = async (params: {
     outputType: "hook" | "caption" | "blueprint";
@@ -262,6 +298,8 @@ const TrendQuest = () => {
             onGetTrends={handleGetTrends}
             loading={trendsLoading}
             brandsLoading={brandsLoading}
+            inputValues={inputValues}
+            onInputChange={setInputValues}
           />
         </aside>
 
