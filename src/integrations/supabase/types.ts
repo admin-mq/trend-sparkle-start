@@ -109,14 +109,18 @@ export type Database = {
       }
       user_profiles: {
         Row: {
+          account_type: string
           brand_name: string | null
           business_summary: string | null
+          created_at: string
+          email: string | null
           full_name: string | null
           geography: string | null
           industry: string | null
           industry_other: string | null
           instagram: string | null
           linkedin: string | null
+          location: string | null
           logo_url: string | null
           tiktok: string | null
           updated_at: string | null
@@ -125,14 +129,18 @@ export type Database = {
           youtube: string | null
         }
         Insert: {
+          account_type?: string
           brand_name?: string | null
           business_summary?: string | null
+          created_at?: string
+          email?: string | null
           full_name?: string | null
           geography?: string | null
           industry?: string | null
           industry_other?: string | null
           instagram?: string | null
           linkedin?: string | null
+          location?: string | null
           logo_url?: string | null
           tiktok?: string | null
           updated_at?: string | null
@@ -141,14 +149,18 @@ export type Database = {
           youtube?: string | null
         }
         Update: {
+          account_type?: string
           brand_name?: string | null
           business_summary?: string | null
+          created_at?: string
+          email?: string | null
           full_name?: string | null
           geography?: string | null
           industry?: string | null
           industry_other?: string | null
           instagram?: string | null
           linkedin?: string | null
+          location?: string | null
           logo_url?: string | null
           tiktok?: string | null
           updated_at?: string | null
