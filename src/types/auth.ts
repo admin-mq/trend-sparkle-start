@@ -36,6 +36,8 @@ export interface AuthContextType {
   session: import('@supabase/supabase-js').Session | null;
   profile: UserProfile | null;
   loading: boolean;
+  needsProfileCompletion: boolean;
+  setNeedsProfileCompletion: (value: boolean) => void;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (data: SignUpData) => Promise<{ error: Error | null }>;
   signOut: () => Promise<{ error: Error | null }>;
