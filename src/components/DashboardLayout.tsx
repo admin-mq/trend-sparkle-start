@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuthContext } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -46,19 +46,15 @@ export const DashboardLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, signOut, loading } = useAuth();
+  const { user, profile, signOut } = useAuthContext();
 
   const handleLogout = async () => {
-    if (!user) {
-      toast.info("Authentication not enabled");
-      return;
-    }
     const { error } = await signOut();
     if (error) {
       toast.error("Failed to logout");
     } else {
       toast.success("Logged out successfully");
-      navigate("/dashboard");
+      navigate("/auth");
     }
   };
 
@@ -82,6 +78,9 @@ export const DashboardLayout = () => {
       </button>
     );
   };
+
+  // Display name logic
+  const displayName = profile?.brand_name || profile?.full_name || user?.email?.split('@')[0] || 'User';
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -125,30 +124,13 @@ export const DashboardLayout = () => {
           ))}
           
           {/* Logout button */}
-          {user ? (
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-all"
-            >
-              <LogOut className="w-4 h-4 flex-shrink-0" />
-              <span>Logout</span>
-            </button>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  disabled
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground/50 cursor-not-allowed"
-                >
-                  <LogOut className="w-4 h-4 flex-shrink-0" />
-                  <span>Logout</span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p>Log in to enable logout</p>
-              </TooltipContent>
-            </Tooltip>
-          )}
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-all"
+          >
+            <LogOut className="w-4 h-4 flex-shrink-0" />
+            <span>Logout</span>
+          </button>
         </div>
       </aside>
 
@@ -173,7 +155,16 @@ export const DashboardLayout = () => {
         </header>
 
         {/* Desktop top bar */}
-        <header className="hidden lg:flex items-center justify-end gap-3 p-3 border-b border-border bg-card/50">
+        <header className="hidden lg:flex items-center justify-between gap-3 p-3 border-b border-border bg-card/50">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <User className="w-4 h-4" />
+            <span>Logged in as <span className="font-medium text-foreground">{displayName}</span></span>
+            {profile?.account_type && (
+              <span className="px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary capitalize">
+                {profile.account_type}
+              </span>
+            )}
+          </div>
           <ThemeToggle />
         </header>
 

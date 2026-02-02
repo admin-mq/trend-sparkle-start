@@ -3,6 +3,8 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import Dashboard from "./pages/Dashboard";
 import TrendQuest from "./pages/TrendQuest";
@@ -16,6 +18,7 @@ import PaidCampaigns from "./pages/PaidCampaigns";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import Profile from "./pages/Profile";
+import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -23,33 +26,42 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          {/* Redirect root to dashboard */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          
-          {/* Dashboard layout with nested routes */}
-          <Route element={<DashboardLayout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/trend-quest" element={<TrendQuest />} />
-            <Route path="/hashtag-analysis" element={<HashtagAnalysis />} />
-            <Route path="/trending-audios" element={<TrendingAudios />} />
-            <Route path="/seo" element={<SEO />} />
-            <Route path="/influencers" element={<Influencers />} />
-            <Route path="/pr" element={<PR />} />
-            <Route path="/analytics" element={<Analytics />} />
-            <Route path="/paid-campaigns" element={<PaidCampaigns />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/admin" element={<Admin />} />
-          </Route>
-          
-          {/* Catch-all */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      <AuthProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            {/* Public auth route */}
+            <Route path="/auth" element={<Auth />} />
+            
+            {/* Redirect root to dashboard */}
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            
+            {/* Protected dashboard layout with nested routes */}
+            <Route element={
+              <ProtectedRoute>
+                <DashboardLayout />
+              </ProtectedRoute>
+            }>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/trend-quest" element={<TrendQuest />} />
+              <Route path="/hashtag-analysis" element={<HashtagAnalysis />} />
+              <Route path="/trending-audios" element={<TrendingAudios />} />
+              <Route path="/seo" element={<SEO />} />
+              <Route path="/influencers" element={<Influencers />} />
+              <Route path="/pr" element={<PR />} />
+              <Route path="/analytics" element={<Analytics />} />
+              <Route path="/paid-campaigns" element={<PaidCampaigns />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/admin" element={<Admin />} />
+            </Route>
+            
+            {/* Catch-all */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );
