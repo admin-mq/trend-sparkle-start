@@ -13,6 +13,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [needsProfileCompletion, setNeedsProfileCompletion] = useState(false);
 
   const checkSessionExpiry = useCallback(async () => {
     const loginAt = localStorage.getItem(SESSION_EXPIRY_KEY);
@@ -70,15 +71,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(session?.user ?? null);
 
           if (session?.user) {
-            // Defer profile fetch to avoid blocking
+            // Check for profile and determine if completion is needed
             setTimeout(async () => {
               if (mounted) {
                 const userProfile = await fetchProfile(session.user.id);
                 setProfile(userProfile);
+                // Check if this is an OAuth user without a profile
+                if (!userProfile) {
+                  setNeedsProfileCompletion(true);
+                } else {
+                  setNeedsProfileCompletion(false);
+                }
               }
             }, 0);
           } else {
             setProfile(null);
+            setNeedsProfileCompletion(false);
           }
           
           setLoading(false);
@@ -92,8 +100,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(session?.user ?? null);
         
         if (session?.user) {
+          // Set login timestamp if not set (for OAuth users)
+          if (!localStorage.getItem(SESSION_EXPIRY_KEY)) {
+            localStorage.setItem(SESSION_EXPIRY_KEY, new Date().toISOString());
+          }
+          
           const userProfile = await fetchProfile(session.user.id);
           setProfile(userProfile);
+          
+          // Check if profile completion is needed
+          if (!userProfile) {
+            setNeedsProfileCompletion(true);
+          }
         }
         
         setLoading(false);
@@ -196,6 +214,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signIn,
         signUp,
         signOut,
+        needsProfileCompletion,
+        setNeedsProfileCompletion,
       }}
     >
       {children}
