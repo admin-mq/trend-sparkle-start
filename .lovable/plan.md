@@ -1,37 +1,53 @@
 
 
-## Fix: Blank Screen After Google Login
+## Fix: Google OAuth Redirecting Back to Login Page
 
-### Problem
-After Google OAuth login, the dashboard appears briefly then goes completely blank. Two issues are causing this:
+### Root Cause
 
-1. The `ProfileCompletionWrapper` component is placed **outside** the router, but it renders a dialog that requires router context (`useNavigate`). When it activates for new OAuth users, it crashes and blanks the screen.
+The `onAuthStateChange` listener fires an `INITIAL_SESSION` event immediately when set up. During an OAuth redirect flow, the Lovable auth module hasn't finished processing the tokens from the URL yet, so `INITIAL_SESSION` arrives with a **null session**. This causes:
 
-2. There is a race condition in the authentication state management where the profile completion check triggers prematurely during the OAuth callback, causing the crash to happen even for returning users.
+1. `loading` becomes `false` with `user = null`
+2. The `ProtectedRoute` on `/dashboard` sees no user and redirects to `/auth`
+3. Later, `SIGNED_IN` fires with the real session, but by then the user is already on the auth page
+4. Auth page's redirect effect *should* catch this, but due to React rendering timing, it may not trigger reliably
 
-### Solution
+### Solution: Two-Phase Auth Initialization
 
-#### 1. Move ProfileCompletionWrapper inside BrowserRouter (App.tsx)
-Move the `ProfileCompletionWrapper` from its current position (outside `BrowserRouter`) to inside it, so the `CompleteProfileDialog` has access to the router context when it calls `useNavigate()`.
+Restructure `AuthContext.tsx` to separate initial session loading from ongoing auth state changes, following the proven Supabase pattern:
 
-#### 2. Fix race condition in AuthContext (AuthContext.tsx)
-- Remove the `setTimeout` wrapper around the profile fetch in `onAuthStateChange` -- it creates a timing gap where `needsProfileCompletion` can flash as `true` before the profile is actually checked.
-- Ensure `needsProfileCompletion` only becomes `true` after the profile fetch completes and confirms no profile exists.
-- Separate initial auth load from ongoing changes (per the proven pattern): only set `loading = false` after all async work is done during initialization.
+**Phase 1 - Initial Load (controls `loading` state):**
+- Set up `onAuthStateChange` listener first (required by Supabase)
+- Then call `supabase.auth.getSession()` explicitly
+- Only set `loading = false` after `getSession()` + profile fetch complete
+- This ensures we wait for the session to be established before rendering
 
-#### 3. Guard CompleteProfileDialog against missing router (CompleteProfileDialog.tsx)
-- Add a safety check so that if `useNavigate` is unavailable, the component doesn't crash the entire app tree.
+**Phase 2 - Ongoing Changes (listener handles OAuth callbacks):**
+- The `onAuthStateChange` listener handles `SIGNED_IN`, `TOKEN_REFRESHED`, `SIGNED_OUT` events
+- On `SIGNED_IN` (from OAuth), update user/session, fetch profile, and set `loading = false` (as a fallback in case `getSession()` returned null during OAuth processing)
+- Skip `INITIAL_SESSION` in the listener since `getSession()` handles it
+
+### Files to Change
+
+**`src/contexts/AuthContext.tsx`** (main fix):
+- Remove the single-listener approach that handles everything in `onAuthStateChange`
+- Add explicit `getSession()` call for initial session detection
+- Listener ignores `INITIAL_SESSION` events (handled by `getSession()`)
+- Listener handles `SIGNED_IN` by updating state AND setting `loading = false`
+- Session expiry check moves to the `getSession()` phase
+- Preserve all existing sign-in, sign-up, sign-out methods unchanged
 
 ### Technical Details
 
-**App.tsx changes:**
-- Move `<ProfileCompletionWrapper />` from line 33 to inside the `<BrowserRouter>` block (after `<Routes>` or as a sibling within it).
+```text
+Current Flow (broken):
+  Page Load → onAuthStateChange(INITIAL_SESSION, null) → loading=false, user=null
+  → ProtectedRoute redirects to /auth → SIGNED_IN fires too late
 
-**AuthContext.tsx changes:**
-- Remove `setTimeout` on line 76 in the `onAuthStateChange` handler.
-- Restructure so that the `onAuthStateChange` listener does not set `needsProfileCompletion = true` during the initial session bootstrap -- only after the initial load completes.
-- Ensure `loading` stays `true` until both session and profile data are resolved on first load.
+Fixed Flow:
+  Page Load → onAuthStateChange listener registered (but INITIAL_SESSION ignored)
+  → getSession() called → waits for session → fetches profile → loading=false
+  → If OAuth: SIGNED_IN also fires → updates state, sets loading=false as fallback
+  → ProtectedRoute sees user → renders Dashboard
+```
 
-**CompleteProfileDialog.tsx changes:**
-- Wrap the `useNavigate` call in a try/catch or conditionally use it, so a missing router context does not crash the app.
-
+No changes needed to `App.tsx`, `Auth.tsx`, `CompleteProfileDialog.tsx`, or `ProtectedRoute.tsx` -- the fix is entirely within `AuthContext.tsx`.
