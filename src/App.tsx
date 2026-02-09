@@ -30,8 +30,8 @@ const App = () => (
       <AuthProvider>
         <Toaster />
         <Sonner />
-        <ProfileCompletionWrapper />
         <BrowserRouter>
+          <ProfileCompletionWrapper />
           <Routes>
             {/* Public auth route */}
             <Route path="/auth" element={<Auth />} />

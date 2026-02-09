@@ -1,6 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+
+// Safe wrapper — if somehow rendered outside Router, won't crash
+function useSafeNavigate() {
+  try {
+    return useNavigate();
+  } catch {
+    return null;
+  }
+}
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,7 +41,7 @@ export function CompleteProfileDialog({
   userId, 
   userEmail 
 }: CompleteProfileDialogProps) {
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
   const [loading, setLoading] = useState(false);
   const [accountType, setAccountType] = useState<AccountType>('brand');
   const [brandName, setBrandName] = useState('');
@@ -95,7 +104,7 @@ export function CompleteProfileDialog({
 
       toast.success('Profile completed successfully!');
       onClose();
-      navigate('/dashboard', { replace: true });
+      navigate?.('/dashboard', { replace: true });
     } catch (err) {
       console.error('Error saving profile:', err);
       toast.error('Failed to save profile. Please try again.');

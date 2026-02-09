@@ -51,14 +51,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let initialLoadDone = false;
 
     const initAuth = async () => {
-      // Check if session has expired first
       const expired = await checkSessionExpiry();
       if (expired) {
-        if (mounted) {
-          setLoading(false);
-        }
+        if (mounted) setLoading(false);
         return;
       }
 
@@ -66,30 +64,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         async (event, session) => {
           if (!mounted) return;
-          
+
           setSession(session);
           setUser(session?.user ?? null);
 
           if (session?.user) {
-            // Check for profile and determine if completion is needed
-            setTimeout(async () => {
+            // Only check profile after initial load is done to avoid race condition
+            if (initialLoadDone) {
+              const userProfile = await fetchProfile(session.user.id);
               if (mounted) {
-                const userProfile = await fetchProfile(session.user.id);
                 setProfile(userProfile);
-                // Check if this is an OAuth user without a profile
-                if (!userProfile) {
-                  setNeedsProfileCompletion(true);
-                } else {
-                  setNeedsProfileCompletion(false);
-                }
+                setNeedsProfileCompletion(!userProfile);
               }
-            }, 0);
+            }
           } else {
             setProfile(null);
             setNeedsProfileCompletion(false);
           }
-          
-          setLoading(false);
+
+          // Don't set loading false here during initial load — let getSession handle it
+          if (initialLoadDone && mounted) {
+            setLoading(false);
+          }
         }
       );
 
@@ -98,22 +94,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (mounted) {
         setSession(session);
         setUser(session?.user ?? null);
-        
+
         if (session?.user) {
-          // Set login timestamp if not set (for OAuth users)
           if (!localStorage.getItem(SESSION_EXPIRY_KEY)) {
             localStorage.setItem(SESSION_EXPIRY_KEY, new Date().toISOString());
           }
-          
+
           const userProfile = await fetchProfile(session.user.id);
-          setProfile(userProfile);
-          
-          // Check if profile completion is needed
-          if (!userProfile) {
-            setNeedsProfileCompletion(true);
+          if (mounted) {
+            setProfile(userProfile);
+            setNeedsProfileCompletion(!userProfile);
           }
         }
-        
+
+        initialLoadDone = true;
         setLoading(false);
       }
 
