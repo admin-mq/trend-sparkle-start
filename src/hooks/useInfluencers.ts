@@ -85,5 +85,18 @@ export function useInfluencers(filters: InfluencerFilters) {
     return true;
   };
 
-  return { influencers, loading, addInfluencer, refetch: fetchInfluencers };
+  const bulkAddInfluencers = async (rows: { name: string; username: string; followers: number; niche_audience: string; geography: string }[]) => {
+    if (!user) return false;
+    const payload = rows.map((r) => ({ ...r, user_id: user.id }));
+    const { error } = await supabase.from("influencers").insert(payload);
+    if (error) {
+      toast.error("Bulk upload failed");
+      return false;
+    }
+    toast.success(`Successfully imported ${rows.length} influencer${rows.length !== 1 ? "s" : ""}`);
+    await fetchInfluencers();
+    return true;
+  };
+
+  return { influencers, loading, addInfluencer, bulkAddInfluencers, refetch: fetchInfluencers };
 }
