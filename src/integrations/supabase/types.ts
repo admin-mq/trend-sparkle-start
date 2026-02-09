@@ -53,6 +53,39 @@ export type Database = {
         }
         Relationships: []
       }
+      influencers: {
+        Row: {
+          created_at: string
+          followers: number
+          geography: string | null
+          id: string
+          name: string
+          niche_audience: string | null
+          user_id: string
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          followers?: number
+          geography?: string | null
+          id?: string
+          name: string
+          niche_audience?: string | null
+          user_id: string
+          username: string
+        }
+        Update: {
+          created_at?: string
+          followers?: number
+          geography?: string | null
+          id?: string
+          name?: string
+          niche_audience?: string | null
+          user_id?: string
+          username?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
