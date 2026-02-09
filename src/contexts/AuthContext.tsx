@@ -15,21 +15,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [needsProfileCompletion, setNeedsProfileCompletion] = useState(false);
 
-  const checkSessionExpiry = useCallback(async () => {
-    const loginAt = localStorage.getItem(SESSION_EXPIRY_KEY);
-    if (loginAt) {
-      const loginTime = new Date(loginAt).getTime();
-      const now = Date.now();
-      if (now - loginTime > SESSION_DURATION_MS) {
-        // Session expired, force logout
-        await supabase.auth.signOut();
-        localStorage.removeItem(SESSION_EXPIRY_KEY);
-        return true;
-      }
-    }
-    return false;
-  }, []);
-
   const fetchProfile = useCallback(async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -51,78 +36,64 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
-    let initialLoadDone = false;
 
-    const initAuth = async () => {
-      const expired = await checkSessionExpiry();
-      if (expired) {
-        if (mounted) setLoading(false);
-        return;
-      }
+    // Single listener handles ALL auth state including initial session
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, currentSession) => {
+        if (!mounted) return;
 
-      // Set up auth state listener FIRST
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(
-        async (event, session) => {
-          if (!mounted) return;
+        console.log('[Auth] onAuthStateChange:', event, !!currentSession?.user);
 
-          setSession(session);
-          setUser(session?.user ?? null);
-
-          if (session?.user) {
-            // Only check profile after initial load is done to avoid race condition
-            if (initialLoadDone) {
-              const userProfile = await fetchProfile(session.user.id);
-              if (mounted) {
-                setProfile(userProfile);
-                setNeedsProfileCompletion(!userProfile);
-              }
+        // On initial load, check if existing session is expired
+        if (event === 'INITIAL_SESSION' && currentSession) {
+          const loginAt = localStorage.getItem(SESSION_EXPIRY_KEY);
+          if (loginAt) {
+            const elapsed = Date.now() - new Date(loginAt).getTime();
+            if (elapsed > SESSION_DURATION_MS) {
+              console.log('[Auth] Session expired, signing out');
+              localStorage.removeItem(SESSION_EXPIRY_KEY);
+              // Sign out asynchronously — will trigger another event with null session
+              supabase.auth.signOut();
+              return;
             }
-          } else {
-            setProfile(null);
-            setNeedsProfileCompletion(false);
-          }
-
-          // Don't set loading false here during initial load — let getSession handle it
-          if (initialLoadDone && mounted) {
-            setLoading(false);
           }
         }
-      );
 
-      // THEN check for existing session
-      const { data: { session } } = await supabase.auth.getSession();
-      if (mounted) {
-        setSession(session);
-        setUser(session?.user ?? null);
+        setSession(currentSession);
+        setUser(currentSession?.user ?? null);
 
-        if (session?.user) {
-          if (!localStorage.getItem(SESSION_EXPIRY_KEY)) {
+        if (currentSession?.user) {
+          // Set/refresh login timestamp for ALL sign-in methods including OAuth
+          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+            localStorage.setItem(SESSION_EXPIRY_KEY, new Date().toISOString());
+          }
+          // Also set it on initial session if not already set (covers first OAuth load)
+          if (event === 'INITIAL_SESSION' && !localStorage.getItem(SESSION_EXPIRY_KEY)) {
             localStorage.setItem(SESSION_EXPIRY_KEY, new Date().toISOString());
           }
 
-          const userProfile = await fetchProfile(session.user.id);
+          // Fetch profile
+          const userProfile = await fetchProfile(currentSession.user.id);
           if (mounted) {
             setProfile(userProfile);
             setNeedsProfileCompletion(!userProfile);
           }
+        } else {
+          setProfile(null);
+          setNeedsProfileCompletion(false);
         }
 
-        initialLoadDone = true;
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
-
-      return () => {
-        mounted = false;
-        subscription.unsubscribe();
-      };
-    };
-
-    initAuth();
+    );
 
     return () => {
       mounted = false;
+      subscription.unsubscribe();
     };
-  }, [checkSessionExpiry, fetchProfile]);
+  }, [fetchProfile]);
 
   const signIn = async (email: string, password: string) => {
     try {
