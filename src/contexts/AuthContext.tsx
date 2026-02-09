@@ -37,57 +37,85 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    // Single listener handles ALL auth state including initial session
+    // Phase 1: Set up listener FIRST (required by Supabase), but skip INITIAL_SESSION
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
         if (!mounted) return;
 
         console.log('[Auth] onAuthStateChange:', event, !!currentSession?.user);
 
-        // On initial load, check if existing session is expired
-        if (event === 'INITIAL_SESSION' && currentSession) {
+        // Skip INITIAL_SESSION — handled by getSession() below
+        if (event === 'INITIAL_SESSION') return;
+
+        if (event === 'SIGNED_OUT') {
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          setNeedsProfileCompletion(false);
+          setLoading(false);
+          return;
+        }
+
+        // SIGNED_IN or TOKEN_REFRESHED
+        if (currentSession?.user) {
+          setSession(currentSession);
+          setUser(currentSession.user);
+          localStorage.setItem(SESSION_EXPIRY_KEY, new Date().toISOString());
+
+          const userProfile = await fetchProfile(currentSession.user.id);
+          if (mounted) {
+            setProfile(userProfile);
+            setNeedsProfileCompletion(!userProfile);
+            setLoading(false);
+          }
+        }
+      }
+    );
+
+    // Phase 2: Explicit getSession() for initial load
+    const initSession = async () => {
+      try {
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (!mounted) return;
+
+        console.log('[Auth] getSession:', !!currentSession?.user);
+
+        if (currentSession?.user) {
+          // Check session expiry
           const loginAt = localStorage.getItem(SESSION_EXPIRY_KEY);
           if (loginAt) {
             const elapsed = Date.now() - new Date(loginAt).getTime();
             if (elapsed > SESSION_DURATION_MS) {
               console.log('[Auth] Session expired, signing out');
               localStorage.removeItem(SESSION_EXPIRY_KEY);
-              // Sign out asynchronously — will trigger another event with null session
-              supabase.auth.signOut();
-              return;
+              await supabase.auth.signOut();
+              return; // SIGNED_OUT event will handle state cleanup
             }
           }
-        }
 
-        setSession(currentSession);
-        setUser(currentSession?.user ?? null);
+          setSession(currentSession);
+          setUser(currentSession.user);
 
-        if (currentSession?.user) {
-          // Set/refresh login timestamp for ALL sign-in methods including OAuth
-          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-            localStorage.setItem(SESSION_EXPIRY_KEY, new Date().toISOString());
-          }
-          // Also set it on initial session if not already set (covers first OAuth load)
-          if (event === 'INITIAL_SESSION' && !localStorage.getItem(SESSION_EXPIRY_KEY)) {
+          if (!loginAt) {
             localStorage.setItem(SESSION_EXPIRY_KEY, new Date().toISOString());
           }
 
-          // Fetch profile
           const userProfile = await fetchProfile(currentSession.user.id);
           if (mounted) {
             setProfile(userProfile);
             setNeedsProfileCompletion(!userProfile);
           }
-        } else {
-          setProfile(null);
-          setNeedsProfileCompletion(false);
         }
-
+      } catch (err) {
+        console.error('[Auth] getSession error:', err);
+      } finally {
         if (mounted) {
           setLoading(false);
         }
       }
-    );
+    };
+
+    initSession();
 
     return () => {
       mounted = false;
