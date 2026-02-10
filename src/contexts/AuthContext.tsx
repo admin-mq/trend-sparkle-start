@@ -16,6 +16,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [needsProfileCompletion, setNeedsProfileCompletion] = useState(false);
   const sessionResolved = useRef(false);
+  const initialLoadDone = useRef(false);
 
   const fetchProfile = useCallback(async (userId: string) => {
     try {
@@ -63,10 +64,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         console.log('[Auth] onAuthStateChange:', event, !!currentSession?.user);
 
-        // Skip INITIAL_SESSION — handled by getSession() below
-        if (event === 'INITIAL_SESSION') return;
+        // FIX 1: Handle INITIAL_SESSION if it has a valid session
+        // (Lovable auth module may have already called setSession before mount)
+        if (event === 'INITIAL_SESSION') {
+          if (currentSession?.user) {
+            console.log('[Auth] INITIAL_SESSION has valid session, using it');
+            if (graceTimeout) clearTimeout(graceTimeout);
+            await handleSession(currentSession);
+          }
+          // If no session, skip — let getSession + grace period handle it
+          return;
+        }
 
+        // FIX 2: During initial load, ignore SIGNED_OUT from stale token refresh
         if (event === 'SIGNED_OUT') {
+          if (!initialLoadDone.current) {
+            console.log('[Auth] Ignoring SIGNED_OUT during initial load (stale token refresh)');
+            return;
+          }
+          // Real sign-out after initialization
           sessionResolved.current = true;
           if (graceTimeout) clearTimeout(graceTimeout);
           setSession(null);
@@ -101,13 +117,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (elapsed > SESSION_DURATION_MS) {
               console.log('[Auth] Session expired, signing out');
               localStorage.removeItem(SESSION_EXPIRY_KEY);
+              initialLoadDone.current = true; // Mark done BEFORE signOut so SIGNED_OUT is handled
               await supabase.auth.signOut();
               return;
             }
           }
 
           await handleSession(currentSession);
-        } else {
+        } else if (!sessionResolved.current) {
           // No session from getSession(). Could be an OAuth redirect in progress.
           // Wait briefly for SIGNED_IN event before declaring "no user".
           graceTimeout = setTimeout(() => {
@@ -117,11 +134,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }, OAUTH_GRACE_MS);
         }
+        // If sessionResolved is already true (INITIAL_SESSION handled it), do nothing
       } catch (err) {
         console.error('[Auth] getSession error:', err);
         if (mounted) {
           setLoading(false);
         }
+      } finally {
+        initialLoadDone.current = true;
       }
     };
 
