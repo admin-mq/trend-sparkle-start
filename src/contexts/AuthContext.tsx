@@ -1,10 +1,11 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { AuthContextType, UserProfile, SignUpData } from '@/types/auth';
 
 const SESSION_EXPIRY_KEY = 'mq_login_at';
 const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+const OAUTH_GRACE_MS = 3000; // Wait up to 3s for OAuth SIGNED_IN event
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -14,6 +15,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [needsProfileCompletion, setNeedsProfileCompletion] = useState(false);
+  const sessionResolved = useRef(false);
 
   const fetchProfile = useCallback(async (userId: string) => {
     try {
@@ -36,8 +38,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let graceTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    // Phase 1: Set up listener FIRST (required by Supabase), but skip INITIAL_SESSION
+    const handleSession = async (currentSession: Session) => {
+      if (!mounted) return;
+      sessionResolved.current = true;
+
+      setSession(currentSession);
+      setUser(currentSession.user);
+      localStorage.setItem(SESSION_EXPIRY_KEY, new Date().toISOString());
+
+      const userProfile = await fetchProfile(currentSession.user.id);
+      if (mounted) {
+        setProfile(userProfile);
+        setNeedsProfileCompletion(!userProfile);
+        setLoading(false);
+      }
+    };
+
+    // Phase 1: Set up listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
         if (!mounted) return;
@@ -48,6 +67,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (event === 'INITIAL_SESSION') return;
 
         if (event === 'SIGNED_OUT') {
+          sessionResolved.current = true;
+          if (graceTimeout) clearTimeout(graceTimeout);
           setSession(null);
           setUser(null);
           setProfile(null);
@@ -56,18 +77,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        // SIGNED_IN or TOKEN_REFRESHED
+        // SIGNED_IN or TOKEN_REFRESHED — this is the key for OAuth
         if (currentSession?.user) {
-          setSession(currentSession);
-          setUser(currentSession.user);
-          localStorage.setItem(SESSION_EXPIRY_KEY, new Date().toISOString());
-
-          const userProfile = await fetchProfile(currentSession.user.id);
-          if (mounted) {
-            setProfile(userProfile);
-            setNeedsProfileCompletion(!userProfile);
-            setLoading(false);
-          }
+          if (graceTimeout) clearTimeout(graceTimeout);
+          await handleSession(currentSession);
         }
       }
     );
@@ -89,26 +102,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               console.log('[Auth] Session expired, signing out');
               localStorage.removeItem(SESSION_EXPIRY_KEY);
               await supabase.auth.signOut();
-              return; // SIGNED_OUT event will handle state cleanup
+              return;
             }
           }
 
-          setSession(currentSession);
-          setUser(currentSession.user);
-
-          if (!loginAt) {
-            localStorage.setItem(SESSION_EXPIRY_KEY, new Date().toISOString());
-          }
-
-          const userProfile = await fetchProfile(currentSession.user.id);
-          if (mounted) {
-            setProfile(userProfile);
-            setNeedsProfileCompletion(!userProfile);
-          }
+          await handleSession(currentSession);
+        } else {
+          // No session from getSession(). Could be an OAuth redirect in progress.
+          // Wait briefly for SIGNED_IN event before declaring "no user".
+          graceTimeout = setTimeout(() => {
+            if (mounted && !sessionResolved.current) {
+              console.log('[Auth] Grace period expired, no session found');
+              setLoading(false);
+            }
+          }, OAUTH_GRACE_MS);
         }
       } catch (err) {
         console.error('[Auth] getSession error:', err);
-      } finally {
         if (mounted) {
           setLoading(false);
         }
@@ -119,22 +129,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       mounted = false;
+      if (graceTimeout) clearTimeout(graceTimeout);
       subscription.unsubscribe();
     };
   }, [fetchProfile]);
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (!error) {
-        // Set login timestamp for session expiry
         localStorage.setItem(SESSION_EXPIRY_KEY, new Date().toISOString());
       }
-
       return { error: error ? new Error(error.message) : null };
     } catch (err) {
       return { error: err as Error };
@@ -143,7 +148,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = async (data: SignUpData) => {
     try {
-      // Create auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
@@ -152,15 +156,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       });
 
-      if (authError) {
-        return { error: new Error(authError.message) };
-      }
+      if (authError) return { error: new Error(authError.message) };
+      if (!authData.user) return { error: new Error('Failed to create user') };
 
-      if (!authData.user) {
-        return { error: new Error('Failed to create user') };
-      }
-
-      // Create profile
       const { error: profileError } = await supabase
         .from('user_profiles')
         .insert({
@@ -174,12 +172,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (profileError) {
         console.error('Profile creation error:', profileError);
-        // Don't return error - auth user was created, profile can be created later
       }
 
-      // Set login timestamp
       localStorage.setItem(SESSION_EXPIRY_KEY, new Date().toISOString());
-
       return { error: null };
     } catch (err) {
       return { error: err as Error };
