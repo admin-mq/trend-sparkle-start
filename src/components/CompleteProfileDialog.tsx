@@ -24,7 +24,7 @@ import {
 import { Building2, User, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { AccountType } from '@/types/auth';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 
 const BLOCKED_EMAIL_DOMAINS = ['gmail.com', 'googlemail.com'];
 

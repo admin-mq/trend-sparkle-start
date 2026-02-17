@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/lib/supabaseClient';
 import { AuthContextType, UserProfile, SignUpData } from '@/types/auth';
 
 const SESSION_EXPIRY_KEY = 'mq_login_at';
