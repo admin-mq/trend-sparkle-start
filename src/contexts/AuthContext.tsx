@@ -69,6 +69,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (currentSession?.user) {
             console.log('[Auth] INITIAL_SESSION has valid session, using it');
             await handleSession(currentSession);
+          } else {
+            console.log('[Auth] INITIAL_SESSION has no session, resolving loading');
+            sessionResolved.current = true;
+            if (graceTimeout) clearTimeout(graceTimeout);
+            setLoading(false);
           }
           return;
         }
