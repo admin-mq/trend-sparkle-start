@@ -68,6 +68,14 @@ const SEO = () => {
     setIsSubmitting(true);
     setError(null);
 
+    // Hard stop: check auth immediately
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      setError("You're not logged in. Please log in again and retry.");
+      setIsSubmitting(false);
+      return;
+    }
+
     const trimmed = urlInput.trim();
     if (!trimmed) {
       setError("Enter a website URL");
@@ -83,14 +91,6 @@ const SEO = () => {
     }
 
     try {
-      // Get authenticated user directly
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        setError("Please log in again.");
-        setIsSubmitting(false);
-        return;
-      }
-
       // Upsert site
       const { data: siteRow, error: siteErr } = await supabase
         .from("scc_sites")
