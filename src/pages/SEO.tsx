@@ -3,7 +3,7 @@ import { Search, Globe, Loader2, AlertCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/integrations/supabase/client";
 
 const ROTATING_MESSAGES = [
   "Discovering your website structure…",
@@ -46,7 +46,7 @@ const SEO = () => {
   useEffect(() => {
     if (!activeSnapshotId || scanStatus !== "running") return;
     const interval = setInterval(async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("scc_snapshots")
         .select("status")
         .eq("id", activeSnapshotId)
@@ -92,7 +92,7 @@ const SEO = () => {
 
     try {
       // Upsert site
-      const { data: siteRow, error: siteErr } = await supabase
+      const { data: siteRow, error: siteErr } = await (supabase as any)
         .from("scc_sites")
         .upsert({ user_id: user.id, site_url: normalized }, { onConflict: "user_id,site_url" })
         .select("id")
@@ -105,10 +105,10 @@ const SEO = () => {
       }
 
       // Insert snapshot
-      const { data: snapRow, error: snapErr } = await supabase
+      const { data: snapRow, error: snapErr } = await (supabase as any)
         .from("scc_snapshots")
         .insert({
-          site_id: siteRow.id,
+          site_id: siteRow!.id,
           mode: "crawl_only",
           status: "running",
           started_at: new Date().toISOString(),
