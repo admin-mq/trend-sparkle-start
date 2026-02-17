@@ -1,11 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
-import { Search, Globe, Loader2 } from "lucide-react";
+import { Search, Globe, Loader2, AlertCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
-import { useAuthContext } from "@/contexts/AuthContext";
-import { useToast } from "@/hooks/use-toast";
 
 const ROTATING_MESSAGES = [
   "Discovering your website structure…",
@@ -26,11 +24,9 @@ function normalizeUrl(raw: string): string {
 }
 
 const SEO = () => {
-  const { user } = useAuthContext();
-  const { toast } = useToast();
-
   const [urlInput, setUrlInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Scan state
   const [activeSnapshotId, setActiveSnapshotId] = useState<string | null>(null);
@@ -69,54 +65,73 @@ const SEO = () => {
   }, [activeSnapshotId, scanStatus]);
 
   const handleRunScan = useCallback(async () => {
-    if (!user) {
-      toast({ title: "Please sign in first", variant: "destructive" });
-      return;
-    }
-    const normalized = normalizeUrl(urlInput);
-    if (!normalized || normalized === "https://") {
-      toast({ title: "Please enter a valid URL", variant: "destructive" });
+    setIsSubmitting(true);
+    setError(null);
+
+    const trimmed = urlInput.trim();
+    if (!trimmed) {
+      setError("Enter a website URL");
+      setIsSubmitting(false);
       return;
     }
 
-    setIsSubmitting(true);
+    const normalized = normalizeUrl(trimmed);
+    if (!normalized || normalized === "https://") {
+      setError("Please enter a valid URL");
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
-      // 1. Upsert site
-      const { data: siteData, error: siteError } = await supabase
+      // Get authenticated user directly
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        setError("Please log in again.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Upsert site
+      const { data: siteRow, error: siteErr } = await supabase
         .from("scc_sites")
-        .upsert(
-          { user_id: user.id, site_url: normalized },
-          { onConflict: "user_id,site_url" }
-        )
+        .upsert({ user_id: user.id, site_url: normalized }, { onConflict: "user_id,site_url" })
         .select("id")
         .single();
 
-      if (siteError) throw siteError;
+      if (siteErr) {
+        setError(siteErr.message);
+        setIsSubmitting(false);
+        return;
+      }
 
-      // 2. Create snapshot
-      const { data: snapData, error: snapError } = await supabase
+      // Insert snapshot
+      const { data: snapRow, error: snapErr } = await supabase
         .from("scc_snapshots")
         .insert({
-          site_id: siteData.id,
-          status: "running",
+          site_id: siteRow.id,
           mode: "crawl_only",
+          status: "running",
           started_at: new Date().toISOString(),
           progress_step: "discovering",
         })
         .select("id")
         .single();
 
-      if (snapError) throw snapError;
+      if (snapErr) {
+        setError(snapErr.message);
+        setIsSubmitting(false);
+        return;
+      }
 
-      setActiveSnapshotId(snapData.id);
+      setActiveSnapshotId(snapRow.id);
       setScanStatus("running");
     } catch (err: any) {
       console.error("Scan error:", err);
-      toast({ title: "Failed to start scan", description: err.message, variant: "destructive" });
+      setError(err.message || "An unexpected error occurred");
     } finally {
       setIsSubmitting(false);
     }
-  }, [user, urlInput, toast]);
+  }, [urlInput]);
 
   // ── Idle state: URL input ──
   if (scanStatus === "idle") {
@@ -156,6 +171,12 @@ const SEO = () => {
                   "Run Intelligence Scan"
                 )}
               </Button>
+              {error && (
+                <div className="flex items-center gap-2 text-destructive text-sm">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
