@@ -110,6 +110,373 @@ export type Database = {
         }
         Relationships: []
       }
+      scc_actions: {
+        Row: {
+          action_type: string
+          created_at: string | null
+          description: string | null
+          id: string
+          page_id: string | null
+          priority: string | null
+          query_id: string | null
+          snapshot_id: string
+          status: string | null
+        }
+        Insert: {
+          action_type: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          page_id?: string | null
+          priority?: string | null
+          query_id?: string | null
+          snapshot_id: string
+          status?: string | null
+        }
+        Update: {
+          action_type?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          page_id?: string | null
+          priority?: string | null
+          query_id?: string | null
+          snapshot_id?: string
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scc_actions_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "scc_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scc_actions_query_id_fkey"
+            columns: ["query_id"]
+            isOneToOne: false
+            referencedRelation: "scc_queries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scc_actions_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "scc_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scc_page_snapshot_metrics: {
+        Row: {
+          avg_position: number | null
+          canonical_ok: boolean | null
+          clicks: number | null
+          conversions: number | null
+          created_at: string | null
+          ctr: number | null
+          has_h1: boolean | null
+          has_meta: boolean | null
+          has_title: boolean | null
+          id: string
+          impressions: number | null
+          indexable: boolean | null
+          internal_link_depth: number | null
+          page_id: string
+          page_opportunity_score: number | null
+          paid_clicks: number | null
+          paid_conversions: number | null
+          paid_cost: number | null
+          paid_revenue: number | null
+          paid_risk_score: number | null
+          priority_bucket: string | null
+          revenue: number | null
+          revenue_score: number | null
+          schema_types: Json | null
+          sessions: number | null
+          snapshot_id: string
+          structural_score: number | null
+          visibility_score: number | null
+        }
+        Insert: {
+          avg_position?: number | null
+          canonical_ok?: boolean | null
+          clicks?: number | null
+          conversions?: number | null
+          created_at?: string | null
+          ctr?: number | null
+          has_h1?: boolean | null
+          has_meta?: boolean | null
+          has_title?: boolean | null
+          id?: string
+          impressions?: number | null
+          indexable?: boolean | null
+          internal_link_depth?: number | null
+          page_id: string
+          page_opportunity_score?: number | null
+          paid_clicks?: number | null
+          paid_conversions?: number | null
+          paid_cost?: number | null
+          paid_revenue?: number | null
+          paid_risk_score?: number | null
+          priority_bucket?: string | null
+          revenue?: number | null
+          revenue_score?: number | null
+          schema_types?: Json | null
+          sessions?: number | null
+          snapshot_id: string
+          structural_score?: number | null
+          visibility_score?: number | null
+        }
+        Update: {
+          avg_position?: number | null
+          canonical_ok?: boolean | null
+          clicks?: number | null
+          conversions?: number | null
+          created_at?: string | null
+          ctr?: number | null
+          has_h1?: boolean | null
+          has_meta?: boolean | null
+          has_title?: boolean | null
+          id?: string
+          impressions?: number | null
+          indexable?: boolean | null
+          internal_link_depth?: number | null
+          page_id?: string
+          page_opportunity_score?: number | null
+          paid_clicks?: number | null
+          paid_conversions?: number | null
+          paid_cost?: number | null
+          paid_revenue?: number | null
+          paid_risk_score?: number | null
+          priority_bucket?: string | null
+          revenue?: number | null
+          revenue_score?: number | null
+          schema_types?: Json | null
+          sessions?: number | null
+          snapshot_id?: string
+          structural_score?: number | null
+          visibility_score?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scc_page_snapshot_metrics_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "scc_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scc_page_snapshot_metrics_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "scc_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scc_pages: {
+        Row: {
+          first_seen_at: string | null
+          id: string
+          last_seen_at: string | null
+          page_type: string | null
+          site_id: string
+          url: string
+        }
+        Insert: {
+          first_seen_at?: string | null
+          id?: string
+          last_seen_at?: string | null
+          page_type?: string | null
+          site_id: string
+          url: string
+        }
+        Update: {
+          first_seen_at?: string | null
+          id?: string
+          last_seen_at?: string | null
+          page_type?: string | null
+          site_id?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scc_pages_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "scc_sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scc_queries: {
+        Row: {
+          first_seen_at: string | null
+          id: string
+          intent_type: string | null
+          last_seen_at: string | null
+          query_category: string | null
+          query_text: string
+          site_id: string
+        }
+        Insert: {
+          first_seen_at?: string | null
+          id?: string
+          intent_type?: string | null
+          last_seen_at?: string | null
+          query_category?: string | null
+          query_text: string
+          site_id: string
+        }
+        Update: {
+          first_seen_at?: string | null
+          id?: string
+          intent_type?: string | null
+          last_seen_at?: string | null
+          query_category?: string | null
+          query_text?: string
+          site_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scc_queries_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "scc_sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scc_query_snapshot_metrics: {
+        Row: {
+          avg_position: number | null
+          clicks: number | null
+          created_at: string | null
+          ctr: number | null
+          id: string
+          impressions: number | null
+          opportunity_score: number | null
+          priority_bucket: string | null
+          query_id: string
+          snapshot_id: string
+          visibility_score: number | null
+        }
+        Insert: {
+          avg_position?: number | null
+          clicks?: number | null
+          created_at?: string | null
+          ctr?: number | null
+          id?: string
+          impressions?: number | null
+          opportunity_score?: number | null
+          priority_bucket?: string | null
+          query_id: string
+          snapshot_id: string
+          visibility_score?: number | null
+        }
+        Update: {
+          avg_position?: number | null
+          clicks?: number | null
+          created_at?: string | null
+          ctr?: number | null
+          id?: string
+          impressions?: number | null
+          opportunity_score?: number | null
+          priority_bucket?: string | null
+          query_id?: string
+          snapshot_id?: string
+          visibility_score?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scc_query_snapshot_metrics_query_id_fkey"
+            columns: ["query_id"]
+            isOneToOne: false
+            referencedRelation: "scc_queries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scc_query_snapshot_metrics_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "scc_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scc_sites: {
+        Row: {
+          cms_detected: string | null
+          country: string | null
+          created_at: string | null
+          id: string
+          industry: string | null
+          site_url: string
+          user_id: string
+        }
+        Insert: {
+          cms_detected?: string | null
+          country?: string | null
+          created_at?: string | null
+          id?: string
+          industry?: string | null
+          site_url: string
+          user_id: string
+        }
+        Update: {
+          cms_detected?: string | null
+          country?: string | null
+          created_at?: string | null
+          id?: string
+          industry?: string | null
+          site_url?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      scc_snapshots: {
+        Row: {
+          created_at: string | null
+          finished_at: string | null
+          id: string
+          mode: string
+          notes: string | null
+          site_id: string
+          started_at: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string | null
+          finished_at?: string | null
+          id?: string
+          mode: string
+          notes?: string | null
+          site_id: string
+          started_at?: string | null
+          status: string
+        }
+        Update: {
+          created_at?: string | null
+          finished_at?: string | null
+          id?: string
+          mode?: string
+          notes?: string | null
+          site_id?: string
+          started_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scc_snapshots_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "scc_sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trends: {
         Row: {
           active: boolean | null
