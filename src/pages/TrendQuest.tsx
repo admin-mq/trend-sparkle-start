@@ -16,7 +16,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBrandProfiles, BrandProfile } from "@/hooks/useBrandProfiles";
 import { BrandMemory, updateBrandMemory } from "@/lib/brandMemory";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 
 const DEFAULT_INPUT_VALUES: TrendQuestInputValues = {
   audience: "",
