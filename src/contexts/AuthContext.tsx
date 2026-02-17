@@ -42,6 +42,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let mounted = true;
     let graceTimeout: ReturnType<typeof setTimeout> | null = null;
 
+    // Hard safety: never stay loading longer than 5 seconds
+    const safetyTimeout = setTimeout(() => {
+      if (mounted && loading) {
+        console.warn('[Auth] Safety timeout reached – forcing loading=false');
+        setLoading(false);
+      }
+    }, 5000);
+
     const handleSession = async (currentSession: Session) => {
       if (!mounted) return;
       sessionResolved.current = true;
@@ -79,8 +87,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (event === 'SIGNED_OUT') {
-          // Only clear state if WE triggered the sign-out.
-          // Stale token refresh failures fire SIGNED_OUT spuriously.
           if (intentionalSignOut.current) {
             intentionalSignOut.current = false;
             sessionResolved.current = true;
@@ -141,6 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       mounted = false;
+      clearTimeout(safetyTimeout);
       if (graceTimeout) clearTimeout(graceTimeout);
       subscription.unsubscribe();
     };
