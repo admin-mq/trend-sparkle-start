@@ -45,17 +45,16 @@ const bottomNavItems = [
 
 export const DashboardLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [debugInfo, setDebugInfo] = useState({ status: '...', userId: '' });
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { user, profile, signOut } = useAuthContext();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setDebugInfo({
-        status: session ? 'session found' : 'no session',
-        userId: session?.user?.id?.substring(0, 6) || '',
-      });
+      setSessionEmail(session?.user?.email ?? null);
+      setSessionChecked(true);
     });
   }, []);
 
@@ -90,8 +89,10 @@ export const DashboardLayout = () => {
     );
   };
 
-  // Display name logic
-  const displayName = profile?.brand_name || profile?.full_name || user?.email?.split('@')[0] || 'User';
+  // Display name: only show if session is confirmed
+  const displayName = sessionChecked
+    ? (sessionEmail ? (profile?.brand_name || profile?.full_name || sessionEmail) : 'Not logged in')
+    : '...';
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -170,18 +171,13 @@ export const DashboardLayout = () => {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <User className="w-4 h-4" />
             <span>Logged in as <span className="font-medium text-foreground">{displayName}</span></span>
-            {profile?.account_type && (
+            {sessionEmail && profile?.account_type && (
               <span className="px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary capitalize">
                 {profile.account_type}
               </span>
             )}
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">
-              {debugInfo.status}{debugInfo.userId ? ` | ${debugInfo.userId}` : ''}
-            </span>
-            <ThemeToggle />
-          </div>
+          <ThemeToggle />
         </header>
 
         {/* Page content */}
