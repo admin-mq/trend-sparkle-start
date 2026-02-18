@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabaseClient";
 import { runFakeProcessor } from "@/lib/sccFakeProcessor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "@/hooks/use-toast";
 
 interface SnapshotRow {
   id: string;
@@ -158,9 +159,11 @@ const SEOResults = () => {
         setSearchParams({ snapshot: snapRow.id });
         fetchResults(snapRow.id);
       } else {
+        toast({ title: "Scan failed", description: result.error || "Scan failed", variant: "destructive" });
         setError(result.error || "Scan failed");
       }
     } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
       setError(err.message);
     } finally {
       setRescanning(false);
