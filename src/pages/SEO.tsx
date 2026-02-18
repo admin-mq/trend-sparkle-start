@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Search, Globe, Loader2, AlertCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
+import { runFakeProcessor } from "@/lib/sccFakeProcessor";
 
 const ROTATING_MESSAGES = [
   "Discovering your website structure…",
@@ -24,13 +26,16 @@ function normalizeUrl(raw: string): string {
 }
 
 const SEO = () => {
+  const navigate = useNavigate();
   const [urlInput, setUrlInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Scan state
   const [activeSnapshotId, setActiveSnapshotId] = useState<string | null>(null);
+  const [activeSiteId, setActiveSiteId] = useState<string | null>(null);
+  const [activeSiteUrl, setActiveSiteUrl] = useState<string | null>(null);
   const [scanStatus, setScanStatus] = useState<"idle" | "running" | "success" | "failed">("idle");
+  const [scanError, setScanError] = useState<string | null>(null);
   const [rotatingIdx, setRotatingIdx] = useState(0);
 
   // Rotating message timer
@@ -42,33 +47,31 @@ const SEO = () => {
     return () => clearInterval(interval);
   }, [scanStatus]);
 
-  // Polling for snapshot status
+  // Run fake processor when snapshot is created
   useEffect(() => {
-    if (!activeSnapshotId || scanStatus !== "running") return;
-    const interval = setInterval(async () => {
-      const { data, error } = await (supabase as any)
-        .from("scc_snapshots")
-        .select("status")
-        .eq("id", activeSnapshotId)
-        .single();
+    if (!activeSnapshotId || !activeSiteId || !activeSiteUrl || scanStatus !== "running") return;
 
-      if (error) return;
-      if (data?.status === "success") {
+    let cancelled = false;
+    (async () => {
+      const result = await runFakeProcessor(activeSnapshotId, activeSiteId, activeSiteUrl);
+      if (cancelled) return;
+      if (result.success) {
         setScanStatus("success");
-        clearInterval(interval);
-      } else if (data?.status === "failed") {
+        navigate(`/seo/results?snapshot=${activeSnapshotId}`);
+      } else {
         setScanStatus("failed");
-        clearInterval(interval);
+        setScanError(result.error || "Scan processing failed");
       }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [activeSnapshotId, scanStatus]);
+    })();
+
+    return () => { cancelled = true; };
+  }, [activeSnapshotId, activeSiteId, activeSiteUrl, scanStatus, navigate]);
 
   const handleRunScan = useCallback(async () => {
     setIsSubmitting(true);
     setError(null);
+    setScanError(null);
 
-    // Hard stop: check auth immediately
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
       setError("You're not logged in. Please log in again and retry.");
@@ -91,7 +94,6 @@ const SEO = () => {
     }
 
     try {
-      // Upsert site
       const { data: siteRow, error: siteErr } = await (supabase as any)
         .from("scc_sites")
         .upsert({ user_id: user.id, site_url: normalized }, { onConflict: "user_id,site_url" })
@@ -104,7 +106,6 @@ const SEO = () => {
         return;
       }
 
-      // Insert snapshot
       const { data: snapRow, error: snapErr } = await (supabase as any)
         .from("scc_snapshots")
         .insert({
@@ -123,6 +124,8 @@ const SEO = () => {
         return;
       }
 
+      setActiveSiteId(siteRow.id);
+      setActiveSiteUrl(normalized);
       setActiveSnapshotId(snapRow.id);
       setScanStatus("running");
     } catch (err: any) {
@@ -133,7 +136,16 @@ const SEO = () => {
     }
   }, [urlInput]);
 
-  // ── Idle state: URL input ──
+  const handleRetry = () => {
+    setScanStatus("idle");
+    setActiveSnapshotId(null);
+    setActiveSiteId(null);
+    setActiveSiteUrl(null);
+    setScanError(null);
+    setError(null);
+  };
+
+  // ── Idle state ──
   if (scanStatus === "idle") {
     return (
       <div className="h-full flex items-center justify-center p-6">
@@ -148,7 +160,6 @@ const SEO = () => {
                 Enter your website URL to run a full intelligence scan.
               </p>
             </div>
-
             <div className="space-y-3">
               <div className="relative">
                 <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -160,11 +171,7 @@ const SEO = () => {
                   onKeyDown={(e) => e.key === "Enter" && handleRunScan()}
                 />
               </div>
-              <Button
-                className="w-full"
-                onClick={handleRunScan}
-                disabled={isSubmitting || !urlInput.trim()}
-              >
+              <Button className="w-full" onClick={handleRunScan} disabled={isSubmitting || !urlInput.trim()}>
                 {isSubmitting ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Starting…</>
                 ) : (
@@ -184,12 +191,11 @@ const SEO = () => {
     );
   }
 
-  // ── Running state: animated loading ──
+  // ── Running state ──
   if (scanStatus === "running") {
     return (
       <div className="h-full flex items-center justify-center p-6">
         <div className="text-center max-w-md space-y-8">
-          {/* Pulsing icon */}
           <div className="relative mx-auto w-20 h-20">
             <div className="absolute inset-0 rounded-full bg-primary/20 loading-pulse" />
             <div className="absolute inset-0 flex items-center justify-center">
@@ -200,18 +206,12 @@ const SEO = () => {
               style={{ borderTopColor: "hsl(var(--primary))", animationDuration: "2s" }}
             />
           </div>
-
           <div className="space-y-2">
             <h2 className="text-xl font-bold text-foreground">Running Your Intelligence Scan</h2>
-            <p
-              className="text-muted-foreground text-sm h-6 transition-opacity duration-500"
-              key={rotatingIdx}
-            >
+            <p className="text-muted-foreground text-sm h-6 transition-opacity duration-500" key={rotatingIdx}>
               {ROTATING_MESSAGES[rotatingIdx]}
             </p>
           </div>
-
-          {/* Progress dots */}
           <div className="flex items-center justify-center gap-6">
             {PROGRESS_STEPS.map((step, idx) => (
               <div key={step} className="flex flex-col items-center gap-1.5">
@@ -242,10 +242,10 @@ const SEO = () => {
             </div>
             <h2 className="text-xl font-bold text-foreground">Scan Failed</h2>
             <p className="text-muted-foreground text-sm">
-              Something went wrong while scanning. Please try again.
+              {scanError || "Something went wrong while scanning. Please try again."}
             </p>
-            <Button variant="outline" onClick={() => { setScanStatus("idle"); setActiveSnapshotId(null); }}>
-              Try Again
+            <Button variant="outline" onClick={handleRetry}>
+              Retry
             </Button>
           </CardContent>
         </Card>
@@ -253,20 +253,14 @@ const SEO = () => {
     );
   }
 
-  // ── Success state (placeholder for results view) ──
+  // ── Success (should navigate away, but fallback) ──
   return (
     <div className="h-full flex items-center justify-center p-6">
       <Card className="w-full max-w-md bg-card border-border">
         <CardContent className="p-8 text-center space-y-4">
-          <div className="w-14 h-14 rounded-2xl bg-primary/15 flex items-center justify-center mx-auto">
-            <Search className="w-7 h-7 text-primary" />
-          </div>
           <h2 className="text-xl font-bold text-foreground">Scan Complete</h2>
-          <p className="text-muted-foreground text-sm">
-            Results view coming soon.
-          </p>
-          <Button variant="outline" onClick={() => { setScanStatus("idle"); setActiveSnapshotId(null); }}>
-            Run Another Scan
+          <Button variant="outline" onClick={() => navigate(`/seo/results?snapshot=${activeSnapshotId}`)}>
+            View Results
           </Button>
         </CardContent>
       </Card>
