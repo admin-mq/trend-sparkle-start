@@ -57,7 +57,7 @@ interface QueryMetricRow {
   avg_position: number;
   ctr: number;
   visibility_score: number;
-  opportunity_score: number;
+  query_opportunity_score: number;
   priority_bucket: string;
   query?: { query_text: string; query_category: string; intent_type: string };
 }
@@ -151,7 +151,7 @@ const SEOResults = () => {
         .from("scc_query_snapshot_metrics")
         .select("*, query:scc_queries(query_text, query_category, intent_type)")
         .eq("snapshot_id", snapId)
-        .order("opportunity_score", { ascending: false });
+        .order("query_opportunity_score", { ascending: false });
       if (qmErr) throw new Error(qmErr.message);
       setQueryMetrics(qmData || []);
     } catch (err: any) {
@@ -400,7 +400,7 @@ const SEOResults = () => {
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <span className="text-muted-foreground">Opportunity</span>
-                    <p className="text-lg font-bold text-foreground">{qm.opportunity_score}</p>
+                    <p className="text-lg font-bold text-foreground">{qm.query_opportunity_score}</p>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Visibility</span>

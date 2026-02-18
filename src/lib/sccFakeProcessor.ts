@@ -234,31 +234,31 @@ export async function runFakeProcessor(
         snapshot_id: snapshotId,
         query_id: queryMap["custom t shirt printing london"],
         impressions: 3200, clicks: 40, avg_position: 8.6, ctr: 0.012,
-        visibility_score: 60, opportunity_score: 82, priority_bucket: "high",
+        visibility_score: 60, query_opportunity_score: 82, priority_bucket: "high",
       },
       {
         snapshot_id: snapshotId,
         query_id: queryMap["same day t shirt printing"],
         impressions: 1800, clicks: 55, avg_position: 5.3, ctr: 0.031,
-        visibility_score: 72, opportunity_score: 78, priority_bucket: "high",
+        visibility_score: 72, query_opportunity_score: 78, priority_bucket: "high",
       },
       {
         snapshot_id: snapshotId,
         query_id: queryMap["bulk t shirt printing uk"],
         impressions: 2400, clicks: 30, avg_position: 11.2, ctr: 0.013,
-        visibility_score: 45, opportunity_score: 65, priority_bucket: "medium",
+        visibility_score: 45, query_opportunity_score: 65, priority_bucket: "medium",
       },
       {
         snapshot_id: snapshotId,
         query_id: queryMap["t shirt printing near me"],
         impressions: 4100, clicks: 120, avg_position: 4.1, ctr: 0.029,
-        visibility_score: 68, opportunity_score: 55, priority_bucket: "medium",
+        visibility_score: 68, query_opportunity_score: 55, priority_bucket: "medium",
       },
       {
         snapshot_id: snapshotId,
         query_id: queryMap["personalised t shirts london"],
         impressions: 900, clicks: 8, avg_position: 18.4, ctr: 0.009,
-        visibility_score: 30, opportunity_score: 40, priority_bucket: "low",
+        visibility_score: 30, query_opportunity_score: 40, priority_bucket: "low",
       },
     ];
 
