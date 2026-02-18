@@ -2,7 +2,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -18,22 +18,21 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
       setTimedOut(false);
       return;
     }
-    const t = setTimeout(() => setTimedOut(true), 5000);
+    const t = setTimeout(() => {
+      setTimedOut(true);
+      toast.error('Session expired. Please log in again.');
+    }, 2000);
     return () => clearTimeout(t);
   }, [loading]);
 
+  if (timedOut) {
+    return <Navigate to="/auth" state={{ from: location }} replace />;
+  }
+
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        {timedOut && (
-          <div className="text-center space-y-2">
-            <p className="text-sm text-destructive">Auth check is taking too long.</p>
-            <Button variant="outline" size="sm" onClick={() => window.location.href = '/auth'}>
-              Go to Login
-            </Button>
-          </div>
-        )}
       </div>
     );
   }
