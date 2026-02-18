@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import { 
   LayoutDashboard,
   TrendingUp, 
@@ -44,9 +45,19 @@ const bottomNavItems = [
 
 export const DashboardLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [debugInfo, setDebugInfo] = useState({ status: '...', userId: '' });
   const location = useLocation();
   const navigate = useNavigate();
   const { user, profile, signOut } = useAuthContext();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setDebugInfo({
+        status: session ? 'session found' : 'no session',
+        userId: session?.user?.id?.substring(0, 6) || '',
+      });
+    });
+  }, []);
 
   const handleLogout = async () => {
     const { error } = await signOut();
@@ -165,7 +176,12 @@ export const DashboardLayout = () => {
               </span>
             )}
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">
+              {debugInfo.status}{debugInfo.userId ? ` | ${debugInfo.userId}` : ''}
+            </span>
+            <ThemeToggle />
+          </div>
         </header>
 
         {/* Page content */}
