@@ -209,9 +209,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       intentionalSignOut.current = true;
-      const { error } = await supabase.auth.signOut();
       localStorage.removeItem(SESSION_EXPIRY_KEY);
+      // Clear state immediately so UI redirects without waiting for listener
+      setUser(null);
+      setSession(null);
       setProfile(null);
+      setNeedsProfileCompletion(false);
+      const { error } = await supabase.auth.signOut();
       return { error: error ? new Error(error.message) : null };
     } catch (err) {
       intentionalSignOut.current = false;
