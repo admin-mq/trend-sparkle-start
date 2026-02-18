@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { useSessionId } from '@/hooks/useSessionId';
 
 export interface BrandProfile {
   id: string;
@@ -28,13 +27,12 @@ export interface BrandProfileInput {
 
 export function useBrandProfiles() {
   const { user } = useAuthContext();
-  const sessionId = useSessionId();
   const [brands, setBrands] = useState<BrandProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchBrands = useCallback(async () => {
-    if (!sessionId) {
+    if (!user?.id) {
       setBrands([]);
       setLoading(false);
       return;
@@ -47,7 +45,7 @@ export function useBrandProfiles() {
       const { data, error: fetchError } = await (supabase as any)
         .from('brand_profiles')
         .select('*')
-        .eq('session_id', sessionId)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (fetchError) throw fetchError;
@@ -58,20 +56,20 @@ export function useBrandProfiles() {
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [user?.id]);
 
   useEffect(() => {
     fetchBrands();
   }, [fetchBrands]);
 
   const createBrand = async (input: BrandProfileInput): Promise<{ success: boolean; brand?: BrandProfile; error?: string }> => {
-    if (!sessionId) return { success: false, error: 'Session not available' };
+    if (!user?.id) return { success: false, error: 'You must be logged in' };
 
     try {
       const { data, error: insertError } = await (supabase as any)
         .from('brand_profiles')
         .insert({
-          session_id: sessionId,
+          user_id: user.id,
           ...input
         })
         .select()
@@ -88,7 +86,7 @@ export function useBrandProfiles() {
   };
 
   const updateBrand = async (id: string, input: Partial<BrandProfileInput>): Promise<{ success: boolean; error?: string }> => {
-    if (!sessionId) return { success: false, error: 'Session not available' };
+    if (!user?.id) return { success: false, error: 'You must be logged in' };
 
     try {
       const { error: updateError } = await (supabase as any)
@@ -98,7 +96,7 @@ export function useBrandProfiles() {
           updated_at: new Date().toISOString()
         })
         .eq('id', id)
-        .eq('session_id', sessionId);
+        .eq('user_id', user.id);
 
       if (updateError) throw updateError;
       
@@ -111,14 +109,14 @@ export function useBrandProfiles() {
   };
 
   const deleteBrand = async (id: string): Promise<{ success: boolean; error?: string }> => {
-    if (!sessionId) return { success: false, error: 'Session not available' };
+    if (!user?.id) return { success: false, error: 'You must be logged in' };
 
     try {
       const { error: deleteError } = await (supabase as any)
         .from('brand_profiles')
         .delete()
         .eq('id', id)
-        .eq('session_id', sessionId);
+        .eq('user_id', user.id);
 
       if (deleteError) throw deleteError;
       
@@ -131,11 +129,11 @@ export function useBrandProfiles() {
   };
 
   const uploadLogo = async (file: File): Promise<{ url: string | null; error: string | null }> => {
-    if (!sessionId) return { url: null, error: 'Session not available' };
+    if (!user?.id) return { url: null, error: 'You must be logged in' };
 
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${sessionId}/${crypto.randomUUID()}.${fileExt}`;
+      const fileName = `${user.id}/${crypto.randomUUID()}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('brand-logos')
