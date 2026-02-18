@@ -12,6 +12,7 @@ import TrendQuest from "./pages/TrendQuest";
 import HashtagAnalysis from "./pages/HashtagAnalysis";
 import TrendingAudios from "./pages/TrendingAudios";
 import SEO from "./pages/SEO";
+import SEOResults from "./pages/SEOResults";
 import Influencers from "./pages/Influencers";
 import PR from "./pages/PR";
 import Analytics from "./pages/Analytics";
@@ -50,6 +51,7 @@ const App = () => (
               <Route path="/hashtag-analysis" element={<HashtagAnalysis />} />
               <Route path="/trending-audios" element={<TrendingAudios />} />
               <Route path="/seo" element={<SEO />} />
+              <Route path="/seo/results" element={<SEOResults />} />
               <Route path="/influencers" element={<Influencers />} />
               <Route path="/pr" element={<PR />} />
               <Route path="/analytics" element={<Analytics />} />
