@@ -19,21 +19,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Only honor SIGNED_OUT events when we explicitly trigger sign-out
   const intentionalSignOut = useRef(false);
 
-  const fetchProfile = useCallback(async (userId: string) => {
+  const fetchProfile = useCallback(async (userId: string): Promise<UserProfile | null> => {
     try {
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
+      const result = await Promise.race([
+        supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Profile fetch timeout')), 4000)
+        ),
+      ]);
 
-      if (error) {
-        console.error('Error fetching profile:', error);
+      if (result.error) {
+        console.error('[Auth] Error fetching profile:', result.error);
         return null;
       }
-      return data as UserProfile | null;
+      return result.data as UserProfile | null;
     } catch (err) {
-      console.error('Error fetching profile:', err);
+      console.error('[Auth] fetchProfile failed/timed out:', err);
       return null;
     }
   }, []);
@@ -46,6 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const safetyTimeout = setTimeout(() => {
       if (mounted && loading) {
         console.warn('[Auth] Safety timeout reached – forcing loading=false');
+        sessionResolved.current = true;
         setLoading(false);
       }
     }, 5000);
