@@ -251,8 +251,7 @@ const SEOResults = () => {
         <h2 className="text-lg font-semibold text-foreground">Recommended Actions</h2>
         <div className="space-y-3">
           {actions.map((action) => {
-            const steps: string[] =
-              typeof action.steps === "string" ? JSON.parse(action.steps) : action.steps || [];
+            const steps: string[] = Array.isArray(action.steps) ? action.steps : [];
             return (
               <Card key={action.id} className="border-border">
                 <CardContent className="p-4 space-y-3">
