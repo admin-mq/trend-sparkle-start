@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabaseClient";
+import { runFakeProcessor } from "@/lib/sccFakeProcessor";
 
 interface SnapshotRow {
   id: string;
@@ -55,9 +56,10 @@ const severityColor: Record<string, string> = {
 const severityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
 const SEOResults = () => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const snapshotId = searchParams.get("snapshot");
+  const [rescanning, setRescanning] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -123,6 +125,38 @@ const SEOResults = () => {
     }
   }
 
+  async function handleNewScan() {
+    if (!site || rescanning) return;
+    setRescanning(true);
+    setError(null);
+    try {
+      const { data: snapRow, error: snapErr } = await (supabase as any)
+        .from("scc_snapshots")
+        .insert({
+          site_id: site.id,
+          mode: "crawl_only",
+          status: "running",
+          started_at: new Date().toISOString(),
+          progress_step: "discovering",
+        })
+        .select("id")
+        .single();
+      if (snapErr) throw new Error(snapErr.message);
+
+      const result = await runFakeProcessor(snapRow.id, site.id, site.site_url);
+      if (result.success) {
+        setSearchParams({ snapshot: snapRow.id });
+        fetchResults(snapRow.id);
+      } else {
+        setError(result.error || "Scan failed");
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setRescanning(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center p-6">
@@ -182,8 +216,12 @@ const SEOResults = () => {
             </p>
           )}
         </div>
-        <Button onClick={() => navigate("/seo")} variant="outline" size="sm">
-          Run New Scan
+        <Button onClick={handleNewScan} variant="outline" size="sm" disabled={rescanning}>
+          {rescanning ? (
+            <><Loader2 className="w-4 h-4 animate-spin mr-1" /> Scanning…</>
+          ) : (
+            "Run New Scan"
+          )}
         </Button>
       </div>
 
