@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Search, ArrowLeft, AlertTriangle, CheckCircle2, Info, Loader2, ExternalLink } from "lucide-react";
+import { Search, ArrowLeft, AlertTriangle, CheckCircle2, Info, Loader2, ExternalLink, History } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabaseClient";
 import { runFakeProcessor } from "@/lib/sccFakeProcessor";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface SnapshotRow {
   id: string;
@@ -67,7 +68,7 @@ const SEOResults = () => {
   const [site, setSite] = useState<SiteRow | null>(null);
   const [metrics, setMetrics] = useState<PageMetric[]>([]);
   const [actions, setActions] = useState<ActionRow[]>([]);
-
+  const [pastSnapshots, setPastSnapshots] = useState<{ id: string; started_at: string; status: string }[]>([]);
   useEffect(() => {
     if (!snapshotId) {
       setError("No snapshot ID provided.");
@@ -98,6 +99,15 @@ const SEOResults = () => {
         .single();
       if (siteErr) throw new Error(siteErr.message);
       setSite(siteData);
+
+      // Fetch last 10 snapshots for this site
+      const { data: snapshotsData } = await (supabase as any)
+        .from("scc_snapshots")
+        .select("id, started_at, status")
+        .eq("site_id", siteData.id)
+        .order("started_at", { ascending: false })
+        .limit(10);
+      setPastSnapshots(snapshotsData || []);
 
       // Fetch page metrics with page info
       const { data: metricsData, error: metricsErr } = await (supabase as any)
@@ -216,13 +226,36 @@ const SEOResults = () => {
             </p>
           )}
         </div>
-        <Button onClick={handleNewScan} variant="outline" size="sm" disabled={rescanning}>
-          {rescanning ? (
-            <><Loader2 className="w-4 h-4 animate-spin mr-1" /> Scanning…</>
-          ) : (
-            "Run New Scan"
+        <div className="flex items-center gap-2">
+          {pastSnapshots.length > 1 && (
+            <Select
+              value={snapshotId || ""}
+              onValueChange={(val) => {
+                setSearchParams({ snapshot: val });
+                fetchResults(val);
+              }}
+            >
+              <SelectTrigger className="w-[200px] h-9 text-xs">
+                <History className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                <SelectValue placeholder="Previous scans" />
+              </SelectTrigger>
+              <SelectContent>
+                {pastSnapshots.map((s) => (
+                  <SelectItem key={s.id} value={s.id} className="text-xs">
+                    {new Date(s.started_at).toLocaleString()} {s.id === snapshotId ? "(current)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
-        </Button>
+          <Button onClick={handleNewScan} variant="outline" size="sm" disabled={rescanning}>
+            {rescanning ? (
+              <><Loader2 className="w-4 h-4 animate-spin mr-1" /> Scanning…</>
+            ) : (
+              "Run New Scan"
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Top Opportunities */}
