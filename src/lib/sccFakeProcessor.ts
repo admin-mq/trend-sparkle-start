@@ -215,10 +215,13 @@ export async function runFakeProcessor(
 
     const { data: queryRows, error: queriesErr } = await (supabase as any)
       .from("scc_queries")
-      .upsert(queries, { onConflict: "site_id,query_text" })
+      .upsert(queries, { onConflict: "site_id,query_text", ignoreDuplicates: false })
       .select("id, query_text");
 
-    if (queriesErr) throw new Error(`Failed to insert queries: ${queriesErr.message}`);
+    if (queriesErr) throw new Error(`Failed to upsert queries: ${queriesErr.message}`);
+    if (!queryRows || queryRows.length < 5) {
+      throw new Error(`Query upsert returned only ${queryRows?.length ?? 0} rows, expected >= 5`);
+    }
 
     const queryMap: Record<string, string> = {};
     for (const q of queryRows) {
@@ -259,11 +262,27 @@ export async function runFakeProcessor(
       },
     ];
 
+    // Validate all query_ids resolved
+    for (const qm of queryMetrics) {
+      if (!qm.query_id) throw new Error(`Missing query_id mapping for a query metric row`);
+    }
+
     const { error: qMetricsErr } = await (supabase as any)
       .from("scc_query_snapshot_metrics")
       .insert(queryMetrics);
 
     if (qMetricsErr) throw new Error(`Failed to insert query metrics: ${qMetricsErr.message}`);
+
+    // Validate query metrics were persisted
+    const { count: qmCount, error: qmCountErr } = await (supabase as any)
+      .from("scc_query_snapshot_metrics")
+      .select("id", { count: "exact", head: true })
+      .eq("snapshot_id", snapshotId);
+
+    if (qmCountErr) throw new Error(`Failed to validate query metrics count: ${qmCountErr.message}`);
+    if ((qmCount ?? 0) < 5) {
+      throw new Error(`Query metrics validation failed: only ${qmCount} rows for snapshot, expected >= 5`);
+    }
 
     // Mark snapshot as success
     await delay(500);
