@@ -49,6 +49,19 @@ interface ActionRow {
   page_id: string | null;
 }
 
+interface QueryMetricRow {
+  id: string;
+  query_id: string;
+  impressions: number;
+  clicks: number;
+  avg_position: number;
+  ctr: number;
+  visibility_score: number;
+  opportunity_score: number;
+  priority_bucket: string;
+  query?: { query_text: string; query_category: string; intent_type: string };
+}
+
 const severityColor: Record<string, string> = {
   high: "bg-destructive/15 text-destructive border-destructive/30",
   medium: "bg-amber-500/15 text-amber-400 border-amber-500/30",
@@ -70,6 +83,9 @@ const SEOResults = () => {
   const [metrics, setMetrics] = useState<PageMetric[]>([]);
   const [actions, setActions] = useState<ActionRow[]>([]);
   const [pastSnapshots, setPastSnapshots] = useState<{ id: string; started_at: string; status: string }[]>([]);
+  const [queryMetrics, setQueryMetrics] = useState<QueryMetricRow[]>([]);
+  const [viewTab, setViewTab] = useState<"pages" | "queries">("pages");
+
   useEffect(() => {
     if (!snapshotId) {
       setError("No snapshot ID provided.");
@@ -129,6 +145,15 @@ const SEOResults = () => {
         (a: ActionRow, b: ActionRow) => (severityOrder[a.severity] ?? 3) - (severityOrder[b.severity] ?? 3)
       );
       setActions(sorted);
+
+      // Fetch query metrics
+      const { data: qmData, error: qmErr } = await (supabase as any)
+        .from("scc_query_snapshot_metrics")
+        .select("*, query:scc_queries(query_text, query_category, intent_type)")
+        .eq("snapshot_id", snapId)
+        .order("opportunity_score", { ascending: false });
+      if (qmErr) throw new Error(qmErr.message);
+      setQueryMetrics(qmData || []);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -261,7 +286,28 @@ const SEOResults = () => {
         </div>
       </div>
 
-      {/* Top Opportunities */}
+      {/* Pages / Queries toggle */}
+      <div className="flex items-center gap-1 bg-muted rounded-lg p-1 w-fit">
+        <button
+          onClick={() => setViewTab("pages")}
+          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            viewTab === "pages" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Pages
+        </button>
+        <button
+          onClick={() => setViewTab("queries")}
+          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            viewTab === "queries" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Queries
+        </button>
+      </div>
+
+      {/* Top Opportunities (Pages) */}
+      {viewTab === "pages" && (
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-foreground">Top Opportunities</h2>
         <div className="grid gap-3 md:grid-cols-3">
@@ -319,6 +365,73 @@ const SEOResults = () => {
           ))}
         </div>
       </section>
+      )}
+
+      {/* Query Opportunities */}
+      {viewTab === "queries" && (
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-foreground">Query Opportunities</h2>
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {queryMetrics.map((qm) => (
+            <Card key={qm.id} className="border-border">
+              <CardHeader className="pb-2 pt-4 px-4">
+                <div className="flex items-center justify-between">
+                  <Badge variant="outline" className="text-xs capitalize">
+                    {qm.query?.intent_type || "unknown"}
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className={
+                      qm.priority_bucket === "high"
+                        ? "bg-destructive/15 text-destructive border-destructive/30"
+                        : qm.priority_bucket === "medium"
+                        ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                        : "bg-muted text-muted-foreground border-border"
+                    }
+                  >
+                    {qm.priority_bucket} priority
+                  </Badge>
+                </div>
+                <CardTitle className="text-sm font-medium mt-2">
+                  "{qm.query?.query_text || "Unknown query"}"
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 pt-0">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-muted-foreground">Opportunity</span>
+                    <p className="text-lg font-bold text-foreground">{qm.opportunity_score}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Visibility</span>
+                    <p className="text-lg font-bold text-foreground">{qm.visibility_score}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Impressions</span>
+                    <p className="font-medium text-foreground">{qm.impressions.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Clicks</span>
+                    <p className="font-medium text-foreground">{qm.clicks.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">CTR</span>
+                    <p className="font-medium text-foreground">{(qm.ctr * 100).toFixed(1)}%</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Avg Position</span>
+                    <p className="font-medium text-foreground">{qm.avg_position}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          {queryMetrics.length === 0 && (
+            <p className="text-sm text-muted-foreground col-span-full">No query data for this snapshot.</p>
+          )}
+        </div>
+      </section>
+      )}
 
       {/* Recommended Actions */}
       <section className="space-y-3">
