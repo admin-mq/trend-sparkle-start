@@ -1,37 +1,56 @@
 import { supabase } from "@/lib/supabaseClient";
 
-const STAGE_DELAY = 1200; // keep it snappy but visible
+const STAGE_DELAY = 1200; // faster feedback
 const PROGRESS_STAGES = ["discovering", "analyzing", "calculating", "finalizing"] as const;
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function normalizeText(input?: string | null) {
-  return (input ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+type ProgressStep = (typeof PROGRESS_STAGES)[number] | "done";
+
+async function updateSnapshot(snapshotId: string, patch: Record<string, any>) {
+  const { error } = await (supabase as any).from("scc_snapshots").update(patch).eq("id", snapshotId);
+  if (error) throw new Error(error.message);
 }
 
-function cleanBaseUrl(siteUrl: string) {
-  // ensure no trailing slash
-  return siteUrl.trim().replace(/\/+$/, "");
+async function updateProgressStep(snapshotId: string, step: ProgressStep) {
+  await updateSnapshot(snapshotId, { progress_step: step });
 }
 
-async function updateProgressStep(snapshotId: string, step: string) {
-  const { error } = await (supabase as any).from("scc_snapshots").update({ progress_step: step }).eq("id", snapshotId);
+async function failSnapshot(snapshotId: string, stage: string, message: string) {
+  // Some schemas have error_stage; some don’t. Try with it, fallback without.
+  const base = {
+    status: "failed",
+    error_message: message,
+    finished_at: new Date().toISOString(),
+    progress_step: "done",
+  };
 
-  if (error) throw new Error(`Failed to update progress to "${step}": ${error.message}`);
-}
-
-async function failSnapshot(snapshotId: string, message: string) {
-  await (supabase as any)
+  const attempt1 = await (supabase as any)
     .from("scc_snapshots")
-    .update({
-      status: "failed",
-      error_message: message,
-      finished_at: new Date().toISOString(),
-      progress_step: "failed",
-    })
+    .update({ ...base, error_stage: stage })
     .eq("id", snapshotId);
+
+  if (attempt1?.error) {
+    await (supabase as any).from("scc_snapshots").update(base).eq("id", snapshotId);
+  }
+}
+
+function normalizeQueryText(q?: string) {
+  return (q ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function normalizeUrl(url: string) {
+  const u = (url || "").trim();
+  return u.endsWith("/") ? u.slice(0, -1) : u;
+}
+
+async function safeDelete(table: string, where: Record<string, any>) {
+  let q = (supabase as any).from(table).delete();
+  for (const [k, v] of Object.entries(where)) q = q.eq(k, v);
+  const { error } = await q;
+  if (error) throw new Error(`Failed to cleanup ${table}: ${error.message}`);
 }
 
 export async function runFakeProcessor(
@@ -40,46 +59,40 @@ export async function runFakeProcessor(
   siteUrl: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // -------------------------
-    // 0) Progress animation
-    // -------------------------
-    for (let i = 0; i < PROGRESS_STAGES.length; i++) {
-      await updateProgressStep(snapshotId, PROGRESS_STAGES[i]);
+    // ---- Progress simulation ----
+    for (const step of PROGRESS_STAGES) {
+      await updateProgressStep(snapshotId, step);
       await delay(STAGE_DELAY);
     }
 
-    const base = cleanBaseUrl(siteUrl);
+    const baseUrl = normalizeUrl(siteUrl);
 
-    // -------------------------
-    // 1) Pages (upsert)
-    // -------------------------
+    // ---- Cleanup so reruns don’t duplicate ----
+    // (If RLS blocks deletes, you'll see a clean error instead of “success but empty UI”.)
+    await safeDelete("scc_actions", { snapshot_id: snapshotId });
+    await safeDelete("scc_page_snapshot_metrics", { snapshot_id: snapshotId });
+    await safeDelete("scc_query_snapshot_metrics", { snapshot_id: snapshotId });
+
+    // ---- Pages (upsert) ----
     const pages = [
-      { site_id: siteId, url: `${base}/`, page_type: "home" },
-      { site_id: siteId, url: `${base}/collections/bestsellers`, page_type: "category" },
-      { site_id: siteId, url: `${base}/products/sample-product`, page_type: "product" },
+      { site_id: siteId, url: `${baseUrl}/`, page_type: "home" },
+      { site_id: siteId, url: `${baseUrl}/collections/bestsellers`, page_type: "category" },
+      { site_id: siteId, url: `${baseUrl}/products/sample-product`, page_type: "product" },
     ];
 
     const { data: pageRows, error: pagesErr } = await (supabase as any)
       .from("scc_pages")
-      .upsert(pages, { onConflict: "site_id,url" })
-      .select("id, page_type");
+      .upsert(pages, { onConflict: "site_id,url", ignoreDuplicates: false })
+      .select("id,page_type");
 
     if (pagesErr) throw new Error(`Failed to upsert pages: ${pagesErr.message}`);
-    if (!pageRows || pageRows.length < 3)
-      throw new Error(`Pages upsert returned ${pageRows?.length ?? 0} rows, expected 3`);
+    if (!pageRows || pageRows.length < 3) throw new Error(`Pages upsert returned ${pageRows?.length ?? 0} rows`);
 
     const pageMap: Record<string, string> = {};
-    for (const p of pageRows) {
-      if (p?.page_type && p?.id) pageMap[p.page_type] = p.id;
-    }
-    for (const k of ["home", "category", "product"]) {
-      if (!pageMap[k]) throw new Error(`Missing page mapping for "${k}"`);
-    }
+    for (const p of pageRows) pageMap[p.page_type] = p.id;
 
-    // -------------------------
-    // 2) Page snapshot metrics (upsert)
-    // Requires unique index on (snapshot_id, page_id)
-    // -------------------------
+    // ---- Page snapshot metrics ----
+    // Prefer upsert if you have a unique index on (snapshot_id,page_id). If not, insert works after cleanup.
     const pageMetrics = [
       {
         snapshot_id: snapshotId,
@@ -143,21 +156,13 @@ export async function runFakeProcessor(
       },
     ];
 
-    const { error: pageMetricsErr } = await (supabase as any)
-      .from("scc_page_snapshot_metrics")
-      .upsert(pageMetrics, { onConflict: "snapshot_id,page_id" });
+    const { error: pageMetricsErr } = await (supabase as any).from("scc_page_snapshot_metrics").insert(pageMetrics);
 
-    if (pageMetricsErr) throw new Error(`Failed to upsert page metrics: ${pageMetricsErr.message}`);
+    if (pageMetricsErr) throw new Error(`Failed to insert page metrics: ${pageMetricsErr.message}`);
 
-    // -------------------------
-    // 3) Actions (delete + insert)
-    // This guarantees reruns don't duplicate.
-    // -------------------------
-    const { error: delActionsErr } = await (supabase as any).from("scc_actions").delete().eq("snapshot_id", snapshotId);
-
-    // Note: if RLS blocks delete, you'll see it here.
-    if (delActionsErr) throw new Error(`Failed to reset actions for snapshot: ${delActionsErr.message}`);
-
+    // ---- Action cards (this drives “Recommended Actions” UI) ----
+    // Your scc_actions columns (from your CSV) include:
+    // action_type (NOT NULL), snapshot_id (NOT NULL), plus optional: title, why_it_matters, technical_reason, expected_impact_range, steps(jsonb), severity, priority, status, summary, page_id, query_id
     const actions = [
       {
         snapshot_id: snapshotId,
@@ -176,7 +181,7 @@ export async function runFakeProcessor(
         severity: "high",
         priority: "high",
         status: "pending",
-        summary: "Improve snippet alignment to lift CTR on a high-value page.",
+        summary: "Quick CTR win by aligning title/meta with intent.",
       },
       {
         snapshot_id: snapshotId,
@@ -195,7 +200,7 @@ export async function runFakeProcessor(
         severity: "high",
         priority: "high",
         status: "pending",
-        summary: "Enable rich results for product pages.",
+        summary: "Schema improves rich result eligibility.",
       },
       {
         snapshot_id: snapshotId,
@@ -214,7 +219,7 @@ export async function runFakeProcessor(
         severity: "medium",
         priority: "medium",
         status: "pending",
-        summary: "Control SERP snippets and improve CTR consistency.",
+        summary: "Meta descriptions control SERP messaging.",
       },
       {
         snapshot_id: snapshotId,
@@ -233,7 +238,7 @@ export async function runFakeProcessor(
         severity: "medium",
         priority: "medium",
         status: "pending",
-        summary: "Prevent ranking signal dilution from canonical conflicts.",
+        summary: "Canonical hygiene stabilizes rankings.",
       },
       {
         snapshot_id: snapshotId,
@@ -252,17 +257,14 @@ export async function runFakeProcessor(
         severity: "low",
         priority: "low",
         status: "pending",
-        summary: "Reduce depth and improve crawl distribution across key pages.",
+        summary: "Better internal linking helps crawl + rankings.",
       },
     ];
 
     const { error: actionsErr } = await (supabase as any).from("scc_actions").insert(actions);
     if (actionsErr) throw new Error(`Failed to insert actions: ${actionsErr.message}`);
 
-    // -------------------------
-    // 4) Queries (upsert, normalized)
-    // Requires unique index on (site_id, query_text)
-    // -------------------------
+    // ---- Queries (upsert) ----
     const rawQueries = [
       {
         site_id: siteId,
@@ -292,33 +294,27 @@ export async function runFakeProcessor(
     ];
 
     const queries = rawQueries
-      .filter((q) => normalizeText(q.query_text).length > 0)
-      .map((q) => ({
-        ...q,
-        query_text: normalizeText(q.query_text),
-      }));
+      .filter((q) => q?.query_text)
+      .map((q) => ({ ...q, query_text: normalizeQueryText(q.query_text) }));
 
     const { data: queryRows, error: queriesErr } = await (supabase as any)
       .from("scc_queries")
       .upsert(queries, { onConflict: "site_id,query_text", ignoreDuplicates: false })
-      .select("id, query_text");
+      .select("id,query_text");
 
     if (queriesErr) throw new Error(`Failed to upsert queries: ${queriesErr.message}`);
-    if (!queryRows || queryRows.length < 5)
-      throw new Error(`Query upsert returned ${queryRows?.length ?? 0} rows, expected >= 5`);
-
-    const queryMap: Record<string, string> = {};
-    for (const q of queryRows) {
-      if (q?.query_text && q?.id) queryMap[normalizeText(q.query_text)] = q.id;
+    if (!queryRows || queryRows.length < queries.length) {
+      throw new Error(`Query upsert returned ${queryRows?.length ?? 0} rows, expected >= ${queries.length}`);
     }
 
-    // -------------------------
-    // 5) Query snapshot metrics (upsert)
-    // Requires unique index on (snapshot_id, query_id)
-    // -------------------------
-    const qm = [
+    const queryMap: Record<string, string> = {};
+    for (const q of queryRows) queryMap[q.query_text] = q.id;
+
+    // ---- Query snapshot metrics ----
+    const queryMetrics = [
       {
-        key: "custom t shirt printing london",
+        snapshot_id: snapshotId,
+        query_id: queryMap["custom t shirt printing london"],
         impressions: 3200,
         clicks: 40,
         avg_position: 8.6,
@@ -328,7 +324,8 @@ export async function runFakeProcessor(
         priority_bucket: "high",
       },
       {
-        key: "same day t shirt printing",
+        snapshot_id: snapshotId,
+        query_id: queryMap["same day t shirt printing"],
         impressions: 1800,
         clicks: 55,
         avg_position: 5.3,
@@ -338,7 +335,8 @@ export async function runFakeProcessor(
         priority_bucket: "high",
       },
       {
-        key: "bulk t shirt printing uk",
+        snapshot_id: snapshotId,
+        query_id: queryMap["bulk t shirt printing uk"],
         impressions: 2400,
         clicks: 30,
         avg_position: 11.2,
@@ -348,7 +346,8 @@ export async function runFakeProcessor(
         priority_bucket: "medium",
       },
       {
-        key: "t shirt printing near me",
+        snapshot_id: snapshotId,
+        query_id: queryMap["t shirt printing near me"],
         impressions: 4100,
         clicks: 120,
         avg_position: 4.1,
@@ -358,7 +357,8 @@ export async function runFakeProcessor(
         priority_bucket: "medium",
       },
       {
-        key: "personalised t shirts london",
+        snapshot_id: snapshotId,
+        query_id: queryMap["personalised t shirts london"],
         impressions: 900,
         clicks: 8,
         avg_position: 18.4,
@@ -369,47 +369,27 @@ export async function runFakeProcessor(
       },
     ];
 
-    const queryMetrics = qm.map((row) => {
-      const id = queryMap[normalizeText(row.key)];
-      if (!id) throw new Error(`Missing query_id mapping for query "${row.key}"`);
-      return {
-        snapshot_id: snapshotId,
-        query_id: id,
-        impressions: row.impressions,
-        clicks: row.clicks,
-        avg_position: row.avg_position,
-        ctr: row.ctr,
-        visibility_score: row.visibility_score,
-        query_opportunity_score: row.query_opportunity_score,
-        priority_bucket: row.priority_bucket,
-      };
+    for (const qm of queryMetrics) {
+      if (!qm.query_id) throw new Error("Missing query_id mapping in queryMetrics");
+    }
+
+    const { error: qMetricsErr } = await (supabase as any).from("scc_query_snapshot_metrics").insert(queryMetrics);
+
+    if (qMetricsErr) throw new Error(`Failed to insert query metrics: ${qMetricsErr.message}`);
+
+    // ---- Mark snapshot as success ----
+    await delay(300);
+    await updateSnapshot(snapshotId, {
+      status: "success",
+      finished_at: new Date().toISOString(),
+      progress_step: "done",
+      error_message: null,
     });
-
-    const { error: qMetricsErr } = await (supabase as any)
-      .from("scc_query_snapshot_metrics")
-      .upsert(queryMetrics, { onConflict: "snapshot_id,query_id" });
-
-    if (qMetricsErr) throw new Error(`Failed to upsert query metrics: ${qMetricsErr.message}`);
-
-    // -------------------------
-    // 6) Finalize snapshot
-    // -------------------------
-    const { error: successErr } = await (supabase as any)
-      .from("scc_snapshots")
-      .update({
-        status: "success",
-        finished_at: new Date().toISOString(),
-        progress_step: "done",
-        error_message: null,
-      })
-      .eq("id", snapshotId);
-
-    if (successErr) throw new Error(`Failed to mark snapshot success: ${successErr.message}`);
 
     return { success: true };
   } catch (err: any) {
     console.error("Fake processor error:", err);
-    await failSnapshot(snapshotId, err?.message || "Unknown processor error");
+    await failSnapshot(snapshotId, "fake_processor", err?.message || "Unknown processor error");
     return { success: false, error: err?.message };
   }
 }
