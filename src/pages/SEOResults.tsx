@@ -77,7 +77,6 @@ const severityColor: Record<string, string> = {
 };
 
 const severityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
-
 const POLL_MS = 2500;
 
 function safeDateText(value?: string | null) {
@@ -88,6 +87,22 @@ function safeDateText(value?: string | null) {
 
 function safeNum(value?: number | null, fallback = 0) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function isMeaningfulTrafficValue(value?: number | null) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function formatTrafficNumber(value?: number | null) {
+  return isMeaningfulTrafficValue(value) ? safeNum(value).toLocaleString() : "N/A";
+}
+
+function formatTrafficPercent(value?: number | null) {
+  return isMeaningfulTrafficValue(value) ? `${(safeNum(value) * 100).toFixed(1)}%` : "N/A";
+}
+
+function formatTrafficPosition(value?: number | null) {
+  return isMeaningfulTrafficValue(value) ? `${safeNum(value)}` : "N/A";
 }
 
 function siteDisplayUrl(site: SiteRow | null) {
@@ -458,9 +473,10 @@ const SEOResults = () => {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {metrics.map((m) => {
                 const priority = (m.priority_bucket || "medium").toLowerCase();
+
                 return (
                   <Card key={m.id} className="border-border">
                     <CardHeader className="pb-2 pt-4 px-4">
@@ -472,43 +488,66 @@ const SEOResults = () => {
                           className={
                             priority === "high"
                               ? "bg-destructive/15 text-destructive border-destructive/30"
-                              : "bg-primary/15 text-primary border-primary/30"
+                              : priority === "medium"
+                                ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                                : "bg-primary/15 text-primary border-primary/30"
                           }
                           variant="outline"
                         >
                           {priority} priority
                         </Badge>
                       </div>
+
                       <CardTitle className="text-sm font-medium mt-2 truncate">
                         {m.page?.url || "Unknown page"}
                       </CardTitle>
                     </CardHeader>
 
                     <CardContent className="px-4 pb-4 pt-0">
-                      <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="grid grid-cols-2 gap-3 text-xs">
                         <div>
                           <span className="text-muted-foreground">Opportunity</span>
                           <p className="text-lg font-bold text-foreground">{safeNum(m.page_opportunity_score)}</p>
                         </div>
+
                         <div>
                           <span className="text-muted-foreground">Visibility</span>
                           <p className="text-lg font-bold text-foreground">{safeNum(m.visibility_score)}</p>
                         </div>
-                        <div>
-                          <span className="text-muted-foreground">Impressions</span>
-                          <p className="font-medium text-foreground">{safeNum(m.impressions).toLocaleString()}</p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">CTR</span>
-                          <p className="font-medium text-foreground">{(safeNum(m.ctr) * 100).toFixed(1)}%</p>
-                        </div>
+
                         <div>
                           <span className="text-muted-foreground">Structural</span>
-                          <p className="font-medium text-foreground">{safeNum(m.structural_score)}</p>
+                          <p className="text-lg font-bold text-foreground">{safeNum(m.structural_score)}</p>
                         </div>
+
+                        <div>
+                          <span className="text-muted-foreground">Revenue</span>
+                          <p className="text-lg font-bold text-foreground">{safeNum(m.revenue_score)}</p>
+                        </div>
+
+                        <div>
+                          <span className="text-muted-foreground">Paid Risk</span>
+                          <p className="text-lg font-bold text-foreground">{safeNum(m.paid_risk_score)}</p>
+                        </div>
+
                         <div>
                           <span className="text-muted-foreground">Avg Position</span>
-                          <p className="font-medium text-foreground">{safeNum(m.avg_position)}</p>
+                          <p className="font-medium text-foreground">{formatTrafficPosition(m.avg_position)}</p>
+                        </div>
+
+                        <div>
+                          <span className="text-muted-foreground">Impressions</span>
+                          <p className="font-medium text-foreground">{formatTrafficNumber(m.impressions)}</p>
+                        </div>
+
+                        <div>
+                          <span className="text-muted-foreground">Clicks</span>
+                          <p className="font-medium text-foreground">{formatTrafficNumber(m.clicks)}</p>
+                        </div>
+
+                        <div>
+                          <span className="text-muted-foreground">CTR</span>
+                          <p className="font-medium text-foreground">{formatTrafficPercent(m.ctr)}</p>
                         </div>
                       </div>
                     </CardContent>
@@ -527,14 +566,15 @@ const SEOResults = () => {
           {queryMetrics.length === 0 ? (
             <Card className="border-border">
               <CardContent className="p-6 text-sm text-muted-foreground">
-                No query data for this snapshot yet. The real crawler flow is working, but keyword/query metrics are not
-                being generated yet.
+                No query data for this snapshot yet. The crawler is working, but keyword/query metrics are not being
+                generated yet.
               </CardContent>
             </Card>
           ) : (
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {queryMetrics.map((qm) => {
                 const priority = (qm.priority_bucket || "low").toLowerCase();
+
                 return (
                   <Card key={qm.id} className="border-border">
                     <CardHeader className="pb-2 pt-4 px-4">
@@ -555,6 +595,7 @@ const SEOResults = () => {
                           {priority} priority
                         </Badge>
                       </div>
+
                       <CardTitle className="text-sm font-medium mt-2">
                         “{qm.query?.query_text || "Unknown query"}”
                       </CardTitle>
@@ -566,25 +607,30 @@ const SEOResults = () => {
                           <span className="text-muted-foreground">Opportunity</span>
                           <p className="text-lg font-bold text-foreground">{safeNum(qm.query_opportunity_score)}</p>
                         </div>
+
                         <div>
                           <span className="text-muted-foreground">Visibility</span>
                           <p className="text-lg font-bold text-foreground">{safeNum(qm.visibility_score)}</p>
                         </div>
+
                         <div>
                           <span className="text-muted-foreground">Impressions</span>
-                          <p className="font-medium text-foreground">{safeNum(qm.impressions).toLocaleString()}</p>
+                          <p className="font-medium text-foreground">{formatTrafficNumber(qm.impressions)}</p>
                         </div>
+
                         <div>
                           <span className="text-muted-foreground">Clicks</span>
-                          <p className="font-medium text-foreground">{safeNum(qm.clicks).toLocaleString()}</p>
+                          <p className="font-medium text-foreground">{formatTrafficNumber(qm.clicks)}</p>
                         </div>
+
                         <div>
                           <span className="text-muted-foreground">CTR</span>
-                          <p className="font-medium text-foreground">{(safeNum(qm.ctr) * 100).toFixed(1)}%</p>
+                          <p className="font-medium text-foreground">{formatTrafficPercent(qm.ctr)}</p>
                         </div>
+
                         <div>
                           <span className="text-muted-foreground">Avg Position</span>
-                          <p className="font-medium text-foreground">{safeNum(qm.avg_position)}</p>
+                          <p className="font-medium text-foreground">{formatTrafficPosition(qm.avg_position)}</p>
                         </div>
                       </div>
                     </CardContent>
