@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabaseClient";
 import { runFakeProcessor } from "@/lib/sccFakeProcessor";
+import SiteSummarySection from "@/components/seo/SiteSummarySection";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 
@@ -17,6 +18,7 @@ interface SnapshotRow {
   finished_at?: string | null;
   progress_step?: string | null;
   error_message?: string | null;
+  notes?: string | null;
 }
 
 interface SiteRow {
@@ -461,6 +463,9 @@ const SEOResults = () => {
           Queries
         </button>
       </div>
+
+      {/* Site Summary — rendered from snapshot.notes JSON */}
+      <SiteSummarySection notes={snapshot?.notes} />
 
       {viewTab === "pages" && (
         <section className="space-y-3">
