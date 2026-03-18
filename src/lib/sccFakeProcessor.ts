@@ -31,7 +31,6 @@ function normalizeSeedUrl(input: string): string {
     const url = new URL(withProtocol);
     url.hash = "";
 
-    // Remove trailing slash except for root
     if (url.pathname.length > 1 && url.pathname.endsWith("/")) {
       url.pathname = url.pathname.slice(0, -1);
     }
@@ -114,7 +113,6 @@ async function ensureCrawlJob(params: EnsureCrawlJobParams) {
     });
 
     await markSnapshotQueued(snapshotId);
-
     return existingJobId;
   }
 
@@ -135,11 +133,6 @@ async function ensureCrawlJob(params: EnsureCrawlJobParams) {
       status: "queued",
       max_pages: maxPages,
       max_depth: maxDepth,
-      worker_id: null,
-      heartbeat_at: null,
-      started_at: null,
-      completed_at: null,
-      error_message: null,
     })
     .select("id")
     .single();
@@ -153,10 +146,6 @@ async function ensureCrawlJob(params: EnsureCrawlJobParams) {
   return data.id as string;
 }
 
-/**
- * Main real SEO scan flow.
- * Creates a snapshot, then queues a crawl job for the worker.
- */
 export async function startQueuedSeoScan({
   siteId,
   seedUrl,
@@ -184,14 +173,6 @@ export async function startQueuedSeoScan({
   };
 }
 
-/**
- * Legacy compatibility export used by old UI code.
- *
- * IMPORTANT:
- * This no longer runs the fake client-side processor.
- * Instead, it queues a REAL crawl job against an existing snapshot
- * so older pages can still work while the frontend is being migrated.
- */
 export async function runFakeProcessor(
   snapshotId: string,
   siteId: string,
@@ -223,17 +204,10 @@ export async function runFakeProcessor(
   }
 }
 
-/**
- * Compatibility export matching the object-based signature.
- */
 export async function runSccFakeProcessor(params: StartQueuedSeoScanParams): Promise<SccQueuedScanResult> {
   return startQueuedSeoScan(params);
 }
 
-/**
- * Helper if parts of the app only need to queue a crawl job
- * against an already-created snapshot.
- */
 export async function queueCrawlJobForSnapshot(params: {
   siteId: string;
   snapshotId: string;
