@@ -5,9 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabaseClient";
-import { runFakeProcessor } from "@/lib/sccFakeProcessor";
+import { startQueuedSeoScan } from "@/lib/sccFakeProcessor";
 import SiteSummarySection from "@/components/seo/SiteSummarySection";
-import SiteHealthDashboard from "@/components/seo/SiteHealthDashboard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 
@@ -136,8 +135,8 @@ const SEOResults = () => {
   const pollRef = useRef<number | null>(null);
 
   const isProcessing = useMemo(() => {
-    const status = snapshot?.status || "";
-    return status === "queued" || status === "running";
+    const status = (snapshot?.status || "").toLowerCase();
+    return status === "queued" || status === "running" || status === "processing";
   }, [snapshot?.status]);
 
   useEffect(() => {
@@ -269,34 +268,21 @@ const SEOResults = () => {
     setError(null);
 
     try {
-      const { data: snapRow, error: snapErr } = await (supabase as any)
-        .from("scc_snapshots")
-        .insert({
-          site_id: site.id,
-          mode: "seo_intelligence",
-          status: "queued",
-          started_at: new Date().toISOString(),
-          progress_step: "queued",
-        })
-        .select("id")
-        .single();
+      const { snapshotId: newSnapshotId } = await startQueuedSeoScan({
+        siteId: site.id,
+        seedUrl: currentSiteUrl,
+        mode: "seo_intelligence",
+        maxPages: 8,
+        maxDepth: 1,
+      });
 
-      if (snapErr) throw new Error(snapErr.message);
+      setSearchParams({ snapshot: newSnapshotId });
+      await fetchResults(newSnapshotId, true);
 
-      const result = await runFakeProcessor(snapRow.id, site.id, currentSiteUrl);
-
-      if (!result.success) {
-        toast({
-          title: "Scan failed",
-          description: result.error || "Scan failed",
-          variant: "destructive",
-        });
-        setError(result.error || "Scan failed");
-        return;
-      }
-
-      setSearchParams({ snapshot: snapRow.id });
-      await fetchResults(snapRow.id, true);
+      toast({
+        title: "Scan started",
+        description: "Your new SEO scan has been queued successfully.",
+      });
     } catch (err: any) {
       toast({
         title: "Error",
@@ -465,10 +451,6 @@ const SEOResults = () => {
         </button>
       </div>
 
-      {/* Site Health Dashboard — computed from metrics + actions */}
-      <SiteHealthDashboard metrics={metrics} actions={actions} />
-
-      {/* Site Summary — rendered from snapshot.notes JSON */}
       <SiteSummarySection notes={snapshot?.notes} />
 
       {viewTab === "pages" && (
