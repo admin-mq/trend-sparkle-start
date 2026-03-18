@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabaseClient";
 import { runFakeProcessor } from "@/lib/sccFakeProcessor";
 import SiteSummarySection from "@/components/seo/SiteSummarySection";
+import SiteHealthDashboard from "@/components/seo/SiteHealthDashboard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 
@@ -463,6 +464,9 @@ const SEOResults = () => {
           Queries
         </button>
       </div>
+
+      {/* Site Health Dashboard — computed from metrics + actions */}
+      <SiteHealthDashboard metrics={metrics} actions={actions} />
 
       {/* Site Summary — rendered from snapshot.notes JSON */}
       <SiteSummarySection notes={snapshot?.notes} />
