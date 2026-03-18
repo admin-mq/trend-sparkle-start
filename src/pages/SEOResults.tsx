@@ -465,6 +465,9 @@ const SEOResults = () => {
         </button>
       </div>
 
+      {/* Site Health Dashboard — computed from metrics + actions */}
+      <SiteHealthDashboard metrics={metrics} actions={actions} />
+
       {/* Site Summary — rendered from snapshot.notes JSON */}
       <SiteSummarySection notes={snapshot?.notes} />
 
