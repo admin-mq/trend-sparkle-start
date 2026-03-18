@@ -55,7 +55,7 @@ const SEO = () => {
     const {
       data: { user },
       error: userError,
-    } = await supabase.auth.getUser();
+    } = await seoSupabase.auth.getUser();
 
     if (userError || !user) {
       setError("You're not logged in. Please log in again and retry.");
