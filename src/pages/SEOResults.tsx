@@ -18,6 +18,7 @@ interface SnapshotRow {
   finished_at?: string | null;
   progress_step?: string | null;
   error_message?: string | null;
+  notes?: string | null;
 }
 
 interface SiteRow {
