@@ -21,6 +21,7 @@ import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import Profile from "./pages/Profile";
 import Auth from "./pages/Auth";
+import Debug from "./pages/Debug";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,7 @@ const App = () => (
           <Routes>
             {/* Public auth route */}
             <Route path="/auth" element={<Auth />} />
+            <Route path="/debug" element={<Debug />} />
             
             {/* Redirect root to dashboard */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
