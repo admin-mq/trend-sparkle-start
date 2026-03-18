@@ -37,6 +37,7 @@ const App = () => (
           <Routes>
             {/* Public auth route */}
             <Route path="/auth" element={<Auth />} />
+            <Route path="/debug" element={<Debug />} />
             
             {/* Redirect root to dashboard */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
