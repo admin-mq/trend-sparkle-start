@@ -93,6 +93,8 @@ async function ensureCrawlJob(snapshotId: string, siteId: string, seedUrl: strin
       snapshot_id: snapshotId,
       seed_url: seedUrl,
       status: "queued",
+      max_pages: 8,
+      max_depth: 1,
     })
     .select("id,status,snapshot_id")
     .single();
