@@ -67,6 +67,14 @@ async function ensureCrawlJob(params: {
 
   const normalizedSeedUrl = normalizeSeedUrl(seedUrl);
 
+  console.log("QUEUEING SEO CRAWL JOB", {
+    siteId,
+    snapshotId,
+    seedUrl: normalizedSeedUrl,
+    maxPages,
+    maxDepth,
+  });
+
   const { data, error } = await supabase
     .from("scc_crawl_jobs")
     .insert({
