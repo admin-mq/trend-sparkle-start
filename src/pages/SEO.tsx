@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
-import { runFakeProcessor } from "@/lib/sccFakeProcessor";
+import { startQueuedSeoScan } from "@/lib/sccFakeProcessor";
 
 const ROTATING_MESSAGES = [
   "Discovering your website structure…",
@@ -38,7 +38,7 @@ const SEO = () => {
   const [scanError, setScanError] = useState<string | null>(null);
   const [rotatingIdx, setRotatingIdx] = useState(0);
 
-  // Rotating message timer
+  // Rotating message timer while the scan is being queued / redirected
   useEffect(() => {
     if (scanStatus !== "running") return;
     const interval = setInterval(() => {
@@ -47,32 +47,16 @@ const SEO = () => {
     return () => clearInterval(interval);
   }, [scanStatus]);
 
-  // Run fake processor when snapshot is created
-  useEffect(() => {
-    if (!activeSnapshotId || !activeSiteId || !activeSiteUrl || scanStatus !== "running") return;
-
-    let cancelled = false;
-    (async () => {
-      const result = await runFakeProcessor(activeSnapshotId, activeSiteId, activeSiteUrl);
-      if (cancelled) return;
-      if (result.success) {
-        setScanStatus("success");
-        navigate(`/seo/results?snapshot=${activeSnapshotId}`);
-      } else {
-        setScanStatus("failed");
-        setScanError(result.error || "Scan processing failed");
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [activeSnapshotId, activeSiteId, activeSiteUrl, scanStatus, navigate]);
-
   const handleRunScan = useCallback(async () => {
     setIsSubmitting(true);
     setError(null);
     setScanError(null);
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
     if (userError || !user) {
       setError("You're not logged in. Please log in again and retry.");
       setIsSubmitting(false);
@@ -100,41 +84,37 @@ const SEO = () => {
         .select("id")
         .single();
 
-      if (siteErr) {
-        setError(siteErr.message);
-        setIsSubmitting(false);
-        return;
-      }
-
-      const { data: snapRow, error: snapErr } = await (supabase as any)
-        .from("scc_snapshots")
-        .insert({
-          site_id: siteRow!.id,
-          mode: "crawl_only",
-          status: "running",
-          started_at: new Date().toISOString(),
-          progress_step: "discovering",
-        })
-        .select("id")
-        .single();
-
-      if (snapErr) {
-        setError(snapErr.message);
+      if (siteErr || !siteRow?.id) {
+        setError(siteErr?.message || "Failed to create or fetch site");
         setIsSubmitting(false);
         return;
       }
 
       setActiveSiteId(siteRow.id);
       setActiveSiteUrl(normalized);
-      setActiveSnapshotId(snapRow.id);
       setScanStatus("running");
+
+      const { snapshotId } = await startQueuedSeoScan({
+        siteId: siteRow.id,
+        seedUrl: normalized,
+        mode: "seo_intelligence",
+        maxPages: 8,
+        maxDepth: 1,
+      });
+
+      setActiveSnapshotId(snapshotId);
+      setScanStatus("success");
+
+      navigate(`/seo/results?snapshot=${snapshotId}`);
     } catch (err: any) {
       console.error("Scan error:", err);
-      setError(err.message || "An unexpected error occurred");
+      setScanStatus("failed");
+      setScanError(err?.message || "An unexpected error occurred while starting the scan");
+      setError(err?.message || "An unexpected error occurred while starting the scan");
     } finally {
       setIsSubmitting(false);
     }
-  }, [urlInput]);
+  }, [urlInput, navigate]);
 
   const handleRetry = () => {
     setScanStatus("idle");
@@ -156,10 +136,9 @@ const SEO = () => {
                 <Search className="w-7 h-7 text-primary" />
               </div>
               <h1 className="text-2xl font-bold text-foreground">Search Performance Command Center</h1>
-              <p className="text-muted-foreground text-sm">
-                Enter your website URL to run a full intelligence scan.
-              </p>
+              <p className="text-muted-foreground text-sm">Enter your website URL to run a full intelligence scan.</p>
             </div>
+
             <div className="space-y-3">
               <div className="relative">
                 <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -171,13 +150,18 @@ const SEO = () => {
                   onKeyDown={(e) => e.key === "Enter" && handleRunScan()}
                 />
               </div>
+
               <Button className="w-full" onClick={handleRunScan} disabled={isSubmitting || !urlInput.trim()}>
                 {isSubmitting ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Starting…</>
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Starting…
+                  </>
                 ) : (
                   "Run Intelligence Scan"
                 )}
               </Button>
+
               {error && (
                 <div className="flex items-center gap-2 text-destructive text-sm">
                   <AlertCircle className="w-4 h-4 shrink-0" />
@@ -206,12 +190,15 @@ const SEO = () => {
               style={{ borderTopColor: "hsl(var(--primary))", animationDuration: "2s" }}
             />
           </div>
+
           <div className="space-y-2">
             <h2 className="text-xl font-bold text-foreground">Running Your Intelligence Scan</h2>
             <p className="text-muted-foreground text-sm h-6 transition-opacity duration-500" key={rotatingIdx}>
               {ROTATING_MESSAGES[rotatingIdx]}
             </p>
+            {activeSiteUrl && <p className="text-xs text-muted-foreground/80 break-all">{activeSiteUrl}</p>}
           </div>
+
           <div className="flex items-center justify-center gap-6">
             {PROGRESS_STEPS.map((step, idx) => (
               <div key={step} className="flex flex-col items-center gap-1.5">
@@ -253,13 +240,18 @@ const SEO = () => {
     );
   }
 
-  // ── Success (should navigate away, but fallback) ──
+  // ── Success fallback ──
   return (
     <div className="h-full flex items-center justify-center p-6">
       <Card className="w-full max-w-md bg-card border-border">
         <CardContent className="p-8 text-center space-y-4">
-          <h2 className="text-xl font-bold text-foreground">Scan Complete</h2>
-          <Button variant="outline" onClick={() => navigate(`/seo/results?snapshot=${activeSnapshotId}`)}>
+          <h2 className="text-xl font-bold text-foreground">Scan Started</h2>
+          <p className="text-sm text-muted-foreground">Your scan has been queued successfully.</p>
+          <Button
+            variant="outline"
+            onClick={() => activeSnapshotId && navigate(`/seo/results?snapshot=${activeSnapshotId}`)}
+            disabled={!activeSnapshotId}
+          >
             View Results
           </Button>
         </CardContent>
