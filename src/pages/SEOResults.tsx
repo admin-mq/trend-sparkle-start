@@ -4,7 +4,7 @@ import { Search, ArrowLeft, AlertTriangle, CheckCircle2, Info, Loader2, External
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
+import { seoSupabase } from "@/lib/seoSupabaseClient";
 import { startQueuedSeoScan } from "@/lib/sccFakeProcessor";
 import SiteSummarySection from "@/components/seo/SiteSummarySection";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";

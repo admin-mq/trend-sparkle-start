@@ -78,7 +78,7 @@ const SEO = () => {
     }
 
     try {
-      const { data: siteRow, error: siteErr } = await (supabase as any)
+      const { data: siteRow, error: siteErr } = await (seoSupabase as any)
         .from("scc_sites")
         .upsert({ user_id: user.id, site_url: normalized }, { onConflict: "user_id,site_url" })
         .select("id")
