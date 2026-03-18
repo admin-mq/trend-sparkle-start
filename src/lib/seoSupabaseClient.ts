@@ -6,9 +6,10 @@ const SEO_SUPABASE_ANON_KEY =
 
 export const seoSupabase = createClient(SEO_SUPABASE_URL, SEO_SUPABASE_ANON_KEY, {
   auth: {
+    storageKey: "sb-njnnpdrevbkhbhzwccuz-auth-token-seo",
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
+    detectSessionInUrl: false,
     flowType: "pkce",
   },
 });
