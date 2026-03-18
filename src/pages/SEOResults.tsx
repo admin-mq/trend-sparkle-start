@@ -4,7 +4,7 @@ import { Search, ArrowLeft, AlertTriangle, CheckCircle2, Info, Loader2, External
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
+import { seoSupabase } from "@/lib/seoSupabaseClient";
 import { startQueuedSeoScan } from "@/lib/sccFakeProcessor";
 import SiteSummarySection from "@/components/seo/SiteSummarySection";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -184,7 +184,7 @@ const SEOResults = () => {
     setError(null);
 
     try {
-      const { data: snap, error: snapErr } = await (supabase as any)
+      const { data: snap, error: snapErr } = await (seoSupabase as any)
         .from("scc_snapshots")
         .select("*")
         .eq("id", snapId)
@@ -193,7 +193,7 @@ const SEOResults = () => {
       if (snapErr) throw new Error(snapErr.message);
       setSnapshot(snap as SnapshotRow);
 
-      const { data: siteData, error: siteErr } = await (supabase as any)
+      const { data: siteData, error: siteErr } = await (seoSupabase as any)
         .from("scc_sites")
         .select("*")
         .eq("id", snap.site_id)
@@ -202,7 +202,7 @@ const SEOResults = () => {
       if (siteErr) throw new Error(siteErr.message);
       setSite(siteData as SiteRow);
 
-      const { data: snapshotsData, error: snapshotsErr } = await (supabase as any)
+      const { data: snapshotsData, error: snapshotsErr } = await (seoSupabase as any)
         .from("scc_snapshots")
         .select("id, started_at, status")
         .eq("site_id", snap.site_id)
@@ -212,7 +212,7 @@ const SEOResults = () => {
       if (snapshotsErr) throw new Error(snapshotsErr.message);
       setPastSnapshots(snapshotsData || []);
 
-      const { data: metricsData, error: metricsErr } = await (supabase as any)
+      const { data: metricsData, error: metricsErr } = await (seoSupabase as any)
         .from("scc_page_snapshot_metrics")
         .select("*, page:scc_pages(url, page_type)")
         .eq("snapshot_id", snapId)
@@ -221,7 +221,7 @@ const SEOResults = () => {
       if (metricsErr) throw new Error(metricsErr.message);
       setMetrics(Array.isArray(metricsData) ? metricsData : []);
 
-      const { data: actionsData, error: actionsErr } = await (supabase as any)
+      const { data: actionsData, error: actionsErr } = await (seoSupabase as any)
         .from("scc_actions")
         .select("*")
         .eq("snapshot_id", snapId);
@@ -235,7 +235,7 @@ const SEOResults = () => {
       );
       setActions(sortedActions);
 
-      const { data: qmData, error: qmErr } = await (supabase as any)
+      const { data: qmData, error: qmErr } = await (seoSupabase as any)
         .from("scc_query_snapshot_metrics")
         .select("*, query:scc_queries(query_text, query_category, intent_type)")
         .eq("snapshot_id", snapId)
