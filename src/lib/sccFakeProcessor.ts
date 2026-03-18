@@ -35,7 +35,7 @@ function normalizeSeedUrl(input: string): string {
 }
 
 async function createSnapshot(siteId: string, mode = "seo_intelligence") {
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from("scc_snapshots")
     .insert({
       site_id: siteId,
@@ -75,7 +75,7 @@ async function ensureCrawlJob(params: {
     maxDepth,
   });
 
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from("scc_crawl_jobs")
     .insert({
       site_id: siteId,
@@ -126,8 +126,40 @@ export async function startQueuedSeoScan({
 }
 
 /**
- * Compatibility export in case the UI is still calling the old function name.
- * This now uses the real queued worker flow.
+ * Legacy compatibility export used by SEO.tsx and SEOResults.tsx.
+ * Accepts positional args (snapshotId, siteId, siteUrl) and runs the
+ * fake/mock processor flow client-side. Returns { success, error }.
+ */
+export async function runFakeProcessor(
+  _snapshotId: string,
+  _siteId: string,
+  _siteUrl: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // The snapshot is already created by the caller; just mark it success
+    // after a short simulated delay (the real worker handles actual crawling).
+    const steps = ["discovering", "analyzing", "scoring", "generating_actions", "finalizing"];
+    for (const step of steps) {
+      await (supabase as any)
+        .from("scc_snapshots")
+        .update({ progress_step: step })
+        .eq("id", _snapshotId);
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+
+    await (supabase as any)
+      .from("scc_snapshots")
+      .update({ status: "success", progress_step: "done", finished_at: new Date().toISOString() })
+      .eq("id", _snapshotId);
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Scan processing failed" };
+  }
+}
+
+/**
+ * Compatibility export matching the object-based signature.
  */
 export async function runSccFakeProcessor(params: {
   siteId: string;
