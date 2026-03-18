@@ -4,7 +4,7 @@ import { Search, Globe, Loader2, AlertCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { seoSupabase } from "@/lib/seoSupabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 import { startQueuedSeoScan } from "@/lib/sccFakeProcessor";
 
 const ROTATING_MESSAGES = [
@@ -55,7 +55,7 @@ const SEO = () => {
     const {
       data: { user },
       error: userError,
-    } = await seoSupabase.auth.getUser();
+    } = await supabase.auth.getUser();
 
     if (userError || !user) {
       setError("You're not logged in. Please log in again and retry.");
@@ -78,7 +78,7 @@ const SEO = () => {
     }
 
     try {
-      const { data: siteRow, error: siteErr } = await (seoSupabase as any)
+      const { data: siteRow, error: siteErr } = await (supabase as any)
         .from("scc_sites")
         .upsert({ user_id: user.id, site_url: normalized }, { onConflict: "user_id,site_url" })
         .select("id")
