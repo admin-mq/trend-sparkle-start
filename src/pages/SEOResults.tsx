@@ -464,6 +464,9 @@ const SEOResults = () => {
         </button>
       </div>
 
+      {/* Site Summary — rendered from snapshot.notes JSON */}
+      <SiteSummarySection notes={snapshot?.notes} />
+
       {viewTab === "pages" && (
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-foreground">Top Opportunities</h2>
