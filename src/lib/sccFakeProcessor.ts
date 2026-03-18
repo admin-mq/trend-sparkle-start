@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { seoSupabase as supabase } from "@/lib/seoSupabaseClient";
 
 export type SccQueuedScanResult = {
   snapshotId: string;
