@@ -367,7 +367,7 @@ const SEOResults = () => {
               <span>·</span>
               <span>Status: {snapshot.status || "unknown"}</span>
               <span>·</span>
-              <span>Finished: {safeDateText(snapshot.finished_at || snapshot.started_at)}</span>
+              <span>{snapshot.finished_at ? `Finished: ${safeDateText(snapshot.finished_at)}` : `Started: ${safeDateText(snapshot.started_at)}`}</span>
               {refreshing && (
                 <>
                   <span>·</span>
@@ -466,7 +466,13 @@ const SEOResults = () => {
           ) : (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {metrics.map((m) => {
-                const priority = (m.priority_bucket || "medium").toLowerCase();
+                const bucketRaw = (m.priority_bucket || "").toLowerCase();
+                const priorityColor =
+                  bucketRaw === "tier 1"
+                    ? "bg-destructive/15 text-destructive border-destructive/30"
+                    : bucketRaw === "tier 2"
+                      ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                      : "bg-primary/15 text-primary border-primary/30";
 
                 return (
                   <Card key={m.id} className="border-border">
@@ -476,16 +482,10 @@ const SEOResults = () => {
                           {m.page?.page_type || "page"}
                         </Badge>
                         <Badge
-                          className={
-                            priority === "high"
-                              ? "bg-destructive/15 text-destructive border-destructive/30"
-                              : priority === "medium"
-                                ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
-                                : "bg-primary/15 text-primary border-primary/30"
-                          }
+                          className={priorityColor}
                           variant="outline"
                         >
-                          {priority} priority
+                          {m.priority_bucket || "—"} priority
                         </Badge>
                       </div>
 
