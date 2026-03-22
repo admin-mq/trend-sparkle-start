@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Search, Globe, Loader2, AlertCircle, TrendingUp, TrendingDown,
-  Minus, ExternalLink, RefreshCw, Clock, CheckCircle2, XCircle, ChevronRight,
+  Minus, ExternalLink, RefreshCw, Clock, CheckCircle2, XCircle, ChevronRight, Link2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabaseClient";
 import { startQueuedSeoScan } from "@/lib/sccFakeProcessor";
+import { toast } from "@/hooks/use-toast";
+
+const GOOGLE_CLIENT_ID = "15288709945-jm6vm0v7bse012dfr19t7iltpkcr4mvg.apps.googleusercontent.com";
+const GSC_REDIRECT_URI = "https://njnnpdrevbkhbhzwccuz.supabase.co/functions/v1/gsc-oauth-callback";
+const GSC_SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -116,10 +121,14 @@ function SiteCard({
   site,
   onScanAgain,
   scanningId,
+  gscConnectedSites,
+  onConnectGsc,
 }: {
   site: SiteWithHistory;
   onScanAgain: (siteId: string, siteUrl: string) => void;
   scanningId: string | null;
+  gscConnectedSites: Set<string>;
+  onConnectGsc: (siteId: string, siteUrl: string) => void;
 }) {
   const navigate = useNavigate();
   const completed = site.snapshots.filter((s) => s.status === "completed");
@@ -176,7 +185,7 @@ function SiteCard({
         )}
 
         {/* Action row */}
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex items-center gap-2 pt-1 flex-wrap">
           {latestCompleted && (
             <Button
               size="sm"
@@ -200,6 +209,20 @@ function SiteCard({
               <><RefreshCw className="w-3 h-3" /> Scan Again</>
             )}
           </Button>
+          {gscConnectedSites.has(site.id) ? (
+            <Badge variant="outline" className="h-7 text-xs gap-1 bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
+              <CheckCircle2 className="w-3 h-3" /> GSC Connected
+            </Badge>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs gap-1 text-muted-foreground hover:text-primary"
+              onClick={() => onConnectGsc(site.id, site.site_url)}
+            >
+              <Link2 className="w-3 h-3" /> Connect GSC
+            </Button>
+          )}
           <a
             href={site.site_url}
             target="_blank"
@@ -221,11 +244,13 @@ type PageOption = typeof PAGE_OPTIONS[number];
 
 const SEO = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [urlInput, setUrlInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scanningId, setScanningId] = useState<string | null>(null);
   const [maxPages, setMaxPages] = useState<PageOption>(8);
+  const [gscConnectedSites, setGscConnectedSites] = useState<Set<string>>(new Set());
 
   const [sites, setSites] = useState<SiteWithHistory[]>([]);
   const [loadingSites, setLoadingSites] = useState(true);
@@ -270,6 +295,60 @@ const SEO = () => {
   }, []);
 
   useEffect(() => { void loadSites(); }, [loadSites]);
+
+  // ── GSC connections ───────────────────────────────────────────────────────
+
+  const loadGscConnections = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data } = await (supabase as any)
+      .from("scc_gsc_connections")
+      .select("site_id")
+      .eq("user_id", user.id);
+    if (data) {
+      setGscConnectedSites(new Set(data.map((r: { site_id: string }) => r.site_id)));
+    }
+  }, []);
+
+  useEffect(() => { void loadGscConnections(); }, [loadGscConnections]);
+
+  // Handle return from Google OAuth
+  useEffect(() => {
+    const gscConnected = searchParams.get("gsc_connected");
+    const gscError = searchParams.get("gsc_error");
+    if (gscConnected === "1") {
+      const property = searchParams.get("property") || "";
+      toast({ title: "Search Console connected!", description: property ? `Property: ${property}` : "GSC data will appear in your next scan." });
+      void loadGscConnections();
+      setSearchParams({}, { replace: true });
+    } else if (gscError) {
+      toast({ title: "GSC connection failed", description: gscError, variant: "destructive" });
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams, loadGscConnections]);
+
+  const handleConnectGsc = useCallback(async (siteId: string, siteUrl: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { toast({ title: "Not logged in", variant: "destructive" }); return; }
+
+    const state = btoa(JSON.stringify({
+      site_id: siteId,
+      user_id: user.id,
+      return_to: window.location.origin + "/seo",
+    }));
+
+    const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` + new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: GSC_REDIRECT_URI,
+      response_type: "code",
+      scope: GSC_SCOPE,
+      access_type: "offline",
+      prompt: "consent",
+      state,
+    }).toString();
+
+    window.location.href = oauthUrl;
+  }, []);
 
   // ── New scan ──────────────────────────────────────────────────────────────
 
@@ -406,6 +485,8 @@ const SEO = () => {
                 site={site}
                 onScanAgain={handleScanAgain}
                 scanningId={scanningId}
+                gscConnectedSites={gscConnectedSites}
+                onConnectGsc={handleConnectGsc}
               />
             ))}
           </div>
