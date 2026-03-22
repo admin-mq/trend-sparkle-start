@@ -101,7 +101,8 @@ function formatTrafficNumber(value?: number | null) {
 }
 
 function formatTrafficPercent(value?: number | null) {
-  return isMeaningfulTrafficValue(value) ? `${(safeNum(value) * 100).toFixed(1)}%` : "N/A";
+  // CTR is stored as a percentage already (e.g. 13.87 means 13.87%)
+  return isMeaningfulTrafficValue(value) ? `${safeNum(value).toFixed(1)}%` : "N/A";
 }
 
 function formatTrafficPosition(value?: number | null) {
@@ -530,14 +531,24 @@ const SEOResults = () => {
 
       {/* GSC connection strip */}
       {gscConnection ? (
-        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm flex-wrap">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span className="text-emerald-400 font-medium">Search Console connected</span>
-          <span className="text-muted-foreground truncate text-xs">{gscConnection.gsc_property}</span>
+          <span className="text-emerald-400 font-medium">Search Console</span>
+          <Select value={gscConnection.gsc_property} onValueChange={() => {}}>
+            <SelectTrigger className="h-6 w-auto text-xs border-emerald-500/30 bg-emerald-500/10 text-emerald-300 gap-1 px-2">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={gscConnection.gsc_property} className="text-xs">
+                {gscConnection.gsc_property}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <span className="text-emerald-500/70 text-xs">· Last 90 days</span>
           <div className="ml-auto flex items-center gap-2">
-            <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={handleSyncGsc} disabled={syncingGsc}>
+            <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-emerald-400 hover:text-emerald-300" onClick={handleSyncGsc} disabled={syncingGsc}>
               {syncingGsc ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-              Sync GSC Data
+              Sync
             </Button>
             <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground hover:text-destructive" onClick={handleDisconnectGsc}>
               <Unlink className="w-3 h-3" /> Disconnect
