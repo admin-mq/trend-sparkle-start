@@ -41,6 +41,17 @@ interface PageMetric {
   clicks?: number | null;
   avg_position?: number | null;
   ctr?: number | null;
+  performance_score_mobile?: number | null;
+  performance_score_desktop?: number | null;
+  lcp_ms?: number | null;
+  cls_score?: number | null;
+  inp_ms?: number | null;
+  crux_lcp_ms?: number | null;
+  crux_cls_score?: number | null;
+  crux_inp_ms?: number | null;
+  crux_lcp_rating?: string | null;
+  crux_cls_rating?: string | null;
+  crux_inp_rating?: string | null;
   page?: { url?: string | null; page_type?: string | null } | null;
 }
 
