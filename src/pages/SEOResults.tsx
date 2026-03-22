@@ -19,6 +19,16 @@ interface SnapshotRow {
   progress_step?: string | null;
   error_message?: string | null;
   notes?: string | null;
+  executive_summary?: string | null;
+  total_monthly_loss_min?: number | null;
+  total_monthly_loss_max?: number | null;
+  currency_symbol?: string | null;
+  market?: string | null;
+  industry?: string | null;
+  value_per_visitor?: number | null;
+  estimated_monthly_traffic?: number | null;
+  confidence_score?: number | null;
+  safe_browsing_threat?: boolean | null;
 }
 
 interface SiteRow {
