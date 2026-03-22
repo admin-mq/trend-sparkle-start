@@ -713,6 +713,8 @@ const SEOResults = () => {
         </Card>
       )}
 
+      <BusinessHealthBanner snapshot={snapshot} />
+
       <div className="flex items-center gap-1 bg-muted rounded-lg p-1 w-fit">
         <button
           onClick={() => setViewTab("pages")}
