@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Search, ArrowLeft, AlertTriangle, CheckCircle2, Info, Loader2, ExternalLink, History } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -132,8 +132,6 @@ const SEOResults = () => {
   const [queryMetrics, setQueryMetrics] = useState<QueryMetricRow[]>([]);
   const [viewTab, setViewTab] = useState<"pages" | "queries">("pages");
 
-  const pollRef = useRef<number | null>(null);
-
   const isProcessing = useMemo(() => {
     const status = (snapshot?.status || "").toLowerCase();
     return status === "queued" || status === "running" || status === "processing";
@@ -157,24 +155,14 @@ const SEOResults = () => {
   }, [snapshotId]);
 
   useEffect(() => {
-    if (!snapshotId) return;
+    if (!snapshotId || !isProcessing) return;
 
-    if (pollRef.current) {
-      window.clearTimeout(pollRef.current);
-      pollRef.current = null;
-    }
-
-    if (isProcessing) {
-      pollRef.current = window.setTimeout(() => {
-        void fetchResults(snapshotId, false, true);
-      }, POLL_MS);
-    }
+    const interval = window.setInterval(() => {
+      void fetchResults(snapshotId, false, true);
+    }, POLL_MS);
 
     return () => {
-      if (pollRef.current) {
-        window.clearTimeout(pollRef.current);
-        pollRef.current = null;
-      }
+      window.clearInterval(interval);
     };
   }, [snapshotId, isProcessing]);
 
