@@ -125,6 +125,31 @@ function siteDisplayUrl(site: SiteRow | null) {
   return site.site_url || site.url || site.domain || "";
 }
 
+function cwvColor(value: number, greenMax: number, amberMax: number, invert = false): string {
+  if (invert) {
+    // Higher is better (e.g. performance score)
+    if (value >= greenMax) return "text-emerald-400";
+    if (value >= amberMax) return "text-amber-400";
+    return "text-destructive";
+  }
+  // Lower is better (e.g. LCP, CLS, INP)
+  if (value < greenMax) return "text-emerald-400";
+  if (value < amberMax) return "text-amber-400";
+  return "text-destructive";
+}
+
+function cruxRatingColor(rating?: string | null): string {
+  const r = (rating || "").toUpperCase();
+  if (r === "FAST") return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
+  if (r === "AVERAGE") return "bg-amber-500/15 text-amber-400 border-amber-500/30";
+  if (r === "SLOW") return "bg-destructive/15 text-destructive border-destructive/30";
+  return "";
+}
+
+function hasValue(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v);
+}
+
 function ActionCard({ action }: { action: ActionRow }) {
   const steps: string[] = Array.isArray(action.steps) ? action.steps : [];
   const severity = (action.severity || "low").toLowerCase();
