@@ -75,6 +75,8 @@ interface ActionRow {
   severity?: string | null;
   page_id?: string | null;
   page?: { url?: string | null } | null;
+  money_loss_min?: number | null;
+  money_loss_max?: number | null;
 }
 
 interface QueryMetricRow {
