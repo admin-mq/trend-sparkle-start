@@ -120,6 +120,34 @@ function formatTrafficPosition(value?: number | null) {
   return isMeaningfulTrafficValue(value) ? `${safeNum(value)}` : "N/A";
 }
 
+function perfScoreColor(score?: number | null) {
+  if (score == null) return "text-foreground";
+  if (score >= 90) return "text-green-400";
+  if (score >= 50) return "text-amber-400";
+  return "text-red-400";
+}
+
+function lcpColor(ms?: number | null) {
+  if (ms == null) return "text-foreground";
+  if (ms < 2500) return "text-green-400";
+  if (ms < 4000) return "text-amber-400";
+  return "text-red-400";
+}
+
+function clsColor(score?: number | null) {
+  if (score == null) return "text-foreground";
+  if (score < 0.1) return "text-green-400";
+  if (score < 0.25) return "text-amber-400";
+  return "text-red-400";
+}
+
+function inpColor(ms?: number | null) {
+  if (ms == null) return "text-foreground";
+  if (ms < 200) return "text-green-400";
+  if (ms < 500) return "text-amber-400";
+  return "text-red-400";
+}
+
 function siteDisplayUrl(site: SiteRow | null) {
   if (!site) return "";
   return site.site_url || site.url || site.domain || "";
@@ -722,6 +750,41 @@ const SEOResults = () => {
                           <span className="text-muted-foreground">CTR</span>
                           <p className="font-medium text-foreground">{formatTrafficPercent(m.ctr)}</p>
                         </div>
+
+                        {m.performance_score_mobile != null && (
+                          <div>
+                            <span className="text-muted-foreground">Perf Mobile</span>
+                            <p className={`font-medium ${perfScoreColor(m.performance_score_mobile)}`}>{m.performance_score_mobile}</p>
+                          </div>
+                        )}
+
+                        {m.performance_score_desktop != null && (
+                          <div>
+                            <span className="text-muted-foreground">Perf Desktop</span>
+                            <p className={`font-medium ${perfScoreColor(m.performance_score_desktop)}`}>{m.performance_score_desktop}</p>
+                          </div>
+                        )}
+
+                        {m.lcp_ms != null && (
+                          <div>
+                            <span className="text-muted-foreground">LCP</span>
+                            <p className={`font-medium ${lcpColor(m.lcp_ms)}`}>{(Number(m.lcp_ms) / 1000).toFixed(1)}s</p>
+                          </div>
+                        )}
+
+                        {m.cls_score != null && (
+                          <div>
+                            <span className="text-muted-foreground">CLS</span>
+                            <p className={`font-medium ${clsColor(m.cls_score)}`}>{Number(m.cls_score).toFixed(3)}</p>
+                          </div>
+                        )}
+
+                        {m.inp_ms != null && (
+                          <div>
+                            <span className="text-muted-foreground">INP</span>
+                            <p className={`font-medium ${inpColor(m.inp_ms)}`}>{m.inp_ms}ms</p>
+                          </div>
+                        )}
                       </div>
 
                       {/* Core Web Vitals */}
