@@ -53,6 +53,7 @@ interface ActionRow {
   steps?: string[] | null;
   severity?: string | null;
   page_id?: string | null;
+  page?: { url?: string | null } | null;
 }
 
 interface QueryMetricRow {
@@ -110,6 +111,76 @@ function formatTrafficPosition(value?: number | null) {
 function siteDisplayUrl(site: SiteRow | null) {
   if (!site) return "";
   return site.site_url || site.url || site.domain || "";
+}
+
+function ActionCard({ action }: { action: ActionRow }) {
+  const steps: string[] = Array.isArray(action.steps) ? action.steps : [];
+  const severity = (action.severity || "low").toLowerCase();
+  return (
+    <Card className="border-border">
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="outline" className={`${severityColor[severity] || ""} text-xs capitalize gap-1`}>
+                {severity === "high" ? <AlertTriangle className="w-3 h-3" /> : severity === "medium" ? <Info className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
+                {severity}
+              </Badge>
+              {action.page?.url && (
+                <span className="text-xs text-muted-foreground font-mono truncate max-w-[200px]">
+                  {action.page.url}
+                </span>
+              )}
+            </div>
+            <h3 className="font-semibold text-foreground text-sm">{action.title || "Untitled action"}</h3>
+            {action.why_it_matters && (
+              <p className="text-sm text-muted-foreground">{action.why_it_matters}</p>
+            )}
+            {action.technical_reason && (
+              <p className="text-xs text-muted-foreground/70 font-mono">{action.technical_reason}</p>
+            )}
+          </div>
+          {action.expected_impact_range && (
+            <Badge variant="secondary" className="text-xs whitespace-nowrap shrink-0">
+              {action.expected_impact_range}
+            </Badge>
+          )}
+        </div>
+        {steps.length > 0 && (
+          <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground pl-1">
+            {steps.map((step, i) => <li key={i}>{step}</li>)}
+          </ol>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ActionSection({
+  title,
+  actions,
+  emptyText,
+  showPageUrl,
+}: {
+  title: string;
+  actions: ActionRow[];
+  emptyText: string;
+  showPageUrl: boolean;
+}) {
+  return (
+    <section className="space-y-3">
+      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      {actions.length === 0 ? (
+        <Card className="border-border">
+          <CardContent className="p-6 text-sm text-muted-foreground">{emptyText}</CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {actions.map((action) => <ActionCard key={action.id} action={action} />)}
+        </div>
+      )}
+    </section>
+  );
 }
 
 const SEOResults = () => {
@@ -206,7 +277,7 @@ const SEOResults = () => {
 
       const { data: actionsData, error: actionsErr } = await (supabase as any)
         .from("scc_actions")
-        .select("*")
+        .select("*, page:scc_pages(url)")
         .eq("snapshot_id", snapId);
 
       if (actionsErr) throw new Error(actionsErr.message);
@@ -277,12 +348,6 @@ const SEOResults = () => {
       setRescanning(false);
     }
   }
-
-  const SeverityIcon = ({ severity }: { severity: string }) => {
-    if (severity === "high") return <AlertTriangle className="w-4 h-4" />;
-    if (severity === "medium") return <Info className="w-4 h-4" />;
-    return <CheckCircle2 className="w-4 h-4" />;
-  };
 
   if (loading) {
     return (
@@ -616,67 +681,19 @@ const SEOResults = () => {
         </section>
       )}
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-foreground">Recommended Actions</h2>
+      <ActionSection
+        title="Site-Wide Recommendations"
+        actions={actions.filter((a) => !a.page_id)}
+        emptyText="No site-wide recommendations for this snapshot."
+        showPageUrl={false}
+      />
 
-        {actions.length === 0 ? (
-          <Card className="border-border">
-            <CardContent className="p-6 text-sm text-muted-foreground">
-              No recommended actions were generated for this snapshot yet.
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-3">
-            {actions.map((action) => {
-              const steps: string[] = Array.isArray(action.steps) ? action.steps : [];
-              const severity = (action.severity || "low").toLowerCase();
-
-              return (
-                <Card key={action.id} className="border-border">
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1 flex-1">
-                        <div className="flex items-center gap-2">
-                          <Badge
-                            variant="outline"
-                            className={`${severityColor[severity] || ""} text-xs capitalize gap-1`}
-                          >
-                            <SeverityIcon severity={severity} />
-                            {severity}
-                          </Badge>
-                          <h3 className="font-semibold text-foreground text-sm">{action.title || "Untitled action"}</h3>
-                        </div>
-
-                        {action.why_it_matters && (
-                          <p className="text-sm text-muted-foreground">{action.why_it_matters}</p>
-                        )}
-
-                        {action.technical_reason && (
-                          <p className="text-xs text-muted-foreground/70 font-mono">{action.technical_reason}</p>
-                        )}
-                      </div>
-
-                      {action.expected_impact_range && (
-                        <Badge variant="secondary" className="text-xs whitespace-nowrap shrink-0">
-                          {action.expected_impact_range}
-                        </Badge>
-                      )}
-                    </div>
-
-                    {steps.length > 0 && (
-                      <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground pl-1">
-                        {steps.map((step, i) => (
-                          <li key={i}>{step}</li>
-                        ))}
-                      </ol>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </section>
+      <ActionSection
+        title="Page-Level Actions"
+        actions={actions.filter((a) => !!a.page_id)}
+        emptyText="No page-level actions were generated for this snapshot yet."
+        showPageUrl={true}
+      />
     </div>
   );
 };
