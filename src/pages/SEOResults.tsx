@@ -189,6 +189,7 @@ const SEOResults = () => {
   const snapshotId = searchParams.get("snapshot");
 
   const [rescanning, setRescanning] = useState(false);
+  const [maxPages, setMaxPages] = useState<8 | 25 | 50>(8);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -326,7 +327,7 @@ const SEOResults = () => {
         siteId: site.id,
         seedUrl: currentSiteUrl,
         mode: "seo_intelligence",
-        maxPages: 8,
+        maxPages,
         maxDepth: 1,
       });
 
@@ -450,6 +451,22 @@ const SEOResults = () => {
               </SelectContent>
             </Select>
           )}
+
+          <div className="flex items-center gap-1 bg-secondary rounded-md p-0.5">
+            {([8, 25, 50] as const).map((n) => (
+              <button
+                key={n}
+                onClick={() => setMaxPages(n)}
+                className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                  maxPages === n
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {n}p
+              </button>
+            ))}
+          </div>
 
           <Button onClick={handleNewScan} variant="outline" size="sm" disabled={rescanning}>
             {rescanning ? (

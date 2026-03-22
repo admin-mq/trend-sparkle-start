@@ -216,12 +216,16 @@ function SiteCard({
 
 // ── Main page ────────────────────────────────────────────────────────────────
 
+const PAGE_OPTIONS = [8, 25, 50] as const;
+type PageOption = typeof PAGE_OPTIONS[number];
+
 const SEO = () => {
   const navigate = useNavigate();
   const [urlInput, setUrlInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scanningId, setScanningId] = useState<string | null>(null);
+  const [maxPages, setMaxPages] = useState<PageOption>(8);
 
   const [sites, setSites] = useState<SiteWithHistory[]>([]);
   const [loadingSites, setLoadingSites] = useState(true);
@@ -293,7 +297,7 @@ const SEO = () => {
         siteId: resolvedSiteId!,
         seedUrl: siteUrl,
         mode: "seo_intelligence",
-        maxPages: 8,
+        maxPages,
         maxDepth: 1,
       });
       navigate(`/seo/results?snapshot=${snapshotId}`);
@@ -335,7 +339,7 @@ const SEO = () => {
 
       {/* New scan input */}
       <Card className="border-border">
-        <CardContent className="p-4">
+        <CardContent className="p-4 space-y-3">
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -351,8 +355,28 @@ const SEO = () => {
               {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Scanning…</> : "Run Scan"}
             </Button>
           </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Pages to crawl:</span>
+            <div className="flex gap-1">
+              {PAGE_OPTIONS.map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setMaxPages(n)}
+                  className={`px-2.5 py-0.5 rounded text-xs font-medium transition-colors ${
+                    maxPages === n
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-secondary text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {error && (
-            <div className="flex items-center gap-2 text-destructive text-sm mt-2">
+            <div className="flex items-center gap-2 text-destructive text-sm">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
