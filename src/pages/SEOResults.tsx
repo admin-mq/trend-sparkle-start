@@ -723,6 +723,87 @@ const SEOResults = () => {
                           <p className="font-medium text-foreground">{formatTrafficPercent(m.ctr)}</p>
                         </div>
                       </div>
+
+                      {/* Core Web Vitals */}
+                      {(hasValue(m.performance_score_mobile) || hasValue(m.performance_score_desktop) || hasValue(m.lcp_ms) || hasValue(m.cls_score) || hasValue(m.inp_ms)) && (
+                        <div className="mt-3 pt-3 border-t border-border space-y-2">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Core Web Vitals</span>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            {hasValue(m.performance_score_mobile) && (
+                              <div>
+                                <span className="text-muted-foreground">Perf (Mobile)</span>
+                                <p className={`font-bold ${cwvColor(m.performance_score_mobile, 90, 50, true)}`}>{m.performance_score_mobile}</p>
+                              </div>
+                            )}
+                            {hasValue(m.performance_score_desktop) && (
+                              <div>
+                                <span className="text-muted-foreground">Perf (Desktop)</span>
+                                <p className={`font-bold ${cwvColor(m.performance_score_desktop, 90, 50, true)}`}>{m.performance_score_desktop}</p>
+                              </div>
+                            )}
+                            {hasValue(m.lcp_ms) && (
+                              <div>
+                                <span className="text-muted-foreground">LCP</span>
+                                <p className={`font-bold ${cwvColor(m.lcp_ms, 2500, 4000)}`}>{(m.lcp_ms / 1000).toFixed(1)}s</p>
+                              </div>
+                            )}
+                            {hasValue(m.cls_score) && (
+                              <div>
+                                <span className="text-muted-foreground">CLS</span>
+                                <p className={`font-bold ${cwvColor(m.cls_score, 0.1, 0.25)}`}>{m.cls_score.toFixed(3)}</p>
+                              </div>
+                            )}
+                            {hasValue(m.inp_ms) && (
+                              <div>
+                                <span className="text-muted-foreground">INP</span>
+                                <p className={`font-bold ${cwvColor(m.inp_ms, 200, 500)}`}>{m.inp_ms}ms</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Field Data (CrUX) */}
+                      {(hasValue(m.crux_lcp_ms) || hasValue(m.crux_cls_score) || hasValue(m.crux_inp_ms)) && (
+                        <div className="mt-3 pt-3 border-t border-border space-y-2">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Field Data</span>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            {hasValue(m.crux_lcp_ms) && (
+                              <div>
+                                <span className="text-muted-foreground">LCP</span>
+                                <p className={`font-bold ${cwvColor(m.crux_lcp_ms, 2500, 4000)}`}>{(m.crux_lcp_ms / 1000).toFixed(1)}s</p>
+                                {m.crux_lcp_rating && (
+                                  <Badge variant="outline" className={`text-[9px] mt-0.5 ${cruxRatingColor(m.crux_lcp_rating)}`}>
+                                    {m.crux_lcp_rating}
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                            {hasValue(m.crux_cls_score) && (
+                              <div>
+                                <span className="text-muted-foreground">CLS</span>
+                                <p className={`font-bold ${cwvColor(m.crux_cls_score, 0.1, 0.25)}`}>{m.crux_cls_score.toFixed(3)}</p>
+                                {m.crux_cls_rating && (
+                                  <Badge variant="outline" className={`text-[9px] mt-0.5 ${cruxRatingColor(m.crux_cls_rating)}`}>
+                                    {m.crux_cls_rating}
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                            {hasValue(m.crux_inp_ms) && (
+                              <div>
+                                <span className="text-muted-foreground">INP</span>
+                                <p className={`font-bold ${cwvColor(m.crux_inp_ms, 200, 500)}`}>{m.crux_inp_ms}ms</p>
+                                {m.crux_inp_rating && (
+                                  <Badge variant="outline" className={`text-[9px] mt-0.5 ${cruxRatingColor(m.crux_inp_rating)}`}>
+                                    {m.crux_inp_rating}
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 );
