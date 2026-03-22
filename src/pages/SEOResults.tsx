@@ -146,12 +146,7 @@ const SEOResults = () => {
 
     void fetchResults(snapshotId, true);
 
-    return () => {
-      if (pollRef.current) {
-        window.clearTimeout(pollRef.current);
-        pollRef.current = null;
-      }
-    };
+    return () => {};
   }, [snapshotId]);
 
   useEffect(() => {
