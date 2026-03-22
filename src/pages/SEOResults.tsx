@@ -190,9 +190,69 @@ function hasValue(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
 }
 
+function formatMoneyRange(min?: number | null, max?: number | null, currency = "$") {
+  const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(Math.round(n));
+  if (min && max && max > min) return `${currency}${fmt(min)} – ${currency}${fmt(max)}`;
+  if (min) return `${currency}${fmt(min)}`;
+  return null;
+}
+
+function BusinessHealthBanner({ snapshot }: { snapshot: SnapshotRow }) {
+  const loss = snapshot.total_monthly_loss_min;
+  if (!loss || loss <= 0) return null;
+
+  const currency = snapshot.currency_symbol || "$";
+  const lossText = formatMoneyRange(snapshot.total_monthly_loss_min, snapshot.total_monthly_loss_max, currency);
+
+  return (
+    <div className="space-y-0">
+      {snapshot.safe_browsing_threat && (
+        <div className="rounded-t-lg bg-destructive/20 border border-destructive/40 px-4 py-2.5 text-sm font-medium text-destructive flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          ⚠️ Google has flagged this site as unsafe — all traffic is being blocked
+        </div>
+      )}
+      <Card className={`border-l-4 border-l-destructive border-border bg-card ${snapshot.safe_browsing_threat ? "rounded-t-none" : ""}`}>
+        <CardContent className="p-5 space-y-3">
+          <div>
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Estimated Monthly Loss</span>
+            <p className="text-2xl font-black text-destructive tabular-nums mt-0.5">
+              {lossText} <span className="text-base font-medium text-muted-foreground">/ month</span>
+            </p>
+          </div>
+
+          {snapshot.executive_summary && (
+            <p className="text-sm text-muted-foreground leading-relaxed">{snapshot.executive_summary}</p>
+          )}
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {snapshot.market && (
+              <Badge variant="secondary" className="text-[10px]">Market: {snapshot.market}</Badge>
+            )}
+            {snapshot.industry && (
+              <Badge variant="secondary" className="text-[10px]">Industry: {snapshot.industry}</Badge>
+            )}
+            {snapshot.confidence_score != null && (
+              <Badge variant="secondary" className="text-[10px]">Confidence: {snapshot.confidence_score}%</Badge>
+            )}
+            {snapshot.estimated_monthly_traffic != null && (
+              <Badge variant="secondary" className="text-[10px]">Est. Traffic: {snapshot.estimated_monthly_traffic.toLocaleString()} visits/mo</Badge>
+            )}
+            {snapshot.value_per_visitor != null && (
+              <Badge variant="secondary" className="text-[10px]">Value/Visitor: {currency}{snapshot.value_per_visitor.toFixed(2)}</Badge>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function ActionCard({ action }: { action: ActionRow }) {
   const steps: string[] = Array.isArray(action.steps) ? action.steps : [];
   const severity = (action.severity || "low").toLowerCase();
+  const moneyText = formatMoneyRange(action.money_loss_min, action.money_loss_max);
+
   return (
     <Card className="border-border">
       <CardContent className="p-4 space-y-3">
@@ -203,6 +263,9 @@ function ActionCard({ action }: { action: ActionRow }) {
                 {severity === "high" ? <AlertTriangle className="w-3 h-3" /> : severity === "medium" ? <Info className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
                 {severity}
               </Badge>
+              {moneyText && (
+                <span className="text-xs font-medium text-amber-400">~{moneyText}/mo</span>
+              )}
               {action.page?.url && (
                 <span className="text-xs text-muted-foreground font-mono truncate max-w-[200px]">
                   {action.page.url}
