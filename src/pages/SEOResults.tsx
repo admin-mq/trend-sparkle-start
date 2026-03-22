@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Search, ArrowLeft, AlertTriangle, CheckCircle2, Info, Loader2, ExternalLink, History } from "lucide-react";
+import { Search, ArrowLeft, AlertTriangle, CheckCircle2, Info, Loader2, ExternalLink, History, Link2, RefreshCw, Unlink } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -192,6 +192,8 @@ const SEOResults = () => {
   const [maxPages, setMaxPages] = useState<8 | 25 | 50>(8);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [gscConnection, setGscConnection] = useState<{ id: string; gsc_property: string } | null>(null);
+  const [syncingGsc, setSyncingGsc] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotRow | null>(null);
@@ -257,6 +259,14 @@ const SEOResults = () => {
       if (siteErr) throw new Error(siteErr.message);
       setSite(siteData as SiteRow);
 
+      // Load GSC connection for this site
+      const { data: gscData } = await (supabase as any)
+        .from("scc_gsc_connections")
+        .select("id, gsc_property")
+        .eq("site_id", snap.site_id)
+        .maybeSingle();
+      setGscConnection(gscData || null);
+
       const { data: snapshotsData, error: snapshotsErr } = await (supabase as any)
         .from("scc_snapshots")
         .select("id, started_at, status")
@@ -304,6 +314,43 @@ const SEOResults = () => {
       setLoading(false);
       setRefreshing(false);
     }
+  }
+
+  async function handleSyncGsc() {
+    if (!site || !snapshotId || syncingGsc) return;
+    setSyncingGsc(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `https://njnnpdrevbkhbhzwccuz.supabase.co/functions/v1/gsc-fetch-data`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token || ""}`,
+          },
+          body: JSON.stringify({ site_id: site.id, snapshot_id: snapshotId }),
+        }
+      );
+      const result = await res.json();
+      if (result.ok) {
+        toast({ title: "GSC data synced!", description: `Updated ${result.updated} of ${result.pages} pages.` });
+        void fetchResults(snapshotId, false, true);
+      } else {
+        toast({ title: "GSC sync skipped", description: result.reason || "No data available.", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "GSC sync failed", description: err?.message, variant: "destructive" });
+    } finally {
+      setSyncingGsc(false);
+    }
+  }
+
+  async function handleDisconnectGsc() {
+    if (!gscConnection) return;
+    await (supabase as any).from("scc_gsc_connections").delete().eq("id", gscConnection.id);
+    setGscConnection(null);
+    toast({ title: "Search Console disconnected" });
   }
 
   async function handleNewScan() {
@@ -480,6 +527,29 @@ const SEOResults = () => {
           </Button>
         </div>
       </div>
+
+      {/* GSC connection strip */}
+      {gscConnection ? (
+        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="text-emerald-400 font-medium">Search Console connected</span>
+          <span className="text-muted-foreground truncate text-xs">{gscConnection.gsc_property}</span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={handleSyncGsc} disabled={syncingGsc}>
+              {syncingGsc ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              Sync GSC Data
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground hover:text-destructive" onClick={handleDisconnectGsc}>
+              <Unlink className="w-3 h-3" /> Disconnect
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-muted/50 border border-border text-sm">
+          <Link2 className="w-4 h-4 text-muted-foreground shrink-0" />
+          <span className="text-muted-foreground text-xs">Connect Google Search Console to see real impressions, clicks and position data.</span>
+        </div>
+      )}
 
       {isProcessing && (
         <Card className="border-primary/30 bg-primary/5">
