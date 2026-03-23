@@ -192,17 +192,19 @@ function hasValue(v: unknown): v is number {
 
 function formatMoneyRange(min?: number | null, max?: number | null, currency = "$") {
   const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(Math.round(n));
-  if (min && max && max > min) return `${currency}${fmt(min)} – ${currency}${fmt(max)}`;
-  if (min) return `${currency}${fmt(min)}`;
+  const minN = Number(min); const maxN = Number(max);
+  if (minN > 0 && maxN > minN) return `${currency}${fmt(minN)} – ${currency}${fmt(maxN)}`;
+  if (minN > 0) return `${currency}${fmt(minN)}`;
   return null;
 }
 
 function BusinessHealthBanner({ snapshot }: { snapshot: SnapshotRow }) {
   const loss = snapshot.total_monthly_loss_min;
-  if (!loss || loss <= 0) return null;
+  const lossNum = Number(loss);
+  if (!lossNum || lossNum <= 0) return null;
 
   const currency = snapshot.currency_symbol || "$";
-  const lossText = formatMoneyRange(snapshot.total_monthly_loss_min, snapshot.total_monthly_loss_max, currency);
+  const lossText = formatMoneyRange(Number(snapshot.total_monthly_loss_min), Number(snapshot.total_monthly_loss_max), currency);
 
   return (
     <div className="space-y-0">
