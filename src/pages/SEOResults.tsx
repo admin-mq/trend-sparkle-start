@@ -190,7 +190,8 @@ function hasValue(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
 }
 
-function formatMoneyRange(min?: number | null, max?: number | null, currency = "$") {
+function formatMoneyRange(min?: number | string | null, max?: number | string | null, currency = "$") {
+  const minN = Number(min); const maxN = Number(max);
   const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(Math.round(n));
   const minN = Number(min); const maxN = Number(max);
   if (minN > 0 && maxN > minN) return `${currency}${fmt(minN)} – ${currency}${fmt(maxN)}`;
@@ -237,11 +238,11 @@ function BusinessHealthBanner({ snapshot }: { snapshot: SnapshotRow }) {
             {snapshot.confidence_score != null && (
               <Badge variant="secondary" className="text-[10px]">Confidence: {snapshot.confidence_score}%</Badge>
             )}
-            {snapshot.estimated_monthly_traffic != null && (
-              <Badge variant="secondary" className="text-[10px]">Est. Traffic: {snapshot.estimated_monthly_traffic.toLocaleString()} visits/mo</Badge>
+            {snapshot.estimated_monthly_traffic != null && Number(snapshot.estimated_monthly_traffic) > 0 && (
+              <Badge variant="secondary" className="text-[10px]">Est. Traffic: {Number(snapshot.estimated_monthly_traffic).toLocaleString()} visits/mo</Badge>
             )}
-            {snapshot.value_per_visitor != null && (
-              <Badge variant="secondary" className="text-[10px]">Value/Visitor: {currency}{snapshot.value_per_visitor.toFixed(2)}</Badge>
+            {snapshot.value_per_visitor != null && Number(snapshot.value_per_visitor) > 0 && (
+              <Badge variant="secondary" className="text-[10px]">Value/Visitor: {currency}{Number(snapshot.value_per_visitor).toFixed(2)}</Badge>
             )}
           </div>
         </CardContent>
