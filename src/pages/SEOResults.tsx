@@ -191,7 +191,6 @@ function hasValue(v: unknown): v is number {
 }
 
 function formatMoneyRange(min?: number | string | null, max?: number | string | null, currency = "$") {
-  const minN = Number(min); const maxN = Number(max);
   const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(Math.round(n));
   const minN = Number(min); const maxN = Number(max);
   if (minN > 0 && maxN > minN) return `${currency}${fmt(minN)} – ${currency}${fmt(maxN)}`;
