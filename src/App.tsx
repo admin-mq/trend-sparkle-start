@@ -22,6 +22,7 @@ import Admin from "./pages/Admin";
 import Profile from "./pages/Profile";
 import Auth from "./pages/Auth";
 import Debug from "./pages/Debug";
+import FreeScan from "./pages/FreeScan";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
