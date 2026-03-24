@@ -715,7 +715,6 @@ const SEOResults = () => {
         </Card>
       )}
 
-      {(() => { console.log("snapshot money data:", snapshot.total_monthly_loss_min, snapshot.total_monthly_loss_max, snapshot.currency_symbol); return null; })()}
       <BusinessHealthBanner snapshot={snapshot} />
 
       <div className="flex items-center gap-1 bg-muted rounded-lg p-1 w-fit">
