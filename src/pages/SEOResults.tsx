@@ -199,22 +199,34 @@ function formatMoneyRange(min?: number | string | null, max?: number | string | 
 }
 
 function BusinessHealthBanner({ snapshot }: { snapshot: SnapshotRow }) {
-  const loss = snapshot.total_monthly_loss_min;
-  const lossNum = Number(loss);
-  if (!lossNum || lossNum <= 0) return null;
+  // Read money data from notes.money JSON (reliable) with fallback to dedicated columns
+  const notesObj = (() => { try { return JSON.parse(snapshot.notes || "{}"); } catch { return {}; } })();
+  const m = notesObj.money || {};
 
-  const currency = snapshot.currency_symbol || "$";
-  const lossText = formatMoneyRange(Number(snapshot.total_monthly_loss_min), Number(snapshot.total_monthly_loss_max), currency);
+  const lossMin = Number(m.total_monthly_loss_min ?? snapshot.total_monthly_loss_min ?? 0);
+  const lossMax = Number(m.total_monthly_loss_max ?? snapshot.total_monthly_loss_max ?? 0);
+  const currency = m.currency_symbol || snapshot.currency_symbol || "$";
+  const market = m.market || snapshot.market;
+  const industry = m.industry || snapshot.industry;
+  const confidence = m.confidence_score ?? snapshot.confidence_score;
+  const traffic = Number(m.estimated_monthly_traffic ?? snapshot.estimated_monthly_traffic ?? 0);
+  const vpv = Number(m.value_per_visitor ?? snapshot.value_per_visitor ?? 0);
+  const summary = m.executive_summary || snapshot.executive_summary;
+  const threat = m.safe_browsing_threat ?? snapshot.safe_browsing_threat;
+
+  if (!lossMin || lossMin <= 0) return null;
+
+  const lossText = formatMoneyRange(lossMin, lossMax, currency);
 
   return (
     <div className="space-y-0">
-      {snapshot.safe_browsing_threat && (
+      {threat && (
         <div className="rounded-t-lg bg-destructive/20 border border-destructive/40 px-4 py-2.5 text-sm font-medium text-destructive flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           ⚠️ Google has flagged this site as unsafe — all traffic is being blocked
         </div>
       )}
-      <Card className={`border-l-4 border-l-destructive border-border bg-card ${snapshot.safe_browsing_threat ? "rounded-t-none" : ""}`}>
+      <Card className={`border-l-4 border-l-destructive border-border bg-card ${threat ? "rounded-t-none" : ""}`}>
         <CardContent className="p-5 space-y-3">
           <div>
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Estimated Monthly Loss</span>
@@ -223,26 +235,16 @@ function BusinessHealthBanner({ snapshot }: { snapshot: SnapshotRow }) {
             </p>
           </div>
 
-          {snapshot.executive_summary && (
-            <p className="text-sm text-muted-foreground leading-relaxed">{snapshot.executive_summary}</p>
+          {summary && (
+            <p className="text-sm text-muted-foreground leading-relaxed">{summary}</p>
           )}
 
           <div className="flex items-center gap-2 flex-wrap">
-            {snapshot.market && (
-              <Badge variant="secondary" className="text-[10px]">Market: {snapshot.market}</Badge>
-            )}
-            {snapshot.industry && (
-              <Badge variant="secondary" className="text-[10px]">Industry: {snapshot.industry}</Badge>
-            )}
-            {snapshot.confidence_score != null && (
-              <Badge variant="secondary" className="text-[10px]">Confidence: {snapshot.confidence_score}%</Badge>
-            )}
-            {snapshot.estimated_monthly_traffic != null && Number(snapshot.estimated_monthly_traffic) > 0 && (
-              <Badge variant="secondary" className="text-[10px]">Est. Traffic: {Number(snapshot.estimated_monthly_traffic).toLocaleString()} visits/mo</Badge>
-            )}
-            {snapshot.value_per_visitor != null && Number(snapshot.value_per_visitor) > 0 && (
-              <Badge variant="secondary" className="text-[10px]">Value/Visitor: {currency}{Number(snapshot.value_per_visitor).toFixed(2)}</Badge>
-            )}
+            {market && <Badge variant="secondary" className="text-[10px]">Market: {market}</Badge>}
+            {industry && <Badge variant="secondary" className="text-[10px]">Industry: {industry}</Badge>}
+            {confidence != null && <Badge variant="secondary" className="text-[10px]">Confidence: {confidence}%</Badge>}
+            {traffic > 0 && <Badge variant="secondary" className="text-[10px]">Est. Traffic: {traffic.toLocaleString()} visits/mo</Badge>}
+            {vpv > 0 && <Badge variant="secondary" className="text-[10px]">Value/Visitor: {currency}{vpv.toFixed(2)}</Badge>}
           </div>
         </CardContent>
       </Card>
