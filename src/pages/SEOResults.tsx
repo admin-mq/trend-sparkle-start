@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Search, ArrowLeft, AlertTriangle, CheckCircle2, Info, Loader2, ExternalLink, History, Link2, RefreshCw, Unlink } from "lucide-react";
+import { Search, ArrowLeft, AlertTriangle, CheckCircle2, Info, Loader2, ExternalLink, History, Link2, RefreshCw, Unlink, Users, Globe, MapPin } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabaseClient";
 import { startQueuedSeoScan } from "@/lib/sccFakeProcessor";
-import SiteSummarySection from "@/components/seo/SiteSummarySection";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 
@@ -124,7 +123,6 @@ function formatTrafficNumber(value?: number | null) {
 }
 
 function formatTrafficPercent(value?: number | null) {
-  // CTR is stored as a percentage already (e.g. 13.87 means 13.87%)
   return isMeaningfulTrafficValue(value) ? `${safeNum(value).toFixed(1)}%` : "N/A";
 }
 
@@ -132,62 +130,9 @@ function formatTrafficPosition(value?: number | null) {
   return isMeaningfulTrafficValue(value) ? `${safeNum(value)}` : "N/A";
 }
 
-function perfScoreColor(score?: number | null) {
-  if (score == null) return "text-foreground";
-  if (score >= 90) return "text-green-400";
-  if (score >= 50) return "text-amber-400";
-  return "text-red-400";
-}
-
-function lcpColor(ms?: number | null) {
-  if (ms == null) return "text-foreground";
-  if (ms < 2500) return "text-green-400";
-  if (ms < 4000) return "text-amber-400";
-  return "text-red-400";
-}
-
-function clsColor(score?: number | null) {
-  if (score == null) return "text-foreground";
-  if (score < 0.1) return "text-green-400";
-  if (score < 0.25) return "text-amber-400";
-  return "text-red-400";
-}
-
-function inpColor(ms?: number | null) {
-  if (ms == null) return "text-foreground";
-  if (ms < 200) return "text-green-400";
-  if (ms < 500) return "text-amber-400";
-  return "text-red-400";
-}
-
 function siteDisplayUrl(site: SiteRow | null) {
   if (!site) return "";
   return site.site_url || site.url || site.domain || "";
-}
-
-function cwvColor(value: number, greenMax: number, amberMax: number, invert = false): string {
-  if (invert) {
-    // Higher is better (e.g. performance score)
-    if (value >= greenMax) return "text-emerald-400";
-    if (value >= amberMax) return "text-amber-400";
-    return "text-destructive";
-  }
-  // Lower is better (e.g. LCP, CLS, INP)
-  if (value < greenMax) return "text-emerald-400";
-  if (value < amberMax) return "text-amber-400";
-  return "text-destructive";
-}
-
-function cruxRatingColor(rating?: string | null): string {
-  const r = (rating || "").toUpperCase();
-  if (r === "FAST") return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
-  if (r === "AVERAGE") return "bg-amber-500/15 text-amber-400 border-amber-500/30";
-  if (r === "SLOW") return "bg-destructive/15 text-destructive border-destructive/30";
-  return "";
-}
-
-function hasValue(v: unknown): v is number {
-  return typeof v === "number" && Number.isFinite(v);
 }
 
 function formatMoneyRange(min?: number | string | null, max?: number | string | null, currency = "$") {
@@ -198,53 +143,115 @@ function formatMoneyRange(min?: number | string | null, max?: number | string | 
   return null;
 }
 
-function BusinessHealthBanner({ snapshot }: { snapshot: SnapshotRow }) {
-  // Read money data from notes.money JSON (reliable) with fallback to dedicated columns
+function marketFlag(market?: string | null): string {
+  if (!market) return "🌍";
+  const m = market.toUpperCase();
+  if (m === "UK" || m === "GB") return "🇬🇧";
+  if (m === "US") return "🇺🇸";
+  if (m === "CA") return "🇨🇦";
+  if (m === "AU") return "🇦🇺";
+  if (m === "DE") return "🇩🇪";
+  if (m === "FR") return "🇫🇷";
+  return "🌍";
+}
+
+interface MoneyData {
+  total_monthly_loss_min?: number;
+  total_monthly_loss_max?: number;
+  currency_symbol?: string;
+  market?: string;
+  industry?: string;
+  confidence_score?: number;
+  estimated_monthly_traffic?: number;
+  value_per_visitor?: number;
+  executive_summary?: string;
+  safe_browsing_threat?: boolean;
+}
+
+function extractMoney(snapshot: SnapshotRow): MoneyData {
   const notesObj = (() => { try { return JSON.parse(snapshot.notes || "{}"); } catch { return {}; } })();
   const m = notesObj.money || {};
+  return {
+    total_monthly_loss_min: Number(m.total_monthly_loss_min ?? snapshot.total_monthly_loss_min ?? 0),
+    total_monthly_loss_max: Number(m.total_monthly_loss_max ?? snapshot.total_monthly_loss_max ?? 0),
+    currency_symbol: m.currency_symbol || snapshot.currency_symbol || "$",
+    market: m.market || snapshot.market,
+    industry: m.industry || snapshot.industry,
+    confidence_score: m.confidence_score ?? snapshot.confidence_score,
+    estimated_monthly_traffic: Number(m.estimated_monthly_traffic ?? snapshot.estimated_monthly_traffic ?? 0),
+    value_per_visitor: Number(m.value_per_visitor ?? snapshot.value_per_visitor ?? 0),
+    executive_summary: m.executive_summary || snapshot.executive_summary,
+    safe_browsing_threat: m.safe_browsing_threat ?? snapshot.safe_browsing_threat,
+  };
+}
 
-  const lossMin = Number(m.total_monthly_loss_min ?? snapshot.total_monthly_loss_min ?? 0);
-  const lossMax = Number(m.total_monthly_loss_max ?? snapshot.total_monthly_loss_max ?? 0);
-  const currency = m.currency_symbol || snapshot.currency_symbol || "$";
-  const market = m.market || snapshot.market;
-  const industry = m.industry || snapshot.industry;
-  const confidence = m.confidence_score ?? snapshot.confidence_score;
-  const traffic = Number(m.estimated_monthly_traffic ?? snapshot.estimated_monthly_traffic ?? 0);
-  const vpv = Number(m.value_per_visitor ?? snapshot.value_per_visitor ?? 0);
-  const summary = m.executive_summary || snapshot.executive_summary;
-  const threat = m.safe_browsing_threat ?? snapshot.safe_browsing_threat;
+function HeroMoneyBanner({ snapshot }: { snapshot: SnapshotRow }) {
+  const money = extractMoney(snapshot);
+  const lossMin = money.total_monthly_loss_min || 0;
+  if (lossMin <= 0) return null;
 
-  if (!lossMin || lossMin <= 0) return null;
-
-  const lossText = formatMoneyRange(lossMin, lossMax, currency);
+  const currency = money.currency_symbol || "$";
+  const lossText = formatMoneyRange(lossMin, money.total_monthly_loss_max, currency);
 
   return (
     <div className="space-y-0">
-      {threat && (
-        <div className="rounded-t-lg bg-destructive/20 border border-destructive/40 px-4 py-2.5 text-sm font-medium text-destructive flex items-center gap-2">
+      {money.safe_browsing_threat && (
+        <div className="rounded-t-xl bg-destructive/20 border border-destructive/40 px-5 py-3 text-sm font-medium text-destructive flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           ⚠️ Google has flagged this site as unsafe — all traffic is being blocked
         </div>
       )}
-      <Card className={`border-l-4 border-l-destructive border-border bg-card ${threat ? "rounded-t-none" : ""}`}>
-        <CardContent className="p-5 space-y-3">
+      <Card className={`border-border bg-card ${money.safe_browsing_threat ? "rounded-t-none" : ""}`}>
+        <CardContent className="p-6 md:p-8 space-y-4">
+          <p className="text-sm text-muted-foreground font-medium">Your website is losing an estimated</p>
+          <p className="text-4xl md:text-5xl font-black text-destructive tabular-nums tracking-tight">
+            {lossText} <span className="text-lg md:text-xl font-semibold text-muted-foreground">/ month</span>
+          </p>
+          {money.executive_summary && (
+            <p className="text-sm text-muted-foreground leading-relaxed max-w-2xl">{money.executive_summary}</p>
+          )}
+          {money.confidence_score != null && (
+            <span className="text-xs text-muted-foreground/60">Confidence: {money.confidence_score}%</span>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function QuickStatsRow({ snapshot }: { snapshot: SnapshotRow }) {
+  const money = extractMoney(snapshot);
+  const hasAny = money.estimated_monthly_traffic || money.industry || money.market;
+  if (!hasAny) return null;
+
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      <Card className="border-border">
+        <CardContent className="p-4 flex items-center gap-3">
+          <Users className="w-5 h-5 text-primary shrink-0" />
           <div>
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Estimated Monthly Loss</span>
-            <p className="text-2xl font-black text-destructive tabular-nums mt-0.5">
-              {lossText} <span className="text-base font-medium text-muted-foreground">/ month</span>
+            <p className="text-xs text-muted-foreground">Monthly Visitors</p>
+            <p className="text-lg font-bold text-foreground">
+              ~{money.estimated_monthly_traffic ? money.estimated_monthly_traffic.toLocaleString() : "0"}/mo
             </p>
           </div>
-
-          {summary && (
-            <p className="text-sm text-muted-foreground leading-relaxed">{summary}</p>
-          )}
-
-          <div className="flex items-center gap-2 flex-wrap">
-            {market && <Badge variant="secondary" className="text-[10px]">Market: {market}</Badge>}
-            {industry && <Badge variant="secondary" className="text-[10px]">Industry: {industry}</Badge>}
-            {confidence != null && <Badge variant="secondary" className="text-[10px]">Confidence: {confidence}%</Badge>}
-            {traffic > 0 && <Badge variant="secondary" className="text-[10px]">Est. Traffic: {traffic.toLocaleString()} visits/mo</Badge>}
-            {vpv > 0 && <Badge variant="secondary" className="text-[10px]">Value/Visitor: {currency}{vpv.toFixed(2)}</Badge>}
+        </CardContent>
+      </Card>
+      <Card className="border-border">
+        <CardContent className="p-4 flex items-center gap-3">
+          <Globe className="w-5 h-5 text-primary shrink-0" />
+          <div>
+            <p className="text-xs text-muted-foreground">Industry</p>
+            <p className="text-lg font-bold text-foreground capitalize">{money.industry || "—"}</p>
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="border-border">
+        <CardContent className="p-4 flex items-center gap-3">
+          <MapPin className="w-5 h-5 text-primary shrink-0" />
+          <div>
+            <p className="text-xs text-muted-foreground">Market</p>
+            <p className="text-lg font-bold text-foreground">{marketFlag(money.market)} {money.market?.toUpperCase() || "—"}</p>
           </div>
         </CardContent>
       </Card>
@@ -252,7 +259,7 @@ function BusinessHealthBanner({ snapshot }: { snapshot: SnapshotRow }) {
   );
 }
 
-function ActionCard({ action }: { action: ActionRow }) {
+function SimpleActionCard({ action }: { action: ActionRow }) {
   const steps: string[] = Array.isArray(action.steps) ? action.steps : [];
   const severity = (action.severity || "low").toLowerCase();
   const moneyText = formatMoneyRange(action.money_loss_min, action.money_loss_max);
@@ -261,34 +268,24 @@ function ActionCard({ action }: { action: ActionRow }) {
     <Card className="border-border">
       <CardContent className="p-4 space-y-3">
         <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1 flex-1">
+          <div className="space-y-1.5 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <Badge variant="outline" className={`${severityColor[severity] || ""} text-xs capitalize gap-1`}>
                 {severity === "high" ? <AlertTriangle className="w-3 h-3" /> : severity === "medium" ? <Info className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
                 {severity}
               </Badge>
               {moneyText && (
-                <span className="text-xs font-medium text-amber-400">~{moneyText}/mo</span>
-              )}
-              {action.page?.url && (
-                <span className="text-xs text-muted-foreground font-mono truncate max-w-[200px]">
-                  {action.page.url}
-                </span>
+                <span className="text-xs font-medium text-amber-400">~{moneyText}/mo lost</span>
               )}
             </div>
             <h3 className="font-semibold text-foreground text-sm">{action.title || "Untitled action"}</h3>
             {action.why_it_matters && (
-              <p className="text-sm text-muted-foreground">{action.why_it_matters}</p>
+              <p className="text-sm text-muted-foreground leading-relaxed">{action.why_it_matters}</p>
             )}
-            {action.technical_reason && (
-              <p className="text-xs text-muted-foreground/70 font-mono">{action.technical_reason}</p>
+            {action.page?.url && (
+              <p className="text-xs text-muted-foreground/70 font-mono truncate">📄 {action.page.url}</p>
             )}
           </div>
-          {action.expected_impact_range && (
-            <Badge variant="secondary" className="text-xs whitespace-nowrap shrink-0">
-              {action.expected_impact_range}
-            </Badge>
-          )}
         </div>
         {steps.length > 0 && (
           <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground pl-1">
@@ -300,16 +297,14 @@ function ActionCard({ action }: { action: ActionRow }) {
   );
 }
 
-function ActionSection({
+function SimpleActionSection({
   title,
   actions,
   emptyText,
-  showPageUrl,
 }: {
   title: string;
   actions: ActionRow[];
   emptyText: string;
-  showPageUrl: boolean;
 }) {
   return (
     <section className="space-y-3">
@@ -320,10 +315,28 @@ function ActionSection({
         </Card>
       ) : (
         <div className="space-y-3">
-          {actions.map((action) => <ActionCard key={action.id} action={action} />)}
+          {actions.map((action) => <SimpleActionCard key={action.id} action={action} />)}
         </div>
       )}
     </section>
+  );
+}
+
+function GscSuggestBanner({ metrics }: { metrics: PageMetric[] }) {
+  // Check if any metric has real GSC data
+  const hasGscData = metrics.some(m =>
+    isMeaningfulTrafficValue(m.impressions) || isMeaningfulTrafficValue(m.clicks)
+  );
+  if (hasGscData) return null;
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-accent/10 border border-accent/20 text-sm">
+      <Search className="w-4 h-4 text-accent shrink-0" />
+      <div>
+        <span className="text-accent font-medium">Get better insights</span>
+        <span className="text-muted-foreground ml-1">— Connect Google Search Console to see real search impressions, clicks and position data for your pages.</span>
+      </div>
+    </div>
   );
 }
 
@@ -361,22 +374,16 @@ const SEOResults = () => {
       setLoading(false);
       return;
     }
-
     void fetchResults(snapshotId, true);
-
     return () => {};
   }, [snapshotId]);
 
   useEffect(() => {
     if (!snapshotId || !isProcessing) return;
-
     const interval = window.setInterval(() => {
       void fetchResults(snapshotId, false, true);
     }, POLL_MS);
-
-    return () => {
-      window.clearInterval(interval);
-    };
+    return () => { window.clearInterval(interval); };
   }, [snapshotId, isProcessing]);
 
   async function fetchResults(snapId: string, showInitialLoader = false, backgroundRefresh = false) {
@@ -403,7 +410,6 @@ const SEOResults = () => {
       if (siteErr) throw new Error(siteErr.message);
       setSite(siteData as SiteRow);
 
-      // Load GSC connection for this site
       const { data: gscData } = await (supabase as any)
         .from("scc_gsc_connections")
         .select("id, gsc_property")
@@ -502,11 +508,7 @@ const SEOResults = () => {
 
     const currentSiteUrl = siteDisplayUrl(site);
     if (!currentSiteUrl) {
-      toast({
-        title: "Missing site URL",
-        description: "Could not determine the website URL for this scan.",
-        variant: "destructive",
-      });
+      toast({ title: "Missing site URL", description: "Could not determine the website URL for this scan.", variant: "destructive" });
       return;
     }
 
@@ -524,17 +526,9 @@ const SEOResults = () => {
 
       setSearchParams({ snapshot: newSnapshotId });
       await fetchResults(newSnapshotId, true);
-
-      toast({
-        title: "Scan started",
-        description: "Your new SEO scan has been queued successfully.",
-      });
+      toast({ title: "Scan started", description: "Your new SEO scan has been queued successfully." });
     } catch (err: any) {
-      toast({
-        title: "Error",
-        description: err?.message || "Failed to start scan",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: err?.message || "Failed to start scan", variant: "destructive" });
       setError(err?.message || "Failed to start scan");
     } finally {
       setRescanning(false);
@@ -557,9 +551,7 @@ const SEOResults = () => {
             <AlertTriangle className="w-10 h-10 text-destructive mx-auto" />
             <h2 className="text-xl font-bold text-foreground">Error Loading Results</h2>
             <p className="text-muted-foreground text-sm">{error}</p>
-            <Button variant="outline" onClick={() => navigate("/seo")}>
-              Back to SEO
-            </Button>
+            <Button variant="outline" onClick={() => navigate("/seo")}>Back to SEO</Button>
           </CardContent>
         </Card>
       </div>
@@ -574,9 +566,7 @@ const SEOResults = () => {
             <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto" />
             <h2 className="text-xl font-bold text-foreground">Snapshot not found</h2>
             <p className="text-muted-foreground text-sm">We could not find results for this scan.</p>
-            <Button variant="outline" onClick={() => navigate("/seo")}>
-              Back to SEO
-            </Button>
+            <Button variant="outline" onClick={() => navigate("/seo")}>Back to SEO</Button>
           </CardContent>
         </Card>
       </div>
@@ -585,6 +575,7 @@ const SEOResults = () => {
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-5xl mx-auto">
+      {/* Scan Header — unchanged */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <button
@@ -623,12 +614,7 @@ const SEOResults = () => {
 
         <div className="flex items-center gap-2">
           {pastSnapshots.length > 1 && (
-            <Select
-              value={snapshotId || ""}
-              onValueChange={(val) => {
-                setSearchParams({ snapshot: val });
-              }}
-            >
+            <Select value={snapshotId || ""} onValueChange={(val) => setSearchParams({ snapshot: val })}>
               <SelectTrigger className="w-[220px] h-9 text-xs">
                 <History className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
                 <SelectValue placeholder="Previous scans" />
@@ -661,10 +647,7 @@ const SEOResults = () => {
 
           <Button onClick={handleNewScan} variant="outline" size="sm" disabled={rescanning}>
             {rescanning ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin mr-1" />
-                Scanning…
-              </>
+              <><Loader2 className="w-4 h-4 animate-spin mr-1" />Scanning…</>
             ) : (
               "Run New Scan"
             )}
@@ -698,12 +681,7 @@ const SEOResults = () => {
             </Button>
           </div>
         </div>
-      ) : (
-        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-muted/50 border border-border text-sm">
-          <Link2 className="w-4 h-4 text-muted-foreground shrink-0" />
-          <span className="text-muted-foreground text-xs">Connect Google Search Console to see real impressions, clicks and position data.</span>
-        </div>
-      )}
+      ) : null}
 
       {isProcessing && (
         <Card className="border-primary/30 bg-primary/5">
@@ -717,8 +695,16 @@ const SEOResults = () => {
         </Card>
       )}
 
-      <BusinessHealthBanner snapshot={snapshot} />
+      {/* Hero money banner */}
+      <HeroMoneyBanner snapshot={snapshot} />
 
+      {/* Quick stats row */}
+      <QuickStatsRow snapshot={snapshot} />
+
+      {/* GSC suggest banner (soft blue, only if no GSC data) */}
+      {!gscConnection && <GscSuggestBanner metrics={metrics} />}
+
+      {/* Tabs */}
       <div className="flex items-center gap-1 bg-muted rounded-lg p-1 w-fit">
         <button
           onClick={() => setViewTab("pages")}
@@ -728,7 +714,7 @@ const SEOResults = () => {
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          Pages
+          Pages Scanned
         </button>
         <button
           onClick={() => setViewTab("queries")}
@@ -738,220 +724,37 @@ const SEOResults = () => {
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          Queries
+          Search Queries
         </button>
       </div>
 
-      <SiteSummarySection notes={snapshot?.notes} />
-
       {viewTab === "pages" && (
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold text-foreground">Top Opportunities</h2>
+          <h2 className="text-lg font-semibold text-foreground">Pages Scanned</h2>
 
           {metrics.length === 0 ? (
             <Card className="border-border">
               <CardContent className="p-6 text-sm text-muted-foreground">
-                No page metrics available for this snapshot yet.
+                No page data available for this snapshot yet.
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {metrics.map((m) => {
-                const bucketRaw = (m.priority_bucket || "").toLowerCase();
-                const priorityColor =
-                  bucketRaw === "tier 1"
-                    ? "bg-destructive/15 text-destructive border-destructive/30"
-                    : bucketRaw === "tier 2"
-                      ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
-                      : "bg-primary/15 text-primary border-primary/30";
-
-                return (
-                  <Card key={m.id} className="border-border">
-                    <CardHeader className="pb-2 pt-4 px-4">
-                      <div className="flex items-center justify-between gap-2">
-                        <Badge variant="outline" className="text-xs capitalize">
-                          {m.page?.page_type || "page"}
-                        </Badge>
-                        <Badge
-                          className={priorityColor}
-                          variant="outline"
-                        >
-                          {m.priority_bucket || "—"} priority
-                        </Badge>
+            <div className="space-y-2">
+              {metrics.map((m) => (
+                <Card key={m.id} className="border-border">
+                  <CardContent className="p-4 flex items-center justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground truncate">{m.page?.url || "Unknown page"}</p>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        <Badge variant="secondary" className="text-[10px] capitalize">{m.page?.page_type || "page"}</Badge>
+                        {isMeaningfulTrafficValue(m.impressions) && <span>{safeNum(m.impressions).toLocaleString()} impressions</span>}
+                        {isMeaningfulTrafficValue(m.clicks) && <span>{safeNum(m.clicks).toLocaleString()} clicks</span>}
+                        {isMeaningfulTrafficValue(m.avg_position) && <span>Position: {safeNum(m.avg_position)}</span>}
                       </div>
-
-                      <CardTitle className="text-sm font-medium mt-2 truncate">
-                        {m.page?.url || "Unknown page"}
-                      </CardTitle>
-                    </CardHeader>
-
-                    <CardContent className="px-4 pb-4 pt-0">
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div>
-                          <span className="text-muted-foreground">Opportunity</span>
-                          <p className="text-lg font-bold text-foreground">{safeNum(m.page_opportunity_score)}</p>
-                        </div>
-
-                        <div>
-                          <span className="text-muted-foreground">Visibility</span>
-                          <p className="text-lg font-bold text-foreground">{safeNum(m.visibility_score)}</p>
-                        </div>
-
-                        <div>
-                          <span className="text-muted-foreground">Structural</span>
-                          <p className="text-lg font-bold text-foreground">{safeNum(m.structural_score)}</p>
-                        </div>
-
-                        <div>
-                          <span className="text-muted-foreground">Revenue</span>
-                          <p className="text-lg font-bold text-foreground">{safeNum(m.revenue_score)}</p>
-                        </div>
-
-                        <div>
-                          <span className="text-muted-foreground">Paid Risk</span>
-                          <p className="text-lg font-bold text-foreground">{safeNum(m.paid_risk_score)}</p>
-                        </div>
-
-                        <div>
-                          <span className="text-muted-foreground">Avg Position</span>
-                          <p className="font-medium text-foreground">{formatTrafficPosition(m.avg_position)}</p>
-                        </div>
-
-                        <div>
-                          <span className="text-muted-foreground">Impressions</span>
-                          <p className="font-medium text-foreground">{formatTrafficNumber(m.impressions)}</p>
-                        </div>
-
-                        <div>
-                          <span className="text-muted-foreground">Clicks</span>
-                          <p className="font-medium text-foreground">{formatTrafficNumber(m.clicks)}</p>
-                        </div>
-
-                        <div>
-                          <span className="text-muted-foreground">CTR</span>
-                          <p className="font-medium text-foreground">{formatTrafficPercent(m.ctr)}</p>
-                        </div>
-
-                        {m.performance_score_mobile != null && (
-                          <div>
-                            <span className="text-muted-foreground">Perf Mobile</span>
-                            <p className={`font-medium ${perfScoreColor(m.performance_score_mobile)}`}>{m.performance_score_mobile}</p>
-                          </div>
-                        )}
-
-                        {m.performance_score_desktop != null && (
-                          <div>
-                            <span className="text-muted-foreground">Perf Desktop</span>
-                            <p className={`font-medium ${perfScoreColor(m.performance_score_desktop)}`}>{m.performance_score_desktop}</p>
-                          </div>
-                        )}
-
-                        {m.lcp_ms != null && (
-                          <div>
-                            <span className="text-muted-foreground">LCP</span>
-                            <p className={`font-medium ${lcpColor(m.lcp_ms)}`}>{(Number(m.lcp_ms) / 1000).toFixed(1)}s</p>
-                          </div>
-                        )}
-
-                        {m.cls_score != null && (
-                          <div>
-                            <span className="text-muted-foreground">CLS</span>
-                            <p className={`font-medium ${clsColor(m.cls_score)}`}>{Number(m.cls_score).toFixed(3)}</p>
-                          </div>
-                        )}
-
-                        {m.inp_ms != null && (
-                          <div>
-                            <span className="text-muted-foreground">INP</span>
-                            <p className={`font-medium ${inpColor(m.inp_ms)}`}>{m.inp_ms}ms</p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Core Web Vitals */}
-                      {(hasValue(m.performance_score_mobile) || hasValue(m.performance_score_desktop) || hasValue(m.lcp_ms) || hasValue(m.cls_score) || hasValue(m.inp_ms)) && (
-                        <div className="mt-3 pt-3 border-t border-border space-y-2">
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Core Web Vitals</span>
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                            {hasValue(m.performance_score_mobile) && (
-                              <div>
-                                <span className="text-muted-foreground">Perf (Mobile)</span>
-                                <p className={`font-bold ${cwvColor(m.performance_score_mobile, 90, 50, true)}`}>{m.performance_score_mobile}</p>
-                              </div>
-                            )}
-                            {hasValue(m.performance_score_desktop) && (
-                              <div>
-                                <span className="text-muted-foreground">Perf (Desktop)</span>
-                                <p className={`font-bold ${cwvColor(m.performance_score_desktop, 90, 50, true)}`}>{m.performance_score_desktop}</p>
-                              </div>
-                            )}
-                            {hasValue(m.lcp_ms) && (
-                              <div>
-                                <span className="text-muted-foreground">LCP</span>
-                                <p className={`font-bold ${cwvColor(m.lcp_ms, 2500, 4000)}`}>{(m.lcp_ms / 1000).toFixed(1)}s</p>
-                              </div>
-                            )}
-                            {hasValue(m.cls_score) && (
-                              <div>
-                                <span className="text-muted-foreground">CLS</span>
-                                <p className={`font-bold ${cwvColor(m.cls_score, 0.1, 0.25)}`}>{m.cls_score.toFixed(3)}</p>
-                              </div>
-                            )}
-                            {hasValue(m.inp_ms) && (
-                              <div>
-                                <span className="text-muted-foreground">INP</span>
-                                <p className={`font-bold ${cwvColor(m.inp_ms, 200, 500)}`}>{m.inp_ms}ms</p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Field Data (CrUX) */}
-                      {(hasValue(m.crux_lcp_ms) || hasValue(m.crux_cls_score) || hasValue(m.crux_inp_ms)) && (
-                        <div className="mt-3 pt-3 border-t border-border space-y-2">
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Field Data</span>
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                            {hasValue(m.crux_lcp_ms) && (
-                              <div>
-                                <span className="text-muted-foreground">LCP</span>
-                                <p className={`font-bold ${cwvColor(m.crux_lcp_ms, 2500, 4000)}`}>{(m.crux_lcp_ms / 1000).toFixed(1)}s</p>
-                                {m.crux_lcp_rating && (
-                                  <Badge variant="outline" className={`text-[9px] mt-0.5 ${cruxRatingColor(m.crux_lcp_rating)}`}>
-                                    {m.crux_lcp_rating}
-                                  </Badge>
-                                )}
-                              </div>
-                            )}
-                            {hasValue(m.crux_cls_score) && (
-                              <div>
-                                <span className="text-muted-foreground">CLS</span>
-                                <p className={`font-bold ${cwvColor(m.crux_cls_score, 0.1, 0.25)}`}>{m.crux_cls_score.toFixed(3)}</p>
-                                {m.crux_cls_rating && (
-                                  <Badge variant="outline" className={`text-[9px] mt-0.5 ${cruxRatingColor(m.crux_cls_rating)}`}>
-                                    {m.crux_cls_rating}
-                                  </Badge>
-                                )}
-                              </div>
-                            )}
-                            {hasValue(m.crux_inp_ms) && (
-                              <div>
-                                <span className="text-muted-foreground">INP</span>
-                                <p className={`font-bold ${cwvColor(m.crux_inp_ms, 200, 500)}`}>{m.crux_inp_ms}ms</p>
-                                {m.crux_inp_rating && (
-                                  <Badge variant="outline" className={`text-[9px] mt-0.5 ${cruxRatingColor(m.crux_inp_rating)}`}>
-                                    {m.crux_inp_rating}
-                                  </Badge>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           )}
         </section>
@@ -959,99 +762,48 @@ const SEOResults = () => {
 
       {viewTab === "queries" && (
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold text-foreground">Query Opportunities</h2>
+          <h2 className="text-lg font-semibold text-foreground">Search Queries</h2>
 
           {queryMetrics.length === 0 ? (
             <Card className="border-border">
               <CardContent className="p-6 text-sm text-muted-foreground">
-                No query data for this snapshot yet. The crawler is working, but keyword/query metrics are not being
-                generated yet.
+                No query data for this snapshot yet.
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {queryMetrics.map((qm) => {
-                const priority = (qm.priority_bucket || "low").toLowerCase();
-
-                return (
-                  <Card key={qm.id} className="border-border">
-                    <CardHeader className="pb-2 pt-4 px-4">
-                      <div className="flex items-center justify-between">
-                        <Badge variant="outline" className="text-xs capitalize">
-                          {qm.query?.intent_type || "unknown"}
-                        </Badge>
-                        <Badge
-                          variant="outline"
-                          className={
-                            priority === "high"
-                              ? "bg-destructive/15 text-destructive border-destructive/30"
-                              : priority === "medium"
-                                ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
-                                : "bg-muted text-muted-foreground border-border"
-                          }
-                        >
-                          {priority} priority
-                        </Badge>
+            <div className="space-y-2">
+              {queryMetrics.map((qm) => (
+                <Card key={qm.id} className="border-border">
+                  <CardContent className="p-4 flex items-center justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground">"{qm.query?.query_text || "Unknown query"}"</p>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        <Badge variant="secondary" className="text-[10px] capitalize">{qm.query?.intent_type || "unknown"}</Badge>
+                        {isMeaningfulTrafficValue(qm.impressions) && <span>{safeNum(qm.impressions).toLocaleString()} impressions</span>}
+                        {isMeaningfulTrafficValue(qm.clicks) && <span>{safeNum(qm.clicks).toLocaleString()} clicks</span>}
+                        {isMeaningfulTrafficValue(qm.avg_position) && <span>Position: {safeNum(qm.avg_position)}</span>}
                       </div>
-
-                      <CardTitle className="text-sm font-medium mt-2">
-                        “{qm.query?.query_text || "Unknown query"}”
-                      </CardTitle>
-                    </CardHeader>
-
-                    <CardContent className="px-4 pb-4 pt-0">
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <span className="text-muted-foreground">Opportunity</span>
-                          <p className="text-lg font-bold text-foreground">{safeNum(qm.query_opportunity_score)}</p>
-                        </div>
-
-                        <div>
-                          <span className="text-muted-foreground">Visibility</span>
-                          <p className="text-lg font-bold text-foreground">{safeNum(qm.visibility_score)}</p>
-                        </div>
-
-                        <div>
-                          <span className="text-muted-foreground">Impressions</span>
-                          <p className="font-medium text-foreground">{formatTrafficNumber(qm.impressions)}</p>
-                        </div>
-
-                        <div>
-                          <span className="text-muted-foreground">Clicks</span>
-                          <p className="font-medium text-foreground">{formatTrafficNumber(qm.clicks)}</p>
-                        </div>
-
-                        <div>
-                          <span className="text-muted-foreground">CTR</span>
-                          <p className="font-medium text-foreground">{formatTrafficPercent(qm.ctr)}</p>
-                        </div>
-
-                        <div>
-                          <span className="text-muted-foreground">Avg Position</span>
-                          <p className="font-medium text-foreground">{formatTrafficPosition(qm.avg_position)}</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           )}
         </section>
       )}
 
-      <ActionSection
-        title="Site-Wide Recommendations"
+      {/* What to Fix First (site-wide) */}
+      <SimpleActionSection
+        title="What to Fix First"
         actions={actions.filter((a) => !a.page_id)}
         emptyText="No site-wide recommendations for this snapshot."
-        showPageUrl={false}
       />
 
-      <ActionSection
-        title="Page-Level Actions"
+      {/* Page-by-Page Actions */}
+      <SimpleActionSection
+        title="Page-by-Page Actions"
         actions={actions.filter((a) => !!a.page_id)}
         emptyText="No page-level actions were generated for this snapshot yet."
-        showPageUrl={true}
       />
     </div>
   );
