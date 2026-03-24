@@ -3,6 +3,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Globe, BarChart3, AlertTriangle, Target, TrendingUp } from "lucide-react";
 
+interface MoneyData {
+  total_monthly_loss_min?: number;
+  total_monthly_loss_max?: number;
+  currency_symbol?: string;
+  market?: string;
+  industry?: string;
+  confidence_score?: number;
+  estimated_monthly_traffic?: number;
+  value_per_visitor?: number;
+  executive_summary?: string;
+  safe_browsing_threat?: boolean;
+}
+
+function formatMoney(min: number, max: number, sym: string): string {
+  const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(Math.round(n));
+  if (max > min) return `${sym}${fmt(min)} – ${sym}${fmt(max)}`;
+  return `${sym}${fmt(min)}`;
+}
+
 interface CrawlSummary {
   site_type?: string;
   pages_crawled?: number;
@@ -47,6 +66,12 @@ const priorityStyle: Record<string, string> = {
 
 export default function SiteSummarySection({ notes }: { notes: unknown }) {
   const summary = useMemo(() => parseSummary(notes), [notes]);
+  const money = useMemo((): MoneyData | null => {
+    try {
+      const parsed = typeof notes === "string" ? JSON.parse(notes) : notes as any;
+      return parsed?.money || null;
+    } catch { return null; }
+  }, [notes]);
 
   if (!summary) return null;
 
@@ -57,6 +82,10 @@ export default function SiteSummarySection({ notes }: { notes: unknown }) {
   const topPages = Array.isArray(summary.top_opportunity_pages)
     ? summary.top_opportunity_pages.slice(0, 3)
     : [];
+
+  const lossMin = Number(money?.total_monthly_loss_min ?? 0);
+  const lossMax = Number(money?.total_monthly_loss_max ?? 0);
+  const sym = money?.currency_symbol || "$";
 
   const hasContent =
     summary.site_type ||
@@ -71,6 +100,38 @@ export default function SiteSummarySection({ notes }: { notes: unknown }) {
   return (
     <section className="space-y-3">
       <h2 className="text-lg font-semibold text-foreground">Site Summary</h2>
+
+      {/* Money Banner */}
+      {lossMin > 0 && (
+        <div className="space-y-0">
+          {money?.safe_browsing_threat && (
+            <div className="rounded-t-lg bg-destructive/20 border border-destructive/40 px-4 py-2.5 text-sm font-medium text-destructive flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              ⚠️ Google has flagged this site as unsafe — all traffic is being blocked
+            </div>
+          )}
+          <Card className={`border-l-4 border-l-destructive border-border bg-card ${money?.safe_browsing_threat ? "rounded-t-none" : ""}`}>
+            <CardContent className="p-5 space-y-3">
+              <div>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Estimated Monthly Loss</span>
+                <p className="text-2xl font-black text-destructive tabular-nums mt-0.5">
+                  {formatMoney(lossMin, lossMax, sym)} <span className="text-base font-medium text-muted-foreground">/ month</span>
+                </p>
+              </div>
+              {money?.executive_summary && (
+                <p className="text-sm text-muted-foreground leading-relaxed">{money.executive_summary}</p>
+              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                {money?.market && <Badge variant="secondary" className="text-[10px]">Market: {money.market}</Badge>}
+                {money?.industry && <Badge variant="secondary" className="text-[10px]">Industry: {money.industry}</Badge>}
+                {money?.confidence_score != null && <Badge variant="secondary" className="text-[10px]">Confidence: {money.confidence_score}%</Badge>}
+                {Number(money?.estimated_monthly_traffic) > 0 && <Badge variant="secondary" className="text-[10px]">Est. Traffic: {Number(money.estimated_monthly_traffic).toLocaleString()} visits/mo</Badge>}
+                {Number(money?.value_per_visitor) > 0 && <Badge variant="secondary" className="text-[10px]">Value/Visitor: {sym}{Number(money.value_per_visitor).toFixed(2)}</Badge>}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {/* Card 1 — Crawl Overview */}
