@@ -385,7 +385,7 @@ const SEOResults = () => {
     try {
       const { data: snap, error: snapErr } = await (supabase as any)
         .from("scc_snapshots")
-        .select("*")
+        .select("id,site_id,status,started_at,finished_at,progress_step,error_message,notes,market,currency,currency_symbol,industry,business_name,value_per_visitor,estimated_monthly_traffic,total_monthly_loss_min,total_monthly_loss_max,safe_browsing_threat,indexed_page_count,executive_summary,confidence_score")
         .eq("id", snapId)
         .single();
 
