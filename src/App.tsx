@@ -38,6 +38,7 @@ const App = () => (
           <Routes>
             {/* Public auth route */}
             <Route path="/auth" element={<Auth />} />
+            <Route path="/free-scan" element={<FreeScan />} />
             <Route path="/debug" element={<Debug />} />
             
             {/* Redirect root to dashboard */}
