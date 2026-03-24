@@ -73,6 +73,8 @@ export default function SiteSummarySection({ notes }: { notes: unknown }) {
     } catch { return null; }
   }, [notes]);
 
+  console.log("MONEY DEBUG:", JSON.stringify(money), "notes type:", typeof notes, "notes preview:", typeof notes === "string" ? notes.substring(0, 200) : "not string");
+
   if (!summary) return null;
 
   const mix = summary.page_type_mix || {};
