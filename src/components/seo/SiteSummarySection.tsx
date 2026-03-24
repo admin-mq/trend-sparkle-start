@@ -68,9 +68,16 @@ export default function SiteSummarySection({ notes }: { notes: unknown }) {
   const summary = useMemo(() => parseSummary(notes), [notes]);
   const money = useMemo((): MoneyData | null => {
     try {
-      const parsed = typeof notes === "string" ? JSON.parse(notes) : notes as any;
-      return parsed?.money || null;
-    } catch { return null; }
+      const str = typeof notes === "string" ? notes : JSON.stringify(notes ?? "{}");
+      const parsed = JSON.parse(str);
+      const m = parsed?.money;
+      console.log("MONEY_EXTRACT:", JSON.stringify(m), "keys_in_notes:", Object.keys(parsed || {}).join(","));
+      if (!m || typeof m !== "object") return null;
+      return m as MoneyData;
+    } catch (e) {
+      console.log("MONEY_EXTRACT_ERROR:", e);
+      return null;
+    }
   }, [notes]);
 
   console.log("MONEY DEBUG:", JSON.stringify(money), "notes type:", typeof notes, "notes preview:", typeof notes === "string" ? notes.substring(0, 200) : "not string");
