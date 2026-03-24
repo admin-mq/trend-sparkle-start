@@ -240,9 +240,6 @@ export default function FreeScan() {
                     <div className="flex items-center justify-center gap-2 flex-wrap">
                       {money?.market && <Badge variant="secondary" className="text-[10px]">{money.market}</Badge>}
                       {money?.industry && <Badge variant="secondary" className="text-[10px] capitalize">{money.industry}</Badge>}
-                      {money?.confidence_score != null && (
-                        <Badge variant="secondary" className="text-[10px]">Confidence: {money.confidence_score}%</Badge>
-                      )}
                     </div>
                   </CardContent>
                 </Card>
