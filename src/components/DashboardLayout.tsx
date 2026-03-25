@@ -186,6 +186,8 @@ export const DashboardLayout = () => {
           <Outlet />
         </main>
       </div>
+
+      <AmcueChat />
     </div>
   );
 };
