@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Search, ArrowLeft, AlertTriangle, CheckCircle2, Info, Loader2, ExternalLink, History, Link2, RefreshCw, Unlink, Users, Globe, MapPin } from "lucide-react";
+import { Search, ArrowLeft, AlertTriangle, CheckCircle2, Info, Loader2, ExternalLink, History, Link2, RefreshCw, Unlink, Users, Globe, MapPin, Store } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -351,6 +351,7 @@ const SEOResults = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [gscConnection, setGscConnection] = useState<{ id: string; gsc_property: string } | null>(null);
   const [syncingGsc, setSyncingGsc] = useState(false);
+  const [connectingGbp, setConnectingGbp] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotRow | null>(null);
@@ -362,6 +363,16 @@ const SEOResults = () => {
   >([]);
   const [queryMetrics, setQueryMetrics] = useState<QueryMetricRow[]>([]);
   const [viewTab, setViewTab] = useState<"pages" | "queries">("pages");
+
+  // Handle gbp_connected query param after redirect
+  useEffect(() => {
+    if (searchParams.get("gbp_connected") === "true") {
+      toast({ title: "Google Business Profile connected!" });
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete("gbp_connected");
+      setSearchParams(newParams, { replace: true });
+    }
+  }, []);
 
   const isProcessing = useMemo(() => {
     const status = (snapshot?.status || "").toLowerCase();
@@ -501,6 +512,35 @@ const SEOResults = () => {
     await (supabase as any).from("scc_gsc_connections").delete().eq("id", gscConnection.id);
     setGscConnection(null);
     toast({ title: "Search Console disconnected" });
+  }
+
+  async function handleConnectGbp() {
+    if (!site || connectingGbp) return;
+    setConnectingGbp(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `https://njnnpdrevbkhbhzwccuz.supabase.co/functions/v1/gbp-oauth-init`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token || ""}`,
+          },
+          body: JSON.stringify({ site_id: site.id, return_url: window.location.href }),
+        }
+      );
+      const result = await res.json();
+      if (result.url) {
+        window.location.href = result.url;
+      } else {
+        toast({ title: "Could not start connection", description: result.error || "Please try again.", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Connection failed", description: err?.message, variant: "destructive" });
+    } finally {
+      setConnectingGbp(false);
+    }
   }
 
   async function handleNewScan() {
@@ -703,6 +743,19 @@ const SEOResults = () => {
 
       {/* GSC suggest banner (soft blue, only if no GSC data) */}
       {!gscConnection && <GscSuggestBanner metrics={metrics} />}
+
+      {/* Connect Google Business Profile */}
+      <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-accent/10 border border-accent/20 text-sm">
+        <Store className="w-4 h-4 text-accent shrink-0" />
+        <div className="flex-1">
+          <span className="text-accent font-medium">Google Business Profile</span>
+          <span className="text-muted-foreground ml-1">— Connect to pull reviews, local ranking data, and business info.</span>
+        </div>
+        <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 shrink-0" onClick={handleConnectGbp} disabled={connectingGbp}>
+          {connectingGbp ? <Loader2 className="w-3 h-3 animate-spin" /> : <Store className="w-3 h-3" />}
+          Connect Google Business Profile
+        </Button>
+      </div>
 
       {/* Tabs */}
       <div className="flex items-center gap-1 bg-muted rounded-lg p-1 w-fit">
