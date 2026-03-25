@@ -94,26 +94,35 @@ export function AmcueChat() {
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
 
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
     try {
-      const res = await fetch(
-        `https://njnnpdrevbkhbhzwccuz.supabase.co/functions/v1/amcue-chat`,
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/amcue-chat`,
         {
-          method: "POST",
+          method: 'POST',
           headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentSession?.access_token}`,
           },
           body: JSON.stringify({
-            conversation_id: conversationId,
+            conversation_id: conversationId || null,
             message: msg,
             context_page: window.location.pathname,
           }),
+          signal: controller.signal,
         }
       );
 
-      const data = await res.json();
+      clearTimeout(timeout);
+      const data = await response.json();
+      const reply = data.reply;
+      if (data.conversation_id) setConversationId(data.conversation_id);
 
-      if (!res.ok) {
+      if (!response.ok) {
         setMessages((prev) => [
           ...prev,
           { role: "assistant", content: data.error || "Something went wrong. Please try again." },
@@ -122,19 +131,22 @@ export function AmcueChat() {
       }
 
       if (!conversationId && data.conversation_id) {
-        setConversationId(data.conversation_id);
         loadConversations();
       }
 
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: data.content },
+        { role: "assistant", content: reply || data.content || "No response received." },
       ]);
-    } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Network error. Please check your connection and try again." },
-      ]);
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        setMessages((prev) => [...prev, { role: 'assistant', content: 'Taking too long — please try again.' }]);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: "Network error. Please check your connection and try again." },
+        ]);
+      }
     } finally {
       setLoading(false);
     }
