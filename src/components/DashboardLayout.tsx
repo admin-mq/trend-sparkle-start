@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { AmcueChat } from "@/components/amcue/AmcueChat";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -185,6 +186,8 @@ export const DashboardLayout = () => {
           <Outlet />
         </main>
       </div>
+
+      <AmcueChat />
     </div>
   );
 };

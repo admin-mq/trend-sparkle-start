@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.update-brand-memory]
 verify_jwt = false
+
+[functions.amcue-chat]
+verify_jwt = false
