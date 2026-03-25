@@ -351,6 +351,7 @@ const SEOResults = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [gscConnection, setGscConnection] = useState<{ id: string; gsc_property: string } | null>(null);
   const [syncingGsc, setSyncingGsc] = useState(false);
+  const [connectingGbp, setConnectingGbp] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotRow | null>(null);
@@ -362,6 +363,16 @@ const SEOResults = () => {
   >([]);
   const [queryMetrics, setQueryMetrics] = useState<QueryMetricRow[]>([]);
   const [viewTab, setViewTab] = useState<"pages" | "queries">("pages");
+
+  // Handle gbp_connected query param after redirect
+  useEffect(() => {
+    if (searchParams.get("gbp_connected") === "true") {
+      toast({ title: "Google Business Profile connected!" });
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete("gbp_connected");
+      setSearchParams(newParams, { replace: true });
+    }
+  }, []);
 
   const isProcessing = useMemo(() => {
     const status = (snapshot?.status || "").toLowerCase();
