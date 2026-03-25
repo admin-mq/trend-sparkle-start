@@ -744,6 +744,19 @@ const SEOResults = () => {
       {/* GSC suggest banner (soft blue, only if no GSC data) */}
       {!gscConnection && <GscSuggestBanner metrics={metrics} />}
 
+      {/* Connect Google Business Profile */}
+      <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-accent/10 border border-accent/20 text-sm">
+        <Store className="w-4 h-4 text-accent shrink-0" />
+        <div className="flex-1">
+          <span className="text-accent font-medium">Google Business Profile</span>
+          <span className="text-muted-foreground ml-1">— Connect to pull reviews, local ranking data, and business info.</span>
+        </div>
+        <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 shrink-0" onClick={handleConnectGbp} disabled={connectingGbp}>
+          {connectingGbp ? <Loader2 className="w-3 h-3 animate-spin" /> : <Store className="w-3 h-3" />}
+          Connect Google Business Profile
+        </Button>
+      </div>
+
       {/* Tabs */}
       <div className="flex items-center gap-1 bg-muted rounded-lg p-1 w-fit">
         <button
