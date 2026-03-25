@@ -514,6 +514,35 @@ const SEOResults = () => {
     toast({ title: "Search Console disconnected" });
   }
 
+  async function handleConnectGbp() {
+    if (!site || connectingGbp) return;
+    setConnectingGbp(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `https://njnnpdrevbkhbhzwccuz.supabase.co/functions/v1/gbp-oauth-init`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token || ""}`,
+          },
+          body: JSON.stringify({ site_id: site.id, return_url: window.location.href }),
+        }
+      );
+      const result = await res.json();
+      if (result.url) {
+        window.location.href = result.url;
+      } else {
+        toast({ title: "Could not start connection", description: result.error || "Please try again.", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Connection failed", description: err?.message, variant: "destructive" });
+    } finally {
+      setConnectingGbp(false);
+    }
+  }
+
   async function handleNewScan() {
     if (!site || rescanning) return;
 
