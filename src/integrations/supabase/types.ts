@@ -14,7 +14,78 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      amcue_brand_memory: {
+        Row: {
+          average_order_value_usd: number | null
+          biggest_marketing_challenge: string | null
+          brand_voice: string | null
+          business_model: string | null
+          company_description: string | null
+          company_name: string | null
+          competitors: string[] | null
+          created_at: string | null
+          current_channels: Json | null
+          customer_ltv_usd: number | null
+          geographic_markets: string[] | null
+          id: string
+          industry: string | null
+          last_updated_at: string | null
+          marketing_goals: string[] | null
+          monthly_marketing_budget_usd: number | null
+          notes: string | null
+          products_services: string | null
+          target_audience: string | null
+          user_id: string
+          usp: string | null
+        }
+        Insert: {
+          average_order_value_usd?: number | null
+          biggest_marketing_challenge?: string | null
+          brand_voice?: string | null
+          business_model?: string | null
+          company_description?: string | null
+          company_name?: string | null
+          competitors?: string[] | null
+          created_at?: string | null
+          current_channels?: Json | null
+          customer_ltv_usd?: number | null
+          geographic_markets?: string[] | null
+          id?: string
+          industry?: string | null
+          last_updated_at?: string | null
+          marketing_goals?: string[] | null
+          monthly_marketing_budget_usd?: number | null
+          notes?: string | null
+          products_services?: string | null
+          target_audience?: string | null
+          user_id: string
+          usp?: string | null
+        }
+        Update: {
+          average_order_value_usd?: number | null
+          biggest_marketing_challenge?: string | null
+          brand_voice?: string | null
+          business_model?: string | null
+          company_description?: string | null
+          company_name?: string | null
+          competitors?: string[] | null
+          created_at?: string | null
+          current_channels?: Json | null
+          customer_ltv_usd?: number | null
+          geographic_markets?: string[] | null
+          id?: string
+          industry?: string | null
+          last_updated_at?: string | null
+          marketing_goals?: string[] | null
+          monthly_marketing_budget_usd?: number | null
+          notes?: string | null
+          products_services?: string | null
+          target_audience?: string | null
+          user_id?: string
+          usp?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
