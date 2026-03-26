@@ -23,6 +23,7 @@ import Profile from "./pages/Profile";
 import Auth from "./pages/Auth";
 import Debug from "./pages/Debug";
 import FreeScan from "./pages/FreeScan";
+import AmcueBrandProfile from "./pages/AmcueBrandProfile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -63,6 +64,7 @@ const App = () => (
               <Route path="/profile" element={<Profile />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/admin" element={<Admin />} />
+              <Route path="/amcue/brand-profile" element={<AmcueBrandProfile />} />
             </Route>
             
             {/* Catch-all */}
