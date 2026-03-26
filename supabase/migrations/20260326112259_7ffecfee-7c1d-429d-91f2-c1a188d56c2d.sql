@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS public.amcue_brand_memory CASCADE;
