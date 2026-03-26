@@ -64,6 +64,7 @@ const App = () => (
               <Route path="/profile" element={<Profile />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/admin" element={<Admin />} />
+              <Route path="/amcue/brand-profile" element={<AmcueBrandProfile />} />
             </Route>
             
             {/* Catch-all */}
