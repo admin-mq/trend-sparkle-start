@@ -24,6 +24,8 @@ import Auth from "./pages/Auth";
 import Debug from "./pages/Debug";
 import FreeScan from "./pages/FreeScan";
 import NotFound from "./pages/NotFound";
+import Amcue from "./pages/Amcue";
+import AmcueBrandProfile from "./pages/AmcueBrandProfile";
 
 const queryClient = new QueryClient();
 
@@ -60,6 +62,8 @@ const App = () => (
               <Route path="/pr" element={<PR />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/paid-campaigns" element={<PaidCampaigns />} />
+              <Route path="/amcue" element={<Amcue />} />
+              <Route path="/amcue/brand-profile" element={<AmcueBrandProfile />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/admin" element={<Admin />} />

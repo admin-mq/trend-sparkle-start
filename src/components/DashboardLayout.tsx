@@ -1,22 +1,23 @@
 import { useState, useEffect } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
-import { 
+import {
   LayoutDashboard,
-  TrendingUp, 
-  Hash, 
-  Music, 
-  Search, 
-  Users, 
-  Megaphone, 
-  BarChart3, 
+  TrendingUp,
+  Hash,
+  Music,
+  Search,
+  Users,
+  Megaphone,
+  BarChart3,
   Target,
   Settings,
   Shield,
   LogOut,
   Menu,
   User,
-  Sparkles
+  Sparkles,
+  Brain,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -37,6 +38,8 @@ const mainNavItems = [
   { path: "/analytics", label: "Analytics", icon: BarChart3 },
   { path: "/paid-campaigns", label: "Paid Campaigns", icon: Target },
 ];
+
+const amcueNavItem = { path: "/amcue", label: "Amcue AI CMO", icon: Brain };
 
 const bottomNavItems = [
   { path: "/profile", label: "Profile", icon: User },
@@ -122,6 +125,28 @@ export const DashboardLayout = () => {
             </div>
           </div>
         </div>
+
+        {/* Amcue featured nav */}
+        <div className="px-3 pt-3 pb-1">
+          <button
+            onClick={() => {
+              navigate(amcueNavItem.path);
+              setSidebarOpen(false);
+            }}
+            className={cn(
+              "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all border",
+              location.pathname.startsWith("/amcue")
+                ? "bg-gradient-to-r from-primary to-accent text-primary-foreground border-transparent shadow-sm"
+                : "bg-gradient-to-r from-primary/10 to-accent/10 text-foreground border-primary/20 hover:border-primary/40 hover:from-primary/15 hover:to-accent/15",
+            )}
+          >
+            <Brain className="w-4 h-4 flex-shrink-0" />
+            <span>Amcue AI CMO</span>
+          </button>
+        </div>
+
+        {/* Divider */}
+        <div className="mx-3 border-t border-border" />
 
         {/* Main nav */}
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
