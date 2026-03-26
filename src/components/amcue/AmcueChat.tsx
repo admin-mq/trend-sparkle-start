@@ -318,7 +318,7 @@ export function AmcueChat() {
                   <Send className="w-4 h-4 text-white" />
                 </Button>
               </div>
-              <p className="text-[9px] text-muted-foreground text-center mt-2">Powered by AI · Gemini Flash</p>
+              <p className="text-[9px] text-muted-foreground text-center mt-2">Amcue remembers your brand across sessions</p>
             </div>
           </>
         )}
