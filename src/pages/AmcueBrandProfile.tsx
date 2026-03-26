@@ -254,7 +254,7 @@ export default function AmcueBrandProfile() {
                         />
                       )}
                       {field.type === "array" && (
-                        <p className="text-xs text-muted-foreground">Separate items with commas</p>
+Now let me add the route. First let me fix the TS error.
                       )}
                     </div>
                   );
