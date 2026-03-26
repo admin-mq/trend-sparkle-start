@@ -243,7 +243,7 @@ export default function AmcueBrandProfile() {
                           value={String(editVal)}
                           onChange={(e) => setEditValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
                           rows={field.type === "json" ? 4 : 3}
-                          placeholder={field.type === "array" ? "Comma-separated values" : ""}
+                          placeholder=""
                         />
                       ) : (
                         <Input
@@ -254,7 +254,7 @@ export default function AmcueBrandProfile() {
                         />
                       )}
                       {field.type === "array" && (
-Now let me add the route. First let me fix the TS error.
+                        <p className="text-xs text-muted-foreground">Separate items with commas</p>
                       )}
                     </div>
                   );
