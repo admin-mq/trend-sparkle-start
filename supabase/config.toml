@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.amcue-chat]
 verify_jwt = false
+
+[functions.pr-scan]
+verify_jwt = false

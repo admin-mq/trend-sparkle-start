@@ -15,6 +15,7 @@ import SEO from "./pages/SEO";
 import SEOResults from "./pages/SEOResults";
 import Influencers from "./pages/Influencers";
 import PR from "./pages/PR";
+import PRResults from "./pages/PRResults";
 import Analytics from "./pages/Analytics";
 import PaidCampaigns from "./pages/PaidCampaigns";
 import Settings from "./pages/Settings";
@@ -60,6 +61,7 @@ const App = () => (
               <Route path="/seo/results" element={<SEOResults />} />
               <Route path="/influencers" element={<Influencers />} />
               <Route path="/pr" element={<PR />} />
+              <Route path="/pr/results" element={<PRResults />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/paid-campaigns" element={<PaidCampaigns />} />
               <Route path="/amcue" element={<Amcue />} />
