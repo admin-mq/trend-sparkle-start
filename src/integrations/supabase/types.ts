@@ -38,6 +38,39 @@ export type Database = {
         }
         Relationships: []
       }
+      influencers: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          username: string
+          followers: number
+          niche_audience: string | null
+          geography: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          username: string
+          followers?: number
+          niche_audience?: string | null
+          geography?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          username?: string
+          followers?: number
+          niche_audience?: string | null
+          geography?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       trends: {
         Row: {
           active: boolean | null

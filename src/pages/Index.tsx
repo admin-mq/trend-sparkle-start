@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { BrandProfileForm } from "@/components/BrandProfileForm";
 import { RecommendedTrends } from "@/components/RecommendedTrends";
 import { CreativeDirections } from "@/components/CreativeDirections";
@@ -151,6 +152,9 @@ const Index = () => {
               <span className="px-2 py-1 bg-primary/10 text-primary rounded-full">Social Media Inspired</span>
               <span className="px-2 py-1 bg-secondary rounded-full">Early beta</span>
             </div>
+            <Link to="/influencers" className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+              Influencers
+            </Link>
             <UserMenu />
           </div>
         </header>
