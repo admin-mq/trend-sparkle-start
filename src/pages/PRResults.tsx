@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Megaphone, Loader2, ChevronLeft, CheckCircle2, XCircle,
   AlertTriangle, TrendingUp, Shield, FileText, Lightbulb,
-  Globe, RefreshCw, ArrowLeft, Zap,
+  Globe, RefreshCw, ArrowLeft, Zap, Eye, Play, MessageSquare,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "@/hooks/use-toast";
+
+const SUPABASE_FUNCTIONS_URL = "https://njnnpdrevbkhbhzwccuz.supabase.co/functions/v1";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -75,6 +77,31 @@ interface NarrativeResult {
   recommended_actions: RecommendedAction[];
   executive_summary: string | null;
   pages_analyzed: number;
+}
+
+interface VisibilityRun {
+  id: string;
+  status: string;
+  progress: number;
+  total: number;
+  error: string | null;
+  created_at: string;
+  ended_at: string | null;
+}
+
+interface VisibilityResult {
+  id: string;
+  prompt_text: string;
+  geography: string | null;
+  brand_present: boolean;
+  brand_position: number | null;
+  brand_context: string | null;
+  competitor_presence: Record<string, boolean>;
+  cited_domains: string[];
+  raw_answer: string | null;
+  why_absent: string | null;
+  analysis_summary: string | null;
+  visibility_score: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -199,6 +226,12 @@ const PRResults = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Visibility state
+  const [visibilityRun, setVisibilityRun] = useState<VisibilityRun | null>(null);
+  const [visibilityResults, setVisibilityResults] = useState<VisibilityResult[]>([]);
+  const [visibilityLoading, setVisibilityLoading] = useState(false);
+  const [startingVisibility, setStartingVisibility] = useState(false);
+
   const loadData = useCallback(async () => {
     if (!projectId) return;
 
@@ -236,12 +269,80 @@ const PRResults = () => {
 
   useEffect(() => { void loadData(); }, [loadData]);
 
-  // Poll while running
+  // Poll while narrative scan running
   useEffect(() => {
     if (!job || (job.status !== "running" && job.status !== "queued")) return;
     const interval = setInterval(() => void loadData(), POLL_MS);
     return () => clearInterval(interval);
   }, [job, loadData]);
+
+  // ── Visibility ─────────────────────────────────────────────────────────────
+
+  const loadVisibility = useCallback(async () => {
+    if (!projectId) return;
+
+    const { data: run } = await (supabase as any)
+      .from("pr_visibility_runs")
+      .select("id, status, progress, total, error, created_at, ended_at")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    setVisibilityRun(run || null);
+
+    if (run?.status === "completed") {
+      const { data: results } = await (supabase as any)
+        .from("pr_visibility_results")
+        .select("*")
+        .eq("run_id", run.id)
+        .order("created_at", { ascending: true });
+      setVisibilityResults(results || []);
+    } else {
+      setVisibilityResults([]);
+    }
+  }, [projectId]);
+
+  useEffect(() => { void loadVisibility(); }, [loadVisibility]);
+
+  // Poll while visibility check running
+  useEffect(() => {
+    if (!visibilityRun || (visibilityRun.status !== "running" && visibilityRun.status !== "queued")) return;
+    const interval = setInterval(() => void loadVisibility(), POLL_MS);
+    return () => clearInterval(interval);
+  }, [visibilityRun, loadVisibility]);
+
+  const runVisibilityCheck = useCallback(async () => {
+    if (!project) return;
+    setStartingVisibility(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const { data: run, error: runErr } = await (supabase as any)
+        .from("pr_visibility_runs")
+        .insert({ project_id: project.id, status: "queued" })
+        .select("id")
+        .single();
+
+      if (runErr || !run) throw new Error(runErr?.message || "Failed to create run");
+
+      fetch(`${SUPABASE_FUNCTIONS_URL}/pr-visibility-check`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token || ""}`,
+        },
+        body: JSON.stringify({ project_id: project.id, run_id: run.id }),
+      }).catch(console.error);
+
+      toast({ title: "Visibility check started", description: `Checking ${project.tracked_prompts?.length || 0} prompts…` });
+      await loadVisibility();
+    } catch (e: any) {
+      toast({ title: "Failed to start check", description: e?.message, variant: "destructive" });
+    } finally {
+      setStartingVisibility(false);
+    }
+  }, [project, loadVisibility]);
 
   // ── Render states ──────────────────────────────────────────────────────────
 
@@ -370,6 +471,9 @@ const PRResults = () => {
           <TabsTrigger value="narratives">Narrative Map</TabsTrigger>
           <TabsTrigger value="gaps">Proof Gaps</TabsTrigger>
           <TabsTrigger value="actions">Actions</TabsTrigger>
+          <TabsTrigger value="visibility" className="gap-1.5">
+            <Eye className="w-3.5 h-3.5" /> AI Visibility
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Overview ─────────────────────────────────────────────────────── */}
@@ -589,6 +693,199 @@ const PRResults = () => {
                 </CardContent>
               </Card>
             ))
+          )}
+        </TabsContent>
+        {/* ── AI Visibility ────────────────────────────────────────────── */}
+        <TabsContent value="visibility" className="space-y-4 mt-4">
+          {/* No prompts configured */}
+          {(!project.tracked_prompts || project.tracked_prompts.length === 0) ? (
+            <Card className="border-dashed">
+              <CardContent className="p-8 text-center space-y-3">
+                <MessageSquare className="w-8 h-8 text-muted-foreground mx-auto" />
+                <p className="font-medium text-foreground">No prompts tracked</p>
+                <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+                  Add prompts to your project (e.g. "best PR tool for startups") to check if your brand appears in AI answers.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {/* Header row */}
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    {project.tracked_prompts.length} prompt{project.tracked_prompts.length !== 1 ? "s" : ""} tracked
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Checks whether your brand appears when buyers ask AI tools these questions
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  className="gap-1.5 shrink-0"
+                  disabled={startingVisibility || visibilityRun?.status === "running" || visibilityRun?.status === "queued"}
+                  onClick={runVisibilityCheck}
+                >
+                  {startingVisibility || visibilityRun?.status === "running" || visibilityRun?.status === "queued" ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      {visibilityRun?.total ? `${visibilityRun.progress ?? 0}/${visibilityRun.total}` : "Checking…"}
+                    </>
+                  ) : (
+                    <><Play className="w-3.5 h-3.5" /> {visibilityRun ? "Re-check" : "Run Check"}</>
+                  )}
+                </Button>
+              </div>
+
+              {/* Running state */}
+              {(visibilityRun?.status === "running" || visibilityRun?.status === "queued") && (
+                <Card className="border-primary/20 bg-primary/5">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Loader2 className="w-4 h-4 animate-spin text-primary shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Checking AI visibility…</p>
+                      <p className="text-xs text-muted-foreground">
+                        Asking GPT-4o each prompt and analysing brand presence.
+                        {visibilityRun.total > 0 && ` ${visibilityRun.progress ?? 0} of ${visibilityRun.total} done.`}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* No run yet */}
+              {!visibilityRun && (
+                <Card className="border-dashed">
+                  <CardContent className="p-8 text-center space-y-2">
+                    <Eye className="w-7 h-7 text-muted-foreground mx-auto" />
+                    <p className="text-sm text-muted-foreground">Hit "Run Check" to see if your brand appears in AI answers.</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Results */}
+              {visibilityResults.length > 0 && (
+                <>
+                  {/* Overall score */}
+                  {(() => {
+                    const avg = Math.round(visibilityResults.reduce((s, r) => s + (r.visibility_score ?? 0), 0) / visibilityResults.length);
+                    const present = visibilityResults.filter((r) => r.brand_present).length;
+                    return (
+                      <Card className={`border-2 ${avg >= 50 ? "border-emerald-500/30" : avg >= 25 ? "border-yellow-500/30" : "border-destructive/30"}`}>
+                        <CardContent className="p-4 flex items-center gap-4">
+                          <div className="text-center">
+                            <div className={`text-3xl font-bold ${avg >= 50 ? "text-emerald-400" : avg >= 25 ? "text-yellow-400" : "text-destructive"}`}>{avg}</div>
+                            <div className="text-xs text-muted-foreground">Avg visibility score</div>
+                          </div>
+                          <div className="h-10 w-px bg-border" />
+                          <div>
+                            <p className="text-sm font-medium text-foreground">
+                              {present} of {visibilityResults.length} prompts — brand present
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {present === 0
+                                ? "Your brand doesn't appear in any AI answers for these prompts."
+                                : present === visibilityResults.length
+                                ? "Your brand appears across all tracked prompts."
+                                : `Missing from ${visibilityResults.length - present} prompt${visibilityResults.length - present !== 1 ? "s" : ""}.`}
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
+
+                  {/* Per-prompt cards */}
+                  {visibilityResults.map((r, i) => (
+                    <Card key={i} className={`border-l-4 ${r.brand_present ? "border-l-emerald-500" : "border-l-destructive"}`}>
+                      <CardContent className="p-4 space-y-3">
+                        {/* Prompt + presence badge */}
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-sm font-medium text-foreground">"{r.prompt_text}"</p>
+                          <Badge variant="outline" className={`shrink-0 text-xs gap-1 ${
+                            r.brand_present
+                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                              : "bg-destructive/10 text-destructive border-destructive/30"
+                          }`}>
+                            {r.brand_present ? <><CheckCircle2 className="w-3 h-3" /> Present</> : <><XCircle className="w-3 h-3" /> Absent</>}
+                          </Badge>
+                        </div>
+
+                        {/* Summary */}
+                        {r.analysis_summary && (
+                          <p className="text-xs text-muted-foreground">{r.analysis_summary}</p>
+                        )}
+
+                        {/* Brand context quote */}
+                        {r.brand_present && r.brand_context && (
+                          <div className="bg-emerald-500/5 border border-emerald-500/20 rounded p-2.5">
+                            <p className="text-xs text-emerald-300 italic">"{r.brand_context}"</p>
+                          </div>
+                        )}
+
+                        {/* Why absent */}
+                        {!r.brand_present && r.why_absent && (
+                          <div className="bg-destructive/5 border border-destructive/20 rounded p-2.5">
+                            <p className="text-xs text-destructive/80">{r.why_absent}</p>
+                          </div>
+                        )}
+
+                        {/* Competitors + cited domains */}
+                        <div className="flex flex-wrap gap-3 pt-1">
+                          {/* Competitor presence */}
+                          {Object.entries(r.competitor_presence || {}).length > 0 && (
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground font-medium">Competitors in answer:</p>
+                              <div className="flex flex-wrap gap-1">
+                                {Object.entries(r.competitor_presence).map(([domain, present]) => (
+                                  <Badge key={domain} variant="outline" className={`text-xs ${
+                                    present
+                                      ? "bg-orange-500/10 text-orange-400 border-orange-500/30"
+                                      : "bg-muted text-muted-foreground"
+                                  }`}>
+                                    {present ? "✓" : "✗"} {domain}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Cited domains */}
+                          {r.cited_domains?.length > 0 && (
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground font-medium">Domains cited:</p>
+                              <div className="flex flex-wrap gap-1">
+                                {r.cited_domains.slice(0, 6).map((d) => (
+                                  <Badge key={d} variant="outline" className="text-xs bg-muted text-muted-foreground">
+                                    {d}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Score + geography */}
+                        <div className="flex items-center gap-3 pt-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-muted-foreground">Score:</span>
+                            <span className={`text-xs font-bold ${
+                              r.visibility_score >= 50 ? "text-emerald-400"
+                              : r.visibility_score >= 25 ? "text-yellow-400"
+                              : "text-destructive"
+                            }`}>{r.visibility_score}/100</span>
+                          </div>
+                          {r.geography && (
+                            <span className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Globe className="w-3 h-3" /> {r.geography}
+                            </span>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </>
+              )}
+            </>
           )}
         </TabsContent>
       </Tabs>
