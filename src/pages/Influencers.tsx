@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Search, Upload, Plus, Users, Instagram, Loader2, Sparkles } from "lucide-react";
+import { Search, Upload, Plus, Users, Instagram, Loader2, Sparkles, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -33,6 +33,7 @@ interface Influencer {
   followers: number;
   niche_audience: string | null;
   geography: string | null;
+  avatar_url: string | null;
   created_at: string;
 }
 
@@ -187,6 +188,7 @@ function AddInfluencerDialog({
 export default function Influencers() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const [search, setSearch]       = useState("");
   const [niche, setNiche]         = useState("any");
@@ -194,6 +196,7 @@ export default function Influencers() {
   const [minF, setMinF]           = useState("");
   const [maxF, setMaxF]           = useState("");
   const [addOpen, setAddOpen]     = useState(false);
+  const [syncing, setSyncing]     = useState(false);
 
   const { data: influencers = [], isLoading } = useQuery<Influencer[]>({
     queryKey: ["influencers"],
@@ -221,6 +224,43 @@ export default function Influencers() {
     });
   }, [influencers, search, niche, geography, minF, maxF]);
 
+  const syncPhotos = async () => {
+    if (!user || syncing) return;
+    const missing = influencers.filter((inf) => !inf.avatar_url);
+    if (missing.length === 0) {
+      toast({ title: "All photos already synced" });
+      return;
+    }
+    setSyncing(true);
+    const session = await supabase.auth.getSession();
+    const token = session.data.session?.access_token;
+    let synced = 0;
+    for (const inf of missing) {
+      try {
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-instagram-avatar`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`,
+            },
+            body: JSON.stringify({ influencer_id: inf.id, username: inf.username }),
+          }
+        );
+        if (res.ok) synced++;
+      } catch {
+        // skip on error, continue with next
+      }
+    }
+    setSyncing(false);
+    queryClient.invalidateQueries({ queryKey: ["influencers"] });
+    toast({
+      title: `Synced ${synced} of ${missing.length} photos`,
+      description: synced < missing.length ? "Some profiles may be private or unavailable." : undefined,
+    });
+  };
+
   if (!user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -234,7 +274,7 @@ export default function Influencers() {
   }
 
   return (
-    <div className="flex flex-col bg-background" style={{ height: '100dvh' }}>
+    <div className="flex flex-col bg-background min-h-screen">
 
       {/* ── Nav ── */}
       <header className="border-b border-border bg-card px-5 py-3 flex items-center gap-3 flex-shrink-0">
@@ -255,10 +295,10 @@ export default function Influencers() {
         </nav>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1">
 
         {/* ── Filter sidebar ── */}
-        <aside className="w-64 flex-shrink-0 border-r border-border bg-card p-5 flex flex-col gap-5 overflow-y-auto">
+        <aside className="w-64 flex-shrink-0 border-r border-border bg-card p-5 flex flex-col gap-5">
 
           {/* Search */}
           <div className="relative">
@@ -333,12 +373,22 @@ export default function Influencers() {
         </aside>
 
         {/* ── Main ── */}
-        <main className="flex-1 flex flex-col overflow-hidden">
+        <main className="flex-1 flex flex-col">
 
           {/* Header */}
           <div className="px-6 py-4 border-b border-border flex items-center justify-between gap-4 flex-shrink-0">
             <h1 className="text-xl font-semibold text-foreground">Influencers</h1>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                disabled={syncing}
+                onClick={syncPhotos}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
+                {syncing ? "Syncing…" : "Sync Photos"}
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -368,7 +418,7 @@ export default function Influencers() {
           </div>
 
           {/* Body */}
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <div>
 
             {isLoading && (
               <div className="flex items-center justify-center h-48">
@@ -392,8 +442,25 @@ export default function Influencers() {
               >
                 {/* Name + handle */}
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0 ${avatarClass(inf.name)}`}>
-                    {getInitials(inf.name)}
+                  <div className="w-9 h-9 rounded-full flex-shrink-0 overflow-hidden">
+                    {inf.avatar_url ? (
+                      <img
+                        src={inf.avatar_url}
+                        alt={inf.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          // fallback to initials on broken image
+                          e.currentTarget.style.display = "none";
+                          e.currentTarget.nextElementSibling?.removeAttribute("style");
+                        }}
+                      />
+                    ) : null}
+                    <div
+                      className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold ${avatarClass(inf.name)} ${inf.avatar_url ? "hidden" : ""}`}
+                      style={inf.avatar_url ? { display: "none" } : undefined}
+                    >
+                      {getInitials(inf.name)}
+                    </div>
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground truncate">{inf.name}</p>

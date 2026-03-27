@@ -47,6 +47,7 @@ export type Database = {
           followers: number
           niche_audience: string | null
           geography: string | null
+          avatar_url: string | null
           created_at: string
         }
         Insert: {
@@ -57,6 +58,7 @@ export type Database = {
           followers?: number
           niche_audience?: string | null
           geography?: string | null
+          avatar_url?: string | null
           created_at?: string
         }
         Update: {
@@ -67,6 +69,7 @@ export type Database = {
           followers?: number
           niche_audience?: string | null
           geography?: string | null
+          avatar_url?: string | null
           created_at?: string
         }
         Relationships: []
