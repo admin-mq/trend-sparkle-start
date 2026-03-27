@@ -41,38 +41,88 @@ export type Database = {
       influencers: {
         Row: {
           id: string
-          user_id: string
+          user_id: string | null
           name: string
           username: string
           followers: number
           niche_audience: string | null
           geography: string | null
           avatar_url: string | null
+          email: string | null
+          phone: string | null
+          barter_open: boolean | null
+          signup_date: string | null
           created_at: string
         }
         Insert: {
           id?: string
-          user_id: string
+          user_id?: string | null
           name: string
           username: string
           followers?: number
           niche_audience?: string | null
           geography?: string | null
           avatar_url?: string | null
+          email?: string | null
+          phone?: string | null
+          barter_open?: boolean | null
+          signup_date?: string | null
           created_at?: string
         }
         Update: {
           id?: string
-          user_id?: string
+          user_id?: string | null
           name?: string
           username?: string
           followers?: number
           niche_audience?: string | null
           geography?: string | null
           avatar_url?: string | null
+          email?: string | null
+          phone?: string | null
+          barter_open?: boolean | null
+          signup_date?: string | null
           created_at?: string
         }
         Relationships: []
+      }
+      connection_requests: {
+        Row: {
+          id: string
+          brand_id: string
+          brand_email: string | null
+          influencer_id: string
+          message: string | null
+          status: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          brand_id: string
+          brand_email?: string | null
+          influencer_id: string
+          message?: string | null
+          status?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          brand_id?: string
+          brand_email?: string | null
+          influencer_id?: string
+          message?: string | null
+          status?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "connection_requests_influencer_id_fkey"
+            columns: ["influencer_id"]
+            isOneToOne: false
+            referencedRelation: "influencers"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       trends: {
         Row: {
