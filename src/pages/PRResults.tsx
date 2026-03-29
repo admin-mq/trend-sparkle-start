@@ -5,7 +5,7 @@ import {
   AlertTriangle, TrendingUp, Shield, FileText, Lightbulb,
   Globe, RefreshCw, ArrowLeft, Zap, Eye, Play, MessageSquare,
   Bell, TrendingDown, ChevronUp, ChevronDown, Clock,
-  Link2, ExternalLink, Plus, Trash2, Quote,
+  Link2, ExternalLink, Plus, Trash2, Quote, Swords, Crown, ShieldAlert,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -670,6 +670,9 @@ const PRResults = () => {
           <TabsTrigger value="narratives">Narrative Map</TabsTrigger>
           <TabsTrigger value="gaps">Proof Gaps</TabsTrigger>
           <TabsTrigger value="actions">Actions</TabsTrigger>
+          <TabsTrigger value="competitors" className="gap-1.5">
+            <Swords className="w-3.5 h-3.5" /> Competitors
+          </TabsTrigger>
           <TabsTrigger value="visibility" className="gap-1.5">
             <Eye className="w-3.5 h-3.5" /> AI Visibility
           </TabsTrigger>
@@ -933,6 +936,251 @@ const PRResults = () => {
             ))
           )}
         </TabsContent>
+        {/* ── Competitors ──────────────────────────────────────────────── */}
+        <TabsContent value="competitors" className="space-y-5 mt-4">
+          {competitors.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="p-8 text-center space-y-2">
+                <Swords className="w-7 h-7 text-muted-foreground mx-auto" />
+                <p className="text-sm font-medium text-foreground">No competitors configured</p>
+                <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                  Add competitor domains when setting up your project to enable head-to-head narrative benchmarking.
+                </p>
+              </CardContent>
+            </Card>
+          ) : Object.keys(result.competitor_narratives).length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="p-8 text-center space-y-2">
+                <Swords className="w-7 h-7 text-muted-foreground mx-auto" />
+                <p className="text-sm font-medium text-foreground">No competitor data in this scan</p>
+                <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                  Run Re-analyse — the AI will crawl competitor sites and extract their narrative themes for comparison.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (() => {
+            // ── Derived data ─────────────────────────────────────────────────
+            const brandStrong = result.brand_narratives.filter((n) => n.status === "strong");
+            const brandAvg = result.brand_narratives.length > 0
+              ? Math.round(result.brand_narratives.reduce((s, n) => s + n.strength, 0) / result.brand_narratives.length)
+              : null;
+
+            // Brand's 5 scores for benchmark row
+            const brandScores = [
+              { label: "Narrative", value: result.narrative_score },
+              { label: "Authority", value: result.authority_score },
+              { label: "Proof", value: result.proof_density_score },
+              { label: "Risk", value: result.risk_score, invert: true },
+              { label: "Opportunity", value: result.opportunity_score },
+            ];
+
+            return (
+              <>
+                {/* ── Brand benchmark baseline ─────────────────────────────── */}
+                <Card className="border-primary/20 bg-primary/5">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-primary shrink-0" />
+                        <p className="text-sm font-semibold text-foreground">{project.brand_name}</p>
+                        <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">Your brand</Badge>
+                      </div>
+                      {brandAvg != null && (
+                        <p className="text-xs text-muted-foreground">Avg narrative strength: <span className="font-bold text-foreground">{brandAvg}</span></p>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-5 gap-2">
+                      {brandScores.map(({ label, value, invert }) => (
+                        <div key={label} className="text-center space-y-1">
+                          <div className={`text-lg font-bold ${scoreColor(value, invert)}`}>{value ?? "—"}</div>
+                          <div className="text-xs text-muted-foreground">{label}</div>
+                          <div className="w-full bg-secondary rounded-full h-1">
+                            <div
+                              className={`h-1 rounded-full ${
+                                invert
+                                  ? (value != null && value <= 30) ? "bg-emerald-500" : (value != null && value <= 60) ? "bg-yellow-500" : "bg-destructive"
+                                  : (value != null && value >= 70) ? "bg-emerald-500" : (value != null && value >= 40) ? "bg-yellow-500" : "bg-destructive"
+                              }`}
+                              style={{ width: `${Math.min(100, Math.max(0, invert ? 100 - (value ?? 50) : (value ?? 0)))}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {brandStrong.length > 0 && (
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {brandStrong.map((n) => (
+                          <Badge key={n.theme} variant="outline" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-1">
+                            <Crown className="w-3 h-3" /> {n.theme}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* ── Per-competitor head-to-head panels ───────────────────── */}
+                {competitors.map((comp) => {
+                  const compThemes = result.competitor_narratives[comp.domain] || [];
+                  if (compThemes.length === 0) return null;
+
+                  const compAvg = Math.round(compThemes.reduce((s, n) => s + n.strength, 0) / compThemes.length);
+                  const compTop = [...compThemes].sort((a, b) => b.strength - a.strength);
+                  const brandTop = [...result.brand_narratives].sort((a, b) => b.strength - a.strength);
+
+                  // Competitive edge: themes where competitor strength ≥ 70
+                  const compThreats = compTop.filter((n) => n.strength >= 70);
+                  // Brand advantages: brand strong themes (strength ≥ 70)
+                  const brandAdvantages = brandTop.filter((n) => n.strength >= 70);
+
+                  // Lead indicator: compare avg strengths
+                  const brandLeads = (brandAvg ?? 0) > compAvg;
+                  const tied = Math.abs((brandAvg ?? 0) - compAvg) <= 5;
+
+                  return (
+                    <div key={comp.domain} className="space-y-3">
+                      {/* Competitor header */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full bg-muted-foreground shrink-0" />
+                          <p className="text-sm font-semibold text-foreground">{comp.name || comp.domain}</p>
+                          <span className="text-xs text-muted-foreground">{comp.domain}</span>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={`text-xs ${
+                            tied
+                              ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/30"
+                              : brandLeads
+                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                              : "bg-destructive/10 text-destructive border-destructive/30"
+                          }`}
+                        >
+                          {tied ? "Neck and neck" : brandLeads ? `You lead · +${(brandAvg ?? 0) - compAvg} avg` : `They lead · +${compAvg - (brandAvg ?? 0)} avg`}
+                        </Badge>
+                      </div>
+
+                      {/* Side-by-side narrative themes */}
+                      <div className="grid md:grid-cols-2 gap-3">
+                        {/* Brand column */}
+                        <Card className="border-primary/20">
+                          <CardHeader className="pb-2 pt-3 px-4">
+                            <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                              <div className="w-2 h-2 rounded-full bg-primary" />
+                              {project.brand_name}
+                              {brandAvg != null && <span className="text-muted-foreground font-normal ml-auto">avg {brandAvg}</span>}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="px-4 pb-4 space-y-3">
+                            {brandTop.slice(0, 6).map((n, i) => (
+                              <div key={i} className="space-y-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="text-xs text-foreground truncate">{n.theme}</span>
+                                    {n.status === "strong" && <Crown className="w-3 h-3 text-emerald-400 shrink-0" />}
+                                  </div>
+                                  <span className={`text-xs font-bold shrink-0 ${
+                                    n.strength >= 70 ? "text-emerald-400" : n.strength >= 40 ? "text-yellow-400" : "text-destructive"
+                                  }`}>{n.strength}</span>
+                                </div>
+                                <StrengthBar value={n.strength} color={
+                                  n.strength >= 70 ? "bg-emerald-500" : n.strength >= 40 ? "bg-yellow-500" : "bg-destructive"
+                                } />
+                              </div>
+                            ))}
+                          </CardContent>
+                        </Card>
+
+                        {/* Competitor column */}
+                        <Card>
+                          <CardHeader className="pb-2 pt-3 px-4">
+                            <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                              <div className="w-2 h-2 rounded-full bg-muted-foreground" />
+                              {comp.name || comp.domain}
+                              <span className="text-muted-foreground font-normal ml-auto">avg {compAvg}</span>
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="px-4 pb-4 space-y-3">
+                            {compTop.slice(0, 6).map((n, i) => (
+                              <div key={i} className="space-y-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="text-xs text-foreground truncate">{n.theme}</span>
+                                    {n.strength >= 70 && <ShieldAlert className="w-3 h-3 text-orange-400 shrink-0" />}
+                                  </div>
+                                  <span className={`text-xs font-bold shrink-0 ${
+                                    n.strength >= 70 ? "text-orange-400" : n.strength >= 40 ? "text-yellow-400" : "text-muted-foreground"
+                                  }`}>{n.strength}</span>
+                                </div>
+                                <StrengthBar value={n.strength} color={
+                                  n.strength >= 70 ? "bg-orange-500" : n.strength >= 40 ? "bg-yellow-500/60" : "bg-muted-foreground/30"
+                                } />
+                              </div>
+                            ))}
+                          </CardContent>
+                        </Card>
+                      </div>
+
+                      {/* Threat & advantage callouts */}
+                      {(compThreats.length > 0 || brandAdvantages.length > 0) && (
+                        <div className="grid md:grid-cols-2 gap-3">
+                          {brandAdvantages.length > 0 && (
+                            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-1.5">
+                              <p className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                                <Crown className="w-3.5 h-3.5" /> Your narrative advantages
+                              </p>
+                              {brandAdvantages.slice(0, 3).map((n) => (
+                                <div key={n.theme} className="flex items-center gap-2">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                                  <p className="text-xs text-foreground font-medium">{n.theme}</p>
+                                  <span className="text-xs text-emerald-400 font-bold ml-auto">{n.strength}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {compThreats.length > 0 && (
+                            <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3 space-y-1.5">
+                              <p className="text-xs font-semibold text-orange-400 flex items-center gap-1.5">
+                                <ShieldAlert className="w-3.5 h-3.5" /> Competitor threat themes
+                              </p>
+                              {compThreats.slice(0, 3).map((n) => (
+                                <div key={n.theme} className="space-y-0.5">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0" />
+                                    <p className="text-xs text-foreground font-medium">{n.theme}</p>
+                                    <span className="text-xs text-orange-400 font-bold ml-auto">{n.strength}</span>
+                                  </div>
+                                  {n.description && (
+                                    <p className="text-xs text-muted-foreground pl-3.5 leading-relaxed">{n.description}</p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Separator between competitors */}
+                      {competitors.indexOf(comp) < competitors.length - 1 && (
+                        <div className="border-t border-border" />
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* ── Competitive insight footer ────────────────────────────── */}
+                <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg bg-secondary/50 border border-border">
+                  <Swords className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                  <p className="text-xs text-muted-foreground">
+                    Competitor narrative data is extracted from their website during each scan. Run{" "}
+                    <span className="text-foreground">Re-analyse</span> to refresh competitor scores after significant time has passed.
+                  </p>
+                </div>
+              </>
+            );
+          })()}
+        </TabsContent>
+
         {/* ── External Mentions ────────────────────────────────────────── */}
         <TabsContent value="mentions" className="space-y-4 mt-4">
           {/* Header */}
