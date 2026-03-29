@@ -5,7 +5,12 @@ import {
   AlertTriangle, TrendingUp, Shield, FileText, Lightbulb,
   Globe, RefreshCw, ArrowLeft, Zap, Eye, Play, MessageSquare,
   Bell, TrendingDown, ChevronUp, ChevronDown, Clock,
+  Link2, ExternalLink, Plus, Trash2, Quote,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -128,6 +133,23 @@ interface PrAlert {
   delta_value: number | null;
   read_at: string | null;
   dismissed_at: string | null;
+  created_at: string;
+}
+
+interface ExternalMention {
+  id: string;
+  url: string;
+  source_type: "article" | "review_site" | "roundup" | "competitor_review" | "social" | "other";
+  status: "pending" | "fetching" | "analyzing" | "done" | "failed";
+  error_message: string | null;
+  page_title: string | null;
+  sentiment: "positive" | "neutral" | "negative" | "mixed" | null;
+  sentiment_score: number | null;
+  themes: string[];
+  proof_signals: string[];
+  key_quotes: { quote: string; context: string }[];
+  brand_mentions: { brand: string; framing: string }[];
+  ai_summary: string | null;
   created_at: string;
 }
 
@@ -284,6 +306,12 @@ const PRResults = () => {
   const [alerts, setAlerts] = useState<PrAlert[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // External mentions
+  const [mentions, setMentions] = useState<ExternalMention[]>([]);
+  const [newMentionUrl, setNewMentionUrl] = useState("");
+  const [newMentionType, setNewMentionType] = useState("article");
+  const [addingMention, setAddingMention] = useState(false);
+
   const loadData = useCallback(async () => {
     if (!projectId) return;
 
@@ -415,7 +443,65 @@ const PRResults = () => {
     setUnreadCount((prev) => Math.max(0, prev - 1));
   }, []);
 
-  // Compute deltas from score history (latest vs previous)
+  // ── External mentions ──────────────────────────────────────────────────────
+
+  const loadMentions = useCallback(async () => {
+    if (!projectId) return;
+    const { data } = await (supabase as any)
+      .from("pr_external_mentions")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false });
+    setMentions(data || []);
+  }, [projectId]);
+
+  useEffect(() => { void loadMentions(); }, [loadMentions]);
+
+  // Poll while any mention is in-progress
+  useEffect(() => {
+    const hasPending = mentions.some((m) => ["pending", "fetching", "analyzing"].includes(m.status));
+    if (!hasPending) return;
+    const timer = setInterval(() => void loadMentions(), 3000);
+    return () => clearInterval(timer);
+  }, [mentions, loadMentions]);
+
+  const addMention = useCallback(async () => {
+    if (!project || !newMentionUrl.trim()) return;
+    try { new URL(newMentionUrl.trim()); } catch {
+      toast({ title: "Invalid URL", description: "Enter a full URL starting with https://", variant: "destructive" });
+      return;
+    }
+    setAddingMention(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data: mention, error: insertErr } = await (supabase as any)
+        .from("pr_external_mentions")
+        .insert({ project_id: project.id, url: newMentionUrl.trim(), source_type: newMentionType, status: "pending" })
+        .select("id")
+        .single();
+      if (insertErr || !mention) throw new Error(insertErr?.message || "Failed to add mention");
+      setNewMentionUrl("");
+      await loadMentions();
+      // Fire edge function (fire and forget — polling handles status)
+      fetch(`${SUPABASE_FUNCTIONS_URL}/pr-fetch-mention`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token ?? ""}` },
+        body: JSON.stringify({ mention_id: mention.id }),
+      }).catch(console.error);
+      toast({ title: "Mention added", description: "Fetching and analysing…" });
+    } catch (e: any) {
+      toast({ title: "Failed to add mention", description: e?.message, variant: "destructive" });
+    } finally {
+      setAddingMention(false);
+    }
+  }, [project, newMentionUrl, newMentionType, loadMentions]);
+
+  const deleteMention = useCallback(async (id: string) => {
+    await (supabase as any).from("pr_external_mentions").delete().eq("id", id);
+    setMentions((prev) => prev.filter((m) => m.id !== id));
+  }, []);
+
+  // ── Compute deltas from score history (latest vs previous)
   const prevSnapshot = scoreHistory.length >= 2 ? scoreHistory[1] : null;
   const scoreDelta = (key: keyof ScoreSnapshot) => {
     if (!result || !prevSnapshot) return null;
@@ -586,6 +672,12 @@ const PRResults = () => {
           <TabsTrigger value="actions">Actions</TabsTrigger>
           <TabsTrigger value="visibility" className="gap-1.5">
             <Eye className="w-3.5 h-3.5" /> AI Visibility
+          </TabsTrigger>
+          <TabsTrigger value="mentions" className="gap-1.5">
+            <Link2 className="w-3.5 h-3.5" /> Mentions
+            {mentions.length > 0 && (
+              <span className="ml-1 text-xs text-muted-foreground">({mentions.length})</span>
+            )}
           </TabsTrigger>
           <TabsTrigger value="alerts" className="gap-1.5 relative" onClick={markAlertsRead}>
             <Bell className="w-3.5 h-3.5" /> Alerts
@@ -841,6 +933,193 @@ const PRResults = () => {
             ))
           )}
         </TabsContent>
+        {/* ── External Mentions ────────────────────────────────────────── */}
+        <TabsContent value="mentions" className="space-y-4 mt-4">
+          {/* Header */}
+          <div>
+            <p className="text-sm font-medium text-foreground">External mentions</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Add press articles, review pages, roundups, or competitor coverage. These are fetched, AI-analysed, and automatically included in your next Re-analyse to improve accuracy.
+            </p>
+          </div>
+
+          {/* Add URL form */}
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="p-4 space-y-3">
+              <p className="text-xs font-medium text-foreground">Add a URL to analyse</p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="https://techcrunch.com/2024/your-brand-coverage"
+                  value={newMentionUrl}
+                  onChange={(e) => setNewMentionUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !addingMention && void addMention()}
+                  className="text-sm flex-1"
+                />
+                <Select value={newMentionType} onValueChange={setNewMentionType}>
+                  <SelectTrigger className="w-40 text-xs shrink-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="article">Press Article</SelectItem>
+                    <SelectItem value="review_site">Review Site</SelectItem>
+                    <SelectItem value="roundup">Roundup / Best-of</SelectItem>
+                    <SelectItem value="competitor_review">Competitor Review</SelectItem>
+                    <SelectItem value="social">Social / Forum</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button size="sm" onClick={addMention} disabled={addingMention || !newMentionUrl.trim()} className="gap-1.5 shrink-0">
+                  {addingMention ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                  Add
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                The page will be fetched and analysed automatically. Results appear in ~15 seconds.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Empty state */}
+          {mentions.length === 0 && (
+            <Card className="border-dashed">
+              <CardContent className="p-8 text-center space-y-2">
+                <Link2 className="w-7 h-7 text-muted-foreground mx-auto" />
+                <p className="text-sm font-medium text-foreground">No external mentions yet</p>
+                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                  Add a press article, G2 listing, "best of" roundup, or competitor review page above. Third-party sources significantly improve proof gap and authority analysis.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Mentions list */}
+          {mentions.map((mention) => {
+            const sourceLabels: Record<string, string> = {
+              article: "Press", review_site: "Review Site",
+              roundup: "Roundup", competitor_review: "Competitor Review",
+              social: "Social", other: "Source",
+            };
+            const sentimentStyle: Record<string, string> = {
+              positive: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+              negative: "bg-destructive/10 text-destructive border-destructive/30",
+              neutral:  "bg-muted text-muted-foreground border-border",
+              mixed:    "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
+            };
+            const domain = (() => { try { return new URL(mention.url).hostname.replace("www.", ""); } catch { return mention.url; } })();
+            const isProcessing = ["pending", "fetching", "analyzing"].includes(mention.status);
+
+            return (
+              <Card key={mention.id} className={`${mention.status === "failed" ? "border-destructive/30" : ""}`}>
+                <CardContent className="p-4 space-y-3">
+                  {/* Header row */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2 min-w-0 flex-1">
+                      {isProcessing && <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0 mt-0.5" />}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground truncate">
+                          {mention.page_title || domain}
+                        </p>
+                        <a href={mention.url} target="_blank" rel="noopener noreferrer"
+                           className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 mt-0.5 truncate">
+                          <ExternalLink className="w-3 h-3 shrink-0" />{domain}
+                        </a>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Badge variant="outline" className="text-xs">{sourceLabels[mention.source_type] ?? "Source"}</Badge>
+                      {mention.sentiment && (
+                        <Badge variant="outline" className={`text-xs capitalize ${sentimentStyle[mention.sentiment] ?? ""}`}>
+                          {mention.sentiment}
+                          {mention.sentiment_score != null && ` · ${mention.sentiment_score}`}
+                        </Badge>
+                      )}
+                      <button onClick={() => deleteMention(mention.id)}
+                        className="text-muted-foreground hover:text-destructive transition-colors ml-1" title="Remove">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Processing state */}
+                  {isProcessing && (
+                    <p className="text-xs text-muted-foreground">
+                      {mention.status === "pending" && "Queued for analysis…"}
+                      {mention.status === "fetching" && "Fetching page content…"}
+                      {mention.status === "analyzing" && "Analysing with AI…"}
+                    </p>
+                  )}
+
+                  {/* Failed state */}
+                  {mention.status === "failed" && (
+                    <div className="bg-destructive/5 border border-destructive/20 rounded p-2.5">
+                      <p className="text-xs text-destructive">{mention.error_message || "Failed to fetch or analyse this URL."}</p>
+                    </div>
+                  )}
+
+                  {/* Done state */}
+                  {mention.status === "done" && (
+                    <>
+                      {/* AI summary */}
+                      {mention.ai_summary && (
+                        <p className="text-xs text-muted-foreground leading-relaxed">{mention.ai_summary}</p>
+                      )}
+
+                      {/* Themes */}
+                      {mention.themes?.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {mention.themes.map((t) => (
+                            <Badge key={t} variant="outline" className="text-xs bg-secondary text-muted-foreground">{t}</Badge>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Key quotes */}
+                      {mention.key_quotes?.length > 0 && (
+                        <div className="space-y-1.5">
+                          {mention.key_quotes.slice(0, 2).map((q, i) => (
+                            <div key={i} className="flex gap-2 bg-secondary/50 rounded p-2.5">
+                              <Quote className="w-3 h-3 text-primary shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-xs text-foreground italic">"{q.quote}"</p>
+                                {q.context && <p className="text-xs text-muted-foreground mt-0.5">{q.context}</p>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Proof signals */}
+                      {mention.proof_signals?.length > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground">Proof signals:</p>
+                          <ul className="space-y-0.5">
+                            {mention.proof_signals.slice(0, 4).map((s, i) => (
+                              <li key={i} className="text-xs text-muted-foreground flex gap-1.5">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0 mt-0.5" />{s}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+
+          {/* "How this helps" note */}
+          {mentions.filter((m) => m.status === "done").length > 0 && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-secondary/50 border border-border">
+              <RefreshCw className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
+              <p className="text-xs text-muted-foreground">
+                <span className="text-foreground font-medium">{mentions.filter((m) => m.status === "done").length} mention{mentions.filter((m) => m.status === "done").length !== 1 ? "s" : ""} analysed.</span>{" "}
+                Hit <span className="text-foreground">Re-analyse</span> to incorporate them into your narrative scores and proof gap detection.
+              </p>
+            </div>
+          )}
+        </TabsContent>
+
         {/* ── Alerts ───────────────────────────────────────────────────── */}
         <TabsContent value="alerts" className="space-y-4 mt-4">
           <div className="flex items-center justify-between">

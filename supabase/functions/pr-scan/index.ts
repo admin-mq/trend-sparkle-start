@@ -221,12 +221,39 @@ If a category has nothing, write "None found". Keep each bullet under 20 words.`
  * Stage 2: Strategic synthesis across all extracted page facts.
  * Uses gpt-4o and is strictly evidence-grounded — no hallucination.
  */
-async function synthesizeAnalysis(project: any, brandFacts: string[], competitorFacts: Record<string, string[]>): Promise<any> {
+async function synthesizeAnalysis(
+  project: any,
+  brandFacts: string[],
+  competitorFacts: Record<string, string[]>,
+  externalMentions: any[] = []
+): Promise<any> {
   const brandEvidence = brandFacts.join("\n\n");
 
   const competitorBlocks = Object.entries(competitorFacts)
     .map(([domain, facts]) => `=== COMPETITOR: ${domain} ===\n${facts.join("\n\n")}`)
     .join("\n\n");
+
+  // Format external mentions for the synthesis prompt
+  const mentionsBlock = externalMentions.length > 0
+    ? externalMentions.map((m) => {
+        const label: Record<string, string> = {
+          article: "PRESS ARTICLE", review_site: "REVIEW SITE",
+          roundup: "ROUNDUP / BEST-OF", competitor_review: "COMPETITOR REVIEW",
+          social: "SOCIAL / FORUM", other: "EXTERNAL SOURCE",
+        };
+        const quotes = Array.isArray(m.key_quotes) && m.key_quotes.length > 0
+          ? m.key_quotes.map((q: any) => `  "${q.quote}" (${q.context})`).join("\n")
+          : "  None";
+        const proofs = Array.isArray(m.proof_signals) && m.proof_signals.length > 0
+          ? m.proof_signals.join("; ") : "None";
+        return `[${label[m.source_type] ?? "EXTERNAL"}] ${m.url}
+Sentiment toward ${project.brand_name}: ${m.sentiment} (${m.sentiment_score}/100)
+Themes: ${Array.isArray(m.themes) ? m.themes.join(", ") : "none"}
+Proof signals: ${proofs}
+Key quotes:\n${quotes}
+Summary: ${m.ai_summary ?? ""}`;
+      }).join("\n\n")
+    : null;
 
   const system = `You are a world-class PR strategist and brand narrative analyst with 20+ years experience advising Fortune 500 companies and scaling startups.
 
@@ -251,6 +278,11 @@ ${brandEvidence || "No pages could be fetched."}
 
 === EVIDENCE FROM COMPETITOR WEBSITES ===
 ${competitorBlocks || "No competitor pages fetched."}
+${mentionsBlock ? `\n=== EXTERNAL THIRD-PARTY MENTIONS (${externalMentions.length} sources) ===
+These are press articles, review sites, roundups, or other third-party pages about this brand.
+Third-party sources are high-trust signals — weight them heavily for authority_score and proof_density_score.
+
+${mentionsBlock}` : ""}
 
 Based ONLY on this evidence, return a JSON object with this exact structure:
 
@@ -430,13 +462,26 @@ Deno.serve(async (req: Request) => {
       })
     );
 
+    // ── Step 3.5: Load external mentions to enrich synthesis ─────────────────
+    const { data: externalMentions } = await supabase
+      .from("pr_external_mentions")
+      .select("url, source_type, sentiment, sentiment_score, themes, proof_signals, key_quotes, ai_summary")
+      .eq("project_id", project_id)
+      .eq("status", "done")
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (externalMentions && externalMentions.length > 0) {
+      console.log(`[pr-scan] Including ${externalMentions.length} external mention(s) in synthesis`);
+    }
+
     // ── Step 4: Strategic synthesis (gpt-4o) ─────────────────────────────────
     await supabase
       .from("pr_scan_jobs")
       .update({ progress_step: "Running strategic narrative analysis…" })
       .eq("id", scan_job_id);
 
-    const analysis = await synthesizeAnalysis(project, brandFacts, competitorFacts);
+    const analysis = await synthesizeAnalysis(project, brandFacts, competitorFacts, externalMentions ?? []);
 
     // ── Step 5: Store results ─────────────────────────────────────────────────
     await supabase
