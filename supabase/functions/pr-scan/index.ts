@@ -462,6 +462,40 @@ Deno.serve(async (req: Request) => {
 
     if (insertErr) throw new Error(`Failed to store results: ${insertErr.message}`);
 
+    // ── Store score snapshot ──────────────────────────────────────────────────
+    await supabase.from("pr_score_history").insert({
+      project_id,
+      scan_job_id,
+      narrative_score: analysis.narrative_score ?? null,
+      authority_score: analysis.authority_score ?? null,
+      proof_density_score: analysis.proof_density_score ?? null,
+      risk_score: analysis.risk_score ?? null,
+      opportunity_score: analysis.opportunity_score ?? null,
+      pages_analyzed: totalPages,
+      snapshot_date: new Date().toISOString(),
+    });
+
+    // ── Update next_scan_at on project ────────────────────────────────────────
+    const freq = project.scan_frequency || "weekly";
+    const daysMap: Record<string, number> = { daily: 1, weekly: 7, monthly: 30 };
+    const days = daysMap[freq];
+    if (days) {
+      const nextScan = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+      await supabase.from("pr_projects")
+        .update({ next_scan_at: nextScan.toISOString() })
+        .eq("id", project_id);
+    }
+
+    // ── Fire alert evaluator (fire and forget) ────────────────────────────────
+    fetch(`${SUPABASE_URL}/functions/v1/pr-alert-evaluator`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({ project_id, scan_job_id }),
+    }).catch((e) => console.error("[pr-scan] alert evaluator fire failed:", e));
+
     await supabase
       .from("pr_scan_jobs")
       .update({ status: "completed", ended_at: new Date().toISOString(), progress_step: "Complete" })

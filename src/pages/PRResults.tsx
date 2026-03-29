@@ -4,6 +4,7 @@ import {
   Megaphone, Loader2, ChevronLeft, CheckCircle2, XCircle,
   AlertTriangle, TrendingUp, Shield, FileText, Lightbulb,
   Globe, RefreshCw, ArrowLeft, Zap, Eye, Play, MessageSquare,
+  Bell, TrendingDown, ChevronUp, ChevronDown, Clock,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -104,6 +105,32 @@ interface VisibilityResult {
   visibility_score: number;
 }
 
+interface ScoreSnapshot {
+  id: string;
+  narrative_score: number | null;
+  authority_score: number | null;
+  proof_density_score: number | null;
+  risk_score: number | null;
+  opportunity_score: number | null;
+  snapshot_date: string;
+}
+
+interface PrAlert {
+  id: string;
+  alert_type: string;
+  severity: string;
+  title: string;
+  description: string | null;
+  metric_name: string | null;
+  metric_label: string | null;
+  previous_value: number | null;
+  current_value: number | null;
+  delta_value: number | null;
+  read_at: string | null;
+  dismissed_at: string | null;
+  created_at: string;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const POLL_MS = 3500;
@@ -175,14 +202,28 @@ function actionTypeBadge(type: string) {
 
 // ── Score card ────────────────────────────────────────────────────────────────
 
+function ScoreDelta({ delta, invert = false }: { delta: number | null; invert?: boolean }) {
+  if (delta == null || delta === 0) return null;
+  // For invert=true (risk), going up is bad so we flip colour
+  const isGood = invert ? delta < 0 : delta > 0;
+  const abs = Math.abs(delta);
+  return (
+    <div className={`inline-flex items-center gap-0.5 text-xs font-semibold ${isGood ? "text-emerald-400" : "text-destructive"}`}>
+      {isGood ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+      {abs}
+    </div>
+  );
+}
+
 function ScoreCard({
-  label, score, icon: Icon, invert = false, subtitle,
+  label, score, icon: Icon, invert = false, subtitle, delta,
 }: {
   label: string;
   score: number | null;
   icon: React.ElementType;
   invert?: boolean;
   subtitle?: string;
+  delta?: number | null;
 }) {
   return (
     <Card className={`border-2 ${scoreRing(score, invert)}`}>
@@ -194,6 +235,12 @@ function ScoreCard({
           {score != null ? score : "—"}
         </div>
         <div className="text-xs font-medium text-foreground">{label}</div>
+        {delta != null && delta !== 0 && (
+          <div className="flex items-center justify-center gap-1">
+            <ScoreDelta delta={delta} invert={invert} />
+            <span className="text-xs text-muted-foreground">vs last scan</span>
+          </div>
+        )}
         {subtitle && <div className="text-xs text-muted-foreground">{subtitle}</div>}
       </CardContent>
     </Card>
@@ -231,6 +278,11 @@ const PRResults = () => {
   const [visibilityResults, setVisibilityResults] = useState<VisibilityResult[]>([]);
   const [visibilityLoading, setVisibilityLoading] = useState(false);
   const [startingVisibility, setStartingVisibility] = useState(false);
+
+  // Score history + alerts
+  const [scoreHistory, setScoreHistory] = useState<ScoreSnapshot[]>([]);
+  const [alerts, setAlerts] = useState<PrAlert[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const loadData = useCallback(async () => {
     if (!projectId) return;
@@ -311,6 +363,67 @@ const PRResults = () => {
     const interval = setInterval(() => void loadVisibility(), POLL_MS);
     return () => clearInterval(interval);
   }, [visibilityRun, loadVisibility]);
+
+  // ── Score history + alerts ─────────────────────────────────────────────────
+
+  const loadHistoryAndAlerts = useCallback(async () => {
+    if (!projectId) return;
+
+    const [historyRes, alertsRes] = await Promise.all([
+      (supabase as any)
+        .from("pr_score_history")
+        .select("id, narrative_score, authority_score, proof_density_score, risk_score, opportunity_score, snapshot_date")
+        .eq("project_id", projectId)
+        .order("snapshot_date", { ascending: false })
+        .limit(10),
+      (supabase as any)
+        .from("pr_alerts")
+        .select("*")
+        .eq("project_id", projectId)
+        .is("dismissed_at", null)
+        .order("created_at", { ascending: false })
+        .limit(50),
+    ]);
+
+    const history: ScoreSnapshot[] = historyRes.data || [];
+    const alertList: PrAlert[] = alertsRes.data || [];
+
+    setScoreHistory(history);
+    setAlerts(alertList);
+    setUnreadCount(alertList.filter((a) => !a.read_at).length);
+  }, [projectId]);
+
+  useEffect(() => { void loadHistoryAndAlerts(); }, [loadHistoryAndAlerts]);
+
+  const markAlertsRead = useCallback(async () => {
+    if (!projectId || unreadCount === 0) return;
+    await (supabase as any)
+      .from("pr_alerts")
+      .update({ read_at: new Date().toISOString() })
+      .eq("project_id", projectId)
+      .is("read_at", null);
+    setAlerts((prev) => prev.map((a) => ({ ...a, read_at: a.read_at ?? new Date().toISOString() })));
+    setUnreadCount(0);
+  }, [projectId, unreadCount]);
+
+  const dismissAlert = useCallback(async (alertId: string) => {
+    await (supabase as any)
+      .from("pr_alerts")
+      .update({ dismissed_at: new Date().toISOString() })
+      .eq("id", alertId);
+    setAlerts((prev) => prev.filter((a) => a.id !== alertId));
+    setUnreadCount((prev) => Math.max(0, prev - 1));
+  }, []);
+
+  // Compute deltas from score history (latest vs previous)
+  const prevSnapshot = scoreHistory.length >= 2 ? scoreHistory[1] : null;
+  const scoreDelta = (key: keyof ScoreSnapshot) => {
+    if (!result || !prevSnapshot) return null;
+    const curr = result[key as keyof NarrativeResult] as number | null;
+    const prev = prevSnapshot[key] as number | null;
+    if (curr == null || prev == null) return null;
+    return curr - prev;
+  };
 
   const runVisibilityCheck = useCallback(async () => {
     if (!project) return;
@@ -474,16 +587,24 @@ const PRResults = () => {
           <TabsTrigger value="visibility" className="gap-1.5">
             <Eye className="w-3.5 h-3.5" /> AI Visibility
           </TabsTrigger>
+          <TabsTrigger value="alerts" className="gap-1.5 relative" onClick={markAlertsRead}>
+            <Bell className="w-3.5 h-3.5" /> Alerts
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Overview ─────────────────────────────────────────────────────── */}
         <TabsContent value="overview" className="space-y-5 mt-4">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <ScoreCard label="Narrative" score={result.narrative_score} icon={TrendingUp} subtitle="How strong & consistent" />
-            <ScoreCard label="Authority" score={result.authority_score} icon={Shield} subtitle="How credible you appear" />
-            <ScoreCard label="Proof Density" score={result.proof_density_score} icon={FileText} subtitle="Evidence behind claims" />
-            <ScoreCard label="Risk" score={result.risk_score} icon={AlertTriangle} invert subtitle="Lower is better" />
-            <ScoreCard label="Opportunity" score={result.opportunity_score} icon={Zap} subtitle="Room to gain ground" />
+            <ScoreCard label="Narrative" score={result.narrative_score} icon={TrendingUp} subtitle="How strong & consistent" delta={scoreDelta("narrative_score")} />
+            <ScoreCard label="Authority" score={result.authority_score} icon={Shield} subtitle="How credible you appear" delta={scoreDelta("authority_score")} />
+            <ScoreCard label="Proof Density" score={result.proof_density_score} icon={FileText} subtitle="Evidence behind claims" delta={scoreDelta("proof_density_score")} />
+            <ScoreCard label="Risk" score={result.risk_score} icon={AlertTriangle} invert subtitle="Lower is better" delta={scoreDelta("risk_score")} />
+            <ScoreCard label="Opportunity" score={result.opportunity_score} icon={Zap} subtitle="Room to gain ground" delta={scoreDelta("opportunity_score")} />
           </div>
 
           {/* Top gaps preview */}
@@ -695,6 +816,109 @@ const PRResults = () => {
             ))
           )}
         </TabsContent>
+        {/* ── Alerts ───────────────────────────────────────────────────── */}
+        <TabsContent value="alerts" className="space-y-4 mt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">Score change alerts</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Generated automatically after each scan — shows what moved and why
+              </p>
+            </div>
+            {alerts.length > 0 && (
+              <p className="text-xs text-muted-foreground">{alerts.length} alert{alerts.length !== 1 ? "s" : ""}</p>
+            )}
+          </div>
+
+          {alerts.length === 0 && (
+            <Card className="border-dashed">
+              <CardContent className="p-8 text-center space-y-2">
+                <Bell className="w-7 h-7 text-muted-foreground mx-auto" />
+                <p className="text-sm font-medium text-foreground">No alerts yet</p>
+                <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                  Alerts appear after your second scan, comparing scores and surfacing significant changes.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {alerts.map((alert) => {
+            const severityStyle: Record<string, string> = {
+              critical: "border-l-destructive bg-destructive/5",
+              high:     "border-l-orange-500 bg-orange-500/5",
+              medium:   "border-l-yellow-500 bg-yellow-500/5",
+              low:      "border-l-border bg-muted/30",
+              positive: "border-l-emerald-500 bg-emerald-500/5",
+            };
+            const badgeStyle: Record<string, string> = {
+              critical: "bg-destructive/10 text-destructive border-destructive/30",
+              high:     "bg-orange-500/10 text-orange-400 border-orange-500/30",
+              medium:   "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
+              low:      "bg-muted text-muted-foreground border-border",
+              positive: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+            };
+            const isUnread = !alert.read_at;
+
+            return (
+              <Card
+                key={alert.id}
+                className={`border-l-4 ${severityStyle[alert.severity] || severityStyle.low} ${isUnread ? "ring-1 ring-primary/20" : ""}`}
+              >
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2 flex-1 min-w-0">
+                      {isUnread && <div className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5" />}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground leading-snug">{alert.title}</p>
+                        {alert.description && (
+                          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{alert.description}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge variant="outline" className={`text-xs capitalize ${badgeStyle[alert.severity] || ""}`}>
+                        {alert.severity === "positive" ? "positive" : alert.severity}
+                      </Badge>
+                      <button
+                        onClick={() => dismissAlert(alert.id)}
+                        className="text-muted-foreground hover:text-foreground transition-colors text-xs"
+                        title="Dismiss"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Delta display */}
+                  {alert.delta_value != null && alert.metric_label && (
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <span className="text-xs text-muted-foreground">{alert.metric_label}:</span>
+                      <span className="text-xs font-medium text-muted-foreground">{alert.previous_value}</span>
+                      <span className="text-xs text-muted-foreground">→</span>
+                      <span className="text-xs font-bold text-foreground">{alert.current_value}</span>
+                      <span className={`text-xs font-semibold flex items-center gap-0.5 ${
+                        alert.severity === "positive" ? "text-emerald-400" : "text-destructive"
+                      }`}>
+                        {alert.delta_value > 0
+                          ? <><ChevronUp className="w-3 h-3" />{alert.delta_value}</>
+                          : <><ChevronDown className="w-3 h-3" />{Math.abs(alert.delta_value)}</>
+                        }
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground pt-0.5">
+                    <Clock className="w-3 h-3" />
+                    {new Date(alert.created_at).toLocaleDateString("en-GB", {
+                      day: "numeric", month: "short", year: "numeric",
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </TabsContent>
+
         {/* ── AI Visibility ────────────────────────────────────────────── */}
         <TabsContent value="visibility" className="space-y-4 mt-4">
           {/* No prompts configured */}

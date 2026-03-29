@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Megaphone, Plus, Globe, Loader2, CheckCircle2, XCircle, Clock,
-  ChevronRight, AlertCircle, Building2, Target, Users, MapPin, Trash2,
+  ChevronRight, AlertCircle, Building2, Target, Users, MapPin, Trash2, RefreshCw,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -206,11 +206,13 @@ function CreateProjectDialog({
 
   // Prompts step
   const [promptText, setPromptText] = useState("");
+  const [scanFrequency, setScanFrequency] = useState<"weekly" | "monthly" | "manual">("weekly");
 
   function resetForm() {
     setStep("Brand");
     setBrandName(""); setDomain(""); setIndustry(""); setGeography("Global"); setAudience("");
     setCompetitors([{ name: "", domain: "" }]);
+    setPromptText(""); setScanFrequency("weekly");
     setPromptText("");
     setError(null);
   }
@@ -290,6 +292,7 @@ function CreateProjectDialog({
           target_audience: audience.trim() || null,
           competitors: validCompetitors,
           tracked_prompts: trackedPrompts,
+          scan_frequency: scanFrequency,
         })
         .select()
         .single();
@@ -409,6 +412,32 @@ function CreateProjectDialog({
                 onChange={(e) => setPromptText(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">Optional — you can add prompts later.</p>
+
+              {/* Scan frequency */}
+              <div className="pt-2 space-y-2 border-t border-border">
+                <Label className="flex items-center gap-1.5 text-sm">
+                  <Clock className="w-4 h-4" /> Rescan frequency
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  How often should we automatically re-analyse this brand?
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["weekly", "monthly", "manual"] as const).map((freq) => (
+                    <button
+                      key={freq}
+                      type="button"
+                      onClick={() => setScanFrequency(freq)}
+                      className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                        scanFrequency === freq
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                      }`}
+                    >
+                      {freq === "weekly" ? "Weekly" : freq === "monthly" ? "Monthly" : "Manual only"}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
