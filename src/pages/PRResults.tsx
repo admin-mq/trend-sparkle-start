@@ -7,6 +7,10 @@ import {
   Bell, TrendingDown, ChevronUp, ChevronDown, Clock,
   Link2, ExternalLink, Plus, Trash2, Quote, Swords, Crown, ShieldAlert,
 } from "lucide-react";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
+  ResponsiveContainer, Legend, Dot,
+} from "recharts";
 import { Input } from "@/components/ui/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -134,6 +138,13 @@ interface PrAlert {
   read_at: string | null;
   dismissed_at: string | null;
   created_at: string;
+}
+
+interface VisibilityHistoryPoint {
+  run_id: string;
+  date: string;
+  avg_score: number;
+  presence_pct: number;
 }
 
 interface ExternalMention {
@@ -282,6 +293,167 @@ function StrengthBar({ value, color = "bg-primary" }: { value: number; color?: s
   );
 }
 
+// ── Trend chart components ────────────────────────────────────────────────────
+
+const CHART_LINES = [
+  { key: "narrative",  label: "Narrative",    color: "#6366f1" },
+  { key: "authority",  label: "Authority",    color: "#10b981" },
+  { key: "proof",      label: "Proof Density", color: "#8b5cf6" },
+  { key: "opportunity",label: "Opportunity",  color: "#f59e0b" },
+];
+
+function ChartTooltipContent({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-card border border-border rounded-lg shadow-xl p-3 space-y-1 text-xs min-w-[140px]">
+      <p className="text-muted-foreground font-medium mb-2">{label}</p>
+      {payload.map((p: any) => (
+        <div key={p.dataKey} className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />
+            <span className="text-muted-foreground">{p.name}</span>
+          </div>
+          <span className="font-bold text-foreground">{p.value ?? "—"}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NarrativeTrendChart({ history }: { history: { narrative_score: number | null; authority_score: number | null; proof_density_score: number | null; opportunity_score: number | null; snapshot_date: string }[] }) {
+  const data = [...history]
+    .reverse()
+    .map((s) => ({
+      date: new Date(s.snapshot_date).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+      narrative:   s.narrative_score,
+      authority:   s.authority_score,
+      proof:       s.proof_density_score,
+      opportunity: s.opportunity_score,
+    }));
+
+  return (
+    <Card>
+      <CardHeader className="pb-2 pt-4 px-4">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-primary" />
+          Score Trend
+          <span className="text-xs font-normal text-muted-foreground ml-1">last {data.length} scans</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-2 pb-4">
+        <ResponsiveContainer width="100%" height={220}>
+          <LineChart data={data} margin={{ top: 8, right: 16, left: -20, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+              tickLine={false}
+              axisLine={false}
+            />
+            <YAxis
+              domain={[0, 100]}
+              tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+              tickLine={false}
+              axisLine={false}
+              ticks={[0, 25, 50, 75, 100]}
+            />
+            <RechartsTooltip content={<ChartTooltipContent />} cursor={{ stroke: "hsl(var(--border))", strokeWidth: 1 }} />
+            <Legend
+              iconType="circle"
+              iconSize={8}
+              wrapperStyle={{ fontSize: 11, color: "hsl(var(--muted-foreground))", paddingTop: 12 }}
+            />
+            {CHART_LINES.map(({ key, label, color }) => (
+              <Line
+                key={key}
+                type="monotone"
+                dataKey={key}
+                name={label}
+                stroke={color}
+                strokeWidth={2}
+                dot={(props: any) => {
+                  const { cx, cy, index } = props;
+                  if (index !== data.length - 1 && index !== 0) return <g key={`dot-${key}-${index}`} />;
+                  return <Dot key={`dot-${key}-${index}`} cx={cx} cy={cy} r={3} fill={color} stroke={color} />;
+                }}
+                activeDot={{ r: 5, strokeWidth: 0 }}
+                connectNulls
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+
+function VisibilityTrendChart({ history }: { history: VisibilityHistoryPoint[] }) {
+  const data = history.map((v) => ({
+    date: new Date(v.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+    score: v.avg_score,
+    presence: v.presence_pct,
+  }));
+
+  return (
+    <Card>
+      <CardHeader className="pb-2 pt-4 px-4">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-cyan-400" />
+          Visibility Trend
+          <span className="text-xs font-normal text-muted-foreground ml-1">last {data.length} checks</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-2 pb-4">
+        <ResponsiveContainer width="100%" height={200}>
+          <LineChart data={data} margin={{ top: 8, right: 16, left: -20, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+              tickLine={false}
+              axisLine={false}
+            />
+            <YAxis
+              domain={[0, 100]}
+              tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+              tickLine={false}
+              axisLine={false}
+              ticks={[0, 25, 50, 75, 100]}
+            />
+            <RechartsTooltip content={<ChartTooltipContent />} cursor={{ stroke: "hsl(var(--border))", strokeWidth: 1 }} />
+            <Legend
+              iconType="circle"
+              iconSize={8}
+              wrapperStyle={{ fontSize: 11, color: "hsl(var(--muted-foreground))", paddingTop: 12 }}
+            />
+            <Line
+              type="monotone"
+              dataKey="score"
+              name="Avg visibility score"
+              stroke="#06b6d4"
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 5, strokeWidth: 0 }}
+              connectNulls
+            />
+            <Line
+              type="monotone"
+              dataKey="presence"
+              name="Prompts w/ brand present %"
+              stroke="#10b981"
+              strokeWidth={2}
+              strokeDasharray="4 3"
+              dot={false}
+              activeDot={{ r: 5, strokeWidth: 0 }}
+              connectNulls
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 const PRResults = () => {
@@ -305,6 +477,9 @@ const PRResults = () => {
   const [scoreHistory, setScoreHistory] = useState<ScoreSnapshot[]>([]);
   const [alerts, setAlerts] = useState<PrAlert[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // Visibility history (for trend chart)
+  const [visibilityHistory, setVisibilityHistory] = useState<VisibilityHistoryPoint[]>([]);
 
   // External mentions
   const [mentions, setMentions] = useState<ExternalMention[]>([]);
@@ -361,6 +536,7 @@ const PRResults = () => {
   const loadVisibility = useCallback(async () => {
     if (!projectId) return;
 
+    // Load latest run
     const { data: run } = await (supabase as any)
       .from("pr_visibility_runs")
       .select("id, status, progress, total, error, created_at, ended_at")
@@ -380,6 +556,46 @@ const PRResults = () => {
       setVisibilityResults(results || []);
     } else {
       setVisibilityResults([]);
+    }
+
+    // Load all completed runs for trend chart
+    const { data: allRuns } = await (supabase as any)
+      .from("pr_visibility_runs")
+      .select("id, created_at")
+      .eq("project_id", projectId)
+      .eq("status", "completed")
+      .order("created_at", { ascending: false })
+      .limit(30);
+
+    if (allRuns && allRuns.length > 1) {
+      const runIds = allRuns.map((r: any) => r.id);
+      const { data: allResults } = await (supabase as any)
+        .from("pr_visibility_results")
+        .select("run_id, visibility_score, brand_present")
+        .in("run_id", runIds);
+
+      if (allResults) {
+        const grouped: Record<string, { scores: number[]; present: number[]; date: string }> = {};
+        for (const r of allRuns) grouped[r.id] = { scores: [], present: [], date: r.created_at };
+        for (const r of allResults) {
+          if (grouped[r.run_id]) {
+            grouped[r.run_id].scores.push(r.visibility_score ?? 0);
+            grouped[r.run_id].present.push(r.brand_present ? 1 : 0);
+          }
+        }
+        const history: VisibilityHistoryPoint[] = Object.entries(grouped)
+          .filter(([, g]) => g.scores.length > 0)
+          .map(([run_id, g]) => ({
+            run_id,
+            date: g.date,
+            avg_score: Math.round(g.scores.reduce((a, b) => a + b, 0) / g.scores.length),
+            presence_pct: Math.round((g.present.reduce((a, b) => a + b, 0) / g.present.length) * 100),
+          }))
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        setVisibilityHistory(history);
+      }
+    } else {
+      setVisibilityHistory([]);
     }
   }, [projectId]);
 
@@ -403,7 +619,7 @@ const PRResults = () => {
         .select("id, narrative_score, authority_score, proof_density_score, risk_score, opportunity_score, snapshot_date")
         .eq("project_id", projectId)
         .order("snapshot_date", { ascending: false })
-        .limit(10),
+        .limit(30),
       (supabase as any)
         .from("pr_alerts")
         .select("*")
@@ -713,18 +929,9 @@ const PRResults = () => {
             </div>
           )}
 
-          {/* Score trend — show if 2+ scans */}
+          {/* Score trend chart — show if 2+ scans */}
           {scoreHistory.length >= 2 && (
-            <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-secondary/50 border border-border">
-              <TrendingUp className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-              <p className="text-xs text-muted-foreground">
-                Comparing against scan from{" "}
-                <span className="text-foreground">
-                  {new Date(scoreHistory[1].snapshot_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                </span>
-                . {scoreHistory.length} total scans recorded.
-              </p>
-            </div>
+            <NarrativeTrendChart history={scoreHistory} />
           )}
 
           {/* Top gaps preview */}
@@ -1526,6 +1733,11 @@ const PRResults = () => {
                     </div>
                   </CardContent>
                 </Card>
+              )}
+
+              {/* Visibility trend chart — show if 2+ completed runs */}
+              {visibilityHistory.length >= 2 && (
+                <VisibilityTrendChart history={visibilityHistory} />
               )}
 
               {/* No run yet */}
