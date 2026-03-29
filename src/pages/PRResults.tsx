@@ -607,6 +607,31 @@ const PRResults = () => {
             <ScoreCard label="Opportunity" score={result.opportunity_score} icon={Zap} subtitle="Room to gain ground" delta={scoreDelta("opportunity_score")} />
           </div>
 
+          {/* Baseline notice — only 1 scan so far */}
+          {scoreHistory.length === 1 && (
+            <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-primary/5 border border-primary/15">
+              <RefreshCw className="w-3.5 h-3.5 text-primary shrink-0" />
+              <p className="text-xs text-muted-foreground">
+                <span className="text-foreground font-medium">Baseline set.</span>{" "}
+                Run Re-analyse after making changes to see score trends (↑ ↓) and unlock alerts.
+              </p>
+            </div>
+          )}
+
+          {/* Score trend — show if 2+ scans */}
+          {scoreHistory.length >= 2 && (
+            <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-secondary/50 border border-border">
+              <TrendingUp className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <p className="text-xs text-muted-foreground">
+                Comparing against scan from{" "}
+                <span className="text-foreground">
+                  {new Date(scoreHistory[1].snapshot_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                </span>
+                . {scoreHistory.length} total scans recorded.
+              </p>
+            </div>
+          )}
+
           {/* Top gaps preview */}
           {result.proof_gaps.length > 0 && (
             <Card>
