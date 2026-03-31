@@ -181,25 +181,29 @@ function classifyUrl(url: string, title: string): SourceType {
   return "article";
 }
 
+// ── CORS ─────────────────────────────────────────────────────────────────────
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...CORS },
+  });
+}
+
 // ── Main handler ─────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "authorization, content-type",
-      },
-    });
+    return new Response(null, { headers: CORS });
   }
 
   const { project_id } = await req.json().catch(() => ({}));
-  if (!project_id) {
-    return new Response(JSON.stringify({ error: "project_id required" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  if (!project_id) return json({ error: "project_id required" }, 400);
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   const authHeader =
@@ -212,12 +216,7 @@ Deno.serve(async (req: Request) => {
     .eq("id", project_id)
     .single();
 
-  if (!project) {
-    return new Response(JSON.stringify({ error: "Project not found" }), {
-      status: 404,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  if (!project) return json({ error: "Project not found" }, 404);
 
   // ── Load existing mention URLs to avoid dupes ─────────────────────────────
   const { data: existing } = await supabase
@@ -263,12 +262,7 @@ Deno.serve(async (req: Request) => {
 
   console.log(`Deduplicated new items: ${all.length}`);
 
-  if (all.length === 0) {
-    return new Response(
-      JSON.stringify({ found: 0, new_count: 0, urls: [] }),
-      { headers: { "Content-Type": "application/json" } },
-    );
-  }
+  if (all.length === 0) return json({ found: 0, new_count: 0, urls: [] });
 
   // ── Insert pending mentions ────────────────────────────────────────────────
   const { data: inserted, error: insertErr } = await supabase
@@ -285,10 +279,7 @@ Deno.serve(async (req: Request) => {
 
   if (insertErr) {
     console.error("insert error:", insertErr);
-    return new Response(
-      JSON.stringify({ error: "Failed to save mentions", detail: insertErr.message }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    );
+    return json({ error: "Failed to save mentions", detail: insertErr.message }, 500);
   }
 
   // ── Fire pr-fetch-mention for each (fire and forget) ──────────────────────
@@ -303,12 +294,5 @@ Deno.serve(async (req: Request) => {
     }).catch((e) => console.error("fire fetch-mention error:", e));
   }
 
-  return new Response(
-    JSON.stringify({
-      found: all.length,
-      new_count: all.length,
-      urls: all.map((r) => r.url),
-    }),
-    { headers: { "Content-Type": "application/json" } },
-  );
+  return json({ found: all.length, new_count: all.length, urls: all.map((r) => r.url) });
 });
