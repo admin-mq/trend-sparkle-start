@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Megaphone, Plus, Globe, Loader2, CheckCircle2, XCircle, Clock,
   ChevronRight, AlertCircle, Building2, Target, Users, MapPin, Trash2, RefreshCw,
+  TrendingUp, TrendingDown, Minus,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -43,8 +44,18 @@ interface PrScanJob {
   created_at: string;
 }
 
+interface ScoreSnapshot {
+  narrative_score: number;
+  authority_score: number;
+  proof_density_score: number;
+  opportunity_score: number;
+  snapshot_date: string;
+}
+
 interface ProjectWithJob extends PrProject {
   latest_job: PrScanJob | null;
+  latest_scores: ScoreSnapshot | null;
+  prev_scores: ScoreSnapshot | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -82,6 +93,48 @@ function StatusBadge({ status, step }: { status: string; step: string | null }) 
 
 // ── Project card ──────────────────────────────────────────────────────────────
 
+// ── Score mini-cell with delta arrow ─────────────────────────────────────────
+
+function ScorePill({
+  label,
+  value,
+  prev,
+}: {
+  label: string;
+  value: number;
+  prev: number | null;
+}) {
+  const delta = prev != null ? value - prev : null;
+  const scoreColor =
+    value >= 75 ? "text-emerald-400" :
+    value >= 55 ? "text-yellow-400" :
+    "text-red-400";
+
+  return (
+    <div className="flex flex-col items-center gap-0.5 min-w-0">
+      <span className={`text-base font-bold tabular-nums ${scoreColor}`}>{value}</span>
+      {delta != null && Math.abs(delta) >= 1 ? (
+        <span className={`flex items-center gap-0.5 text-[10px] font-medium ${delta > 0 ? "text-emerald-400" : "text-red-400"}`}>
+          {delta > 0
+            ? <TrendingUp className="w-2.5 h-2.5" />
+            : <TrendingDown className="w-2.5 h-2.5" />
+          }
+          {delta > 0 ? "+" : ""}{delta}
+        </span>
+      ) : delta != null ? (
+        <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+          <Minus className="w-2.5 h-2.5" /> 0
+        </span>
+      ) : (
+        <span className="text-[10px] text-muted-foreground">—</span>
+      )}
+      <span className="text-[9px] text-muted-foreground leading-tight text-center">{label}</span>
+    </div>
+  );
+}
+
+// ── Project card ──────────────────────────────────────────────────────────────
+
 function ProjectCard({
   project,
   onRunScan,
@@ -95,14 +148,21 @@ function ProjectCard({
   const job = project.latest_job;
   const canViewResults = job?.status === "completed";
   const isActive = job?.status === "running" || job?.status === "queued";
+  const s = project.latest_scores;
+  const p = project.prev_scores;
 
   return (
-    <Card className="border-border hover:border-primary/40 transition-colors">
+    <Card
+      className="border-border hover:border-primary/40 transition-colors cursor-pointer group"
+      onClick={() => canViewResults && navigate(`/pr/results?project=${project.id}`)}
+    >
       <CardContent className="p-4 space-y-3">
         {/* Header */}
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="font-semibold text-foreground text-sm truncate">{project.brand_name}</p>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-foreground text-sm truncate group-hover:text-primary transition-colors">
+              {project.brand_name}
+            </p>
             <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
               <Globe className="w-3 h-3" /> {project.domain}
             </p>
@@ -110,39 +170,54 @@ function ProjectCard({
           {job && <StatusBadge status={job.status} step={job.progress_step} />}
         </div>
 
-        {/* Meta */}
-        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-          {project.industry && (
-            <span className="flex items-center gap-1">
-              <Building2 className="w-3 h-3" /> {project.industry}
-            </span>
-          )}
-          {project.geography && (
-            <span className="flex items-center gap-1">
-              <MapPin className="w-3 h-3" /> {project.geography}
-            </span>
-          )}
-          {project.competitors?.length > 0 && (
-            <span className="flex items-center gap-1">
-              <Users className="w-3 h-3" /> {project.competitors.length} competitor{project.competitors.length !== 1 ? "s" : ""}
+        {/* Score grid — shown when scores exist */}
+        {s ? (
+          <div className="grid grid-cols-4 gap-1 py-2 px-1 rounded-lg bg-muted/30 border border-border/50">
+            <ScorePill label="Narrative" value={s.narrative_score} prev={p?.narrative_score ?? null} />
+            <ScorePill label="Authority" value={s.authority_score} prev={p?.authority_score ?? null} />
+            <ScorePill label="Proof" value={s.proof_density_score} prev={p?.proof_density_score ?? null} />
+            <ScorePill label="Opportunity" value={s.opportunity_score} prev={p?.opportunity_score ?? null} />
+          </div>
+        ) : (
+          /* No scores yet — show meta info instead */
+          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+            {project.industry && (
+              <span className="flex items-center gap-1"><Building2 className="w-3 h-3" /> {project.industry}</span>
+            )}
+            {project.geography && (
+              <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {project.geography}</span>
+            )}
+            {project.competitors?.length > 0 && (
+              <span className="flex items-center gap-1">
+                <Users className="w-3 h-3" /> {project.competitors.length} competitor{project.competitors.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Scan date + meta row */}
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
+            {job ? (
+              <><Clock className="w-3 h-3" />
+                {job.status === "completed"
+                  ? `Scanned ${safeDateShort(job.ended_at)}`
+                  : isActive ? "Scanning now…"
+                  : `Started ${safeDateShort(job.started_at || job.created_at)}`}
+              </>
+            ) : (
+              "No analysis yet"
+            )}
+          </span>
+          {s && project.competitors?.length > 0 && (
+            <span className="flex items-center gap-1 opacity-60">
+              <Users className="w-3 h-3" /> {project.competitors.length}
             </span>
           )}
         </div>
 
-        {/* Scan date */}
-        {job && (
-          <p className="text-xs text-muted-foreground flex items-center gap-1">
-            <Clock className="w-3 h-3" />
-            {job.status === "completed" ? `Analysed ${safeDateShort(job.ended_at)}` : `Started ${safeDateShort(job.started_at || job.created_at)}`}
-          </p>
-        )}
-
-        {!job && (
-          <p className="text-xs text-muted-foreground">No analysis run yet.</p>
-        )}
-
         {/* Actions */}
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex items-center gap-2 pt-0.5" onClick={(e) => e.stopPropagation()}>
           {canViewResults && (
             <Button
               size="sm"
@@ -165,7 +240,7 @@ function ProjectCard({
             ) : isScanning ? (
               <><Loader2 className="w-3 h-3 animate-spin" /> Starting…</>
             ) : job ? (
-              "Re-analyse"
+              <><RefreshCw className="w-3 h-3" /> Re-analyse</>
             ) : (
               "Run Analysis"
             )}
@@ -503,11 +578,18 @@ const PR = () => {
 
     const projectIds = projectRows.map((p: PrProject) => p.id);
 
-    const { data: jobRows } = await (supabase as any)
-      .from("pr_scan_jobs")
-      .select("id, project_id, status, progress_step, started_at, ended_at, created_at")
-      .in("project_id", projectIds)
-      .order("created_at", { ascending: false });
+    const [{ data: jobRows }, { data: scoreRows }] = await Promise.all([
+      (supabase as any)
+        .from("pr_scan_jobs")
+        .select("id, project_id, status, progress_step, started_at, ended_at, created_at")
+        .in("project_id", projectIds)
+        .order("created_at", { ascending: false }),
+      (supabase as any)
+        .from("pr_score_history")
+        .select("project_id, narrative_score, authority_score, proof_density_score, opportunity_score, snapshot_date")
+        .in("project_id", projectIds)
+        .order("snapshot_date", { ascending: false }),
+    ]);
 
     const latestByProject: Record<string, PrScanJob> = {};
     for (const job of (jobRows || []) as PrScanJob[]) {
@@ -516,9 +598,18 @@ const PR = () => {
       }
     }
 
+    // Keep latest 2 score snapshots per project
+    const scoresByProject: Record<string, ScoreSnapshot[]> = {};
+    for (const row of (scoreRows || []) as (ScoreSnapshot & { project_id: string })[]) {
+      if (!scoresByProject[row.project_id]) scoresByProject[row.project_id] = [];
+      if (scoresByProject[row.project_id].length < 2) scoresByProject[row.project_id].push(row);
+    }
+
     const combined: ProjectWithJob[] = projectRows.map((p: PrProject) => ({
       ...p,
       latest_job: latestByProject[p.id] || null,
+      latest_scores: scoresByProject[p.id]?.[0] ?? null,
+      prev_scores: scoresByProject[p.id]?.[1] ?? null,
     }));
 
     setProjects(combined);
