@@ -487,6 +487,8 @@ const PRResults = () => {
   const [newMentionUrl, setNewMentionUrl] = useState("");
   const [newMentionType, setNewMentionType] = useState("article");
   const [addingMention, setAddingMention] = useState(false);
+  const [discoveringMentions, setDiscoveringMentions] = useState(false);
+  const [discoverResult, setDiscoverResult] = useState<{ found: number } | null>(null);
 
   const loadData = useCallback(async () => {
     if (!projectId) return;
@@ -717,6 +719,34 @@ const PRResults = () => {
     await (supabase as any).from("pr_external_mentions").delete().eq("id", id);
     setMentions((prev) => prev.filter((m) => m.id !== id));
   }, []);
+
+  const discoverMentions = useCallback(async () => {
+    if (!projectId || discoveringMentions) return;
+    setDiscoveringMentions(true);
+    setDiscoverResult(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pr-discover-mentions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ project_id: projectId }),
+        },
+      );
+      const json = await res.json();
+      setDiscoverResult({ found: json.new_count ?? 0 });
+      // Trigger a reload so newly inserted pending mentions show immediately
+      await loadMentions();
+    } catch (e) {
+      console.error("discoverMentions error:", e);
+    } finally {
+      setDiscoveringMentions(false);
+    }
+  }, [projectId, discoveringMentions, loadMentions]);
 
   // ── Compute deltas from score history (latest vs previous)
   const prevSnapshot = scoreHistory.length >= 2 ? scoreHistory[1] : null;
@@ -1402,12 +1432,43 @@ const PRResults = () => {
         {/* ── External Mentions ────────────────────────────────────────── */}
         <TabsContent value="mentions" className="space-y-4 mt-4">
           {/* Header */}
-          <div>
-            <p className="text-sm font-medium text-foreground">External mentions</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Add press articles, review pages, roundups, or competitor coverage. These are fetched, AI-analysed, and automatically included in your next Re-analyse to improve accuracy.
-            </p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">External mentions</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Add press articles, review pages, roundups, or competitor coverage — or let AI discover them automatically. These are analysed and included in every future Re-analyse.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-xs shrink-0 border-primary/40 text-primary hover:bg-primary/10"
+              onClick={() => void discoverMentions()}
+              disabled={discoveringMentions}
+            >
+              {discoveringMentions
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Discovering…</>
+                : <><Zap className="w-3.5 h-3.5" /> Find Mentions</>
+              }
+            </Button>
           </div>
+
+          {/* Discovery result banner */}
+          {discoverResult !== null && (
+            <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs border ${
+              discoverResult.found > 0
+                ? "bg-emerald-950/40 border-emerald-700/40 text-emerald-400"
+                : "bg-muted/40 border-border text-muted-foreground"
+            }`}>
+              {discoverResult.found > 0 ? (
+                <><CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  Found <span className="font-semibold">{discoverResult.found} new mention{discoverResult.found !== 1 ? "s" : ""}</span> — analysing now. Results appear below in ~15 seconds.</>
+              ) : (
+                <><AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  No new mentions found via Google News for this brand. Try adding URLs manually below.</>
+              )}
+            </div>
+          )}
 
           {/* Add URL form */}
           <Card className="border-primary/20 bg-primary/5">
@@ -1448,12 +1509,24 @@ const PRResults = () => {
           {/* Empty state */}
           {mentions.length === 0 && (
             <Card className="border-dashed">
-              <CardContent className="p-8 text-center space-y-2">
+              <CardContent className="p-8 text-center space-y-3">
                 <Link2 className="w-7 h-7 text-muted-foreground mx-auto" />
                 <p className="text-sm font-medium text-foreground">No external mentions yet</p>
                 <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                  Add a press article, G2 listing, "best of" roundup, or competitor review page above. Third-party sources significantly improve proof gap and authority analysis.
+                  Click <span className="text-primary font-medium">Find Mentions</span> above to automatically discover press coverage, reviews and roundups via Google News — or paste a URL manually.
                 </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs border-primary/40 text-primary hover:bg-primary/10 mx-auto"
+                  onClick={() => void discoverMentions()}
+                  disabled={discoveringMentions}
+                >
+                  {discoveringMentions
+                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Discovering…</>
+                    : <><Zap className="w-3.5 h-3.5" /> Find Mentions automatically</>
+                  }
+                </Button>
               </CardContent>
             </Card>
           )}
