@@ -666,11 +666,12 @@ const PRResults = () => {
 
   const loadMentions = useCallback(async () => {
     if (!projectId) return;
-    const { data } = await (supabase as any)
+    const { data, error } = await (supabase as any)
       .from("pr_external_mentions")
       .select("*")
       .eq("project_id", projectId)
       .order("created_at", { ascending: false });
+    if (error) console.error("loadMentions error:", error);
     setMentions(data || []);
   }, [projectId]);
 
