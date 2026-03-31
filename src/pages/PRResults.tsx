@@ -727,7 +727,7 @@ const PRResults = () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pr-discover-mentions`,
+        `${SUPABASE_FUNCTIONS_URL}/pr-discover-mentions`,
         {
           method: "POST",
           headers: {
