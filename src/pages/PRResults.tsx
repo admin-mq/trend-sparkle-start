@@ -1591,8 +1591,19 @@ const PRResults = () => {
 
                   {/* Failed state */}
                   {mention.status === "failed" && (
-                    <div className="bg-destructive/5 border border-destructive/20 rounded p-2.5">
-                      <p className="text-xs text-destructive">{mention.error_message || "Failed to fetch or analyse this URL."}</p>
+                    <div className="bg-destructive/5 border border-destructive/20 rounded p-2.5 space-y-2">
+                      <p className="text-xs text-destructive">
+                        {mention.error_message || "Could not fetch this URL automatically."}
+                      </p>
+                      <a
+                        href={mention.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
+                      >
+                        <ExternalLink className="w-3 h-3 shrink-0" />
+                        Open page manually
+                      </a>
                     </div>
                   )}
 
