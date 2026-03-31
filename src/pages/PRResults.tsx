@@ -6,6 +6,7 @@ import {
   Globe, RefreshCw, ArrowLeft, Zap, Eye, Play, MessageSquare,
   Bell, TrendingDown, ChevronUp, ChevronDown, Clock,
   Link2, ExternalLink, Plus, Trash2, Quote, Swords, Crown, ShieldAlert,
+  Download,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -866,9 +867,19 @@ const PRResults = () => {
             </p>
           </div>
         </div>
-        <Button size="sm" variant="outline" className="gap-1.5 text-xs shrink-0" onClick={() => navigate("/pr")}>
-          <RefreshCw className="w-3.5 h-3.5" /> Re-analyse
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 text-xs shrink-0"
+            onClick={() => window.open(`/pr/report?project=${projectId}`, "_blank")}
+          >
+            <Download className="w-3.5 h-3.5" /> Export PDF
+          </Button>
+          <Button size="sm" variant="outline" className="gap-1.5 text-xs shrink-0" onClick={() => navigate("/pr")}>
+            <RefreshCw className="w-3.5 h-3.5" /> Re-analyse
+          </Button>
+        </div>
       </div>
 
       {/* Executive summary */}

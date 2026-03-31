@@ -16,6 +16,7 @@ import SEOResults from "./pages/SEOResults";
 import Influencers from "./pages/Influencers";
 import PR from "./pages/PR";
 import PRResults from "./pages/PRResults";
+import PRPrint from "./pages/PRPrint";
 import Analytics from "./pages/Analytics";
 import PaidCampaigns from "./pages/PaidCampaigns";
 import Settings from "./pages/Settings";
@@ -71,6 +72,11 @@ const App = () => (
               <Route path="/admin" element={<Admin />} />
             </Route>
             
+            {/* PR print report — protected but no sidebar */}
+            <Route path="/pr/report" element={
+              <ProtectedRoute><PRPrint /></ProtectedRoute>
+            } />
+
             {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
           </Routes>
