@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { PROnboarding } from "@/components/PROnboarding";
 import {
   Megaphone, Plus, Globe, Loader2, CheckCircle2, XCircle, Clock,
   ChevronRight, AlertCircle, Building2, Target, Users, MapPin, Trash2, RefreshCw,
@@ -694,33 +695,20 @@ const PR = () => {
             Understand how the internet perceives your brand, detect proof gaps, and get a prioritised PR action plan.
           </p>
         </div>
-        <Button size="sm" className="gap-1.5 shrink-0" onClick={() => setDialogOpen(true)}>
-          <Plus className="w-4 h-4" /> New Analysis
-        </Button>
+        {(!loading && projects.length > 0) && (
+          <Button size="sm" className="gap-1.5 shrink-0" onClick={() => setDialogOpen(true)}>
+            <Plus className="w-4 h-4" /> New Analysis
+          </Button>
+        )}
       </div>
 
-      {/* Project list */}
+      {/* Project list / onboarding */}
       {loading ? (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground py-6">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-12 justify-center">
           <Loader2 className="w-4 h-4 animate-spin" /> Loading projects…
         </div>
       ) : projects.length === 0 ? (
-        <Card className="border-border border-dashed">
-          <CardContent className="p-10 text-center space-y-4">
-            <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mx-auto">
-              <Megaphone className="w-6 h-6 text-primary" />
-            </div>
-            <div>
-              <p className="font-semibold text-foreground">No projects yet</p>
-              <p className="text-sm text-muted-foreground mt-1 max-w-xs mx-auto">
-                Create your first project to scan your brand, benchmark competitors, and uncover narrative gaps.
-              </p>
-            </div>
-            <Button size="sm" className="gap-1.5" onClick={() => setDialogOpen(true)}>
-              <Plus className="w-4 h-4" /> Create your first analysis
-            </Button>
-          </CardContent>
-        </Card>
+        <PROnboarding onCreated={handleProjectCreated} />
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {projects.map((p) => (
