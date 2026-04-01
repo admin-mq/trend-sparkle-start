@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Megaphone, Loader2, ChevronLeft, CheckCircle2, XCircle,
+  Megaphone, Loader2, ChevronLeft, ChevronRight, CheckCircle2, XCircle,
   AlertTriangle, TrendingUp, Shield, FileText, Lightbulb,
   Globe, RefreshCw, ArrowLeft, Zap, Eye, Play, MessageSquare,
   Bell, TrendingDown, ChevronUp, ChevronDown, Clock,
@@ -20,6 +20,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "@/hooks/use-toast";
 
@@ -455,6 +457,167 @@ function VisibilityTrendChart({ history }: { history: VisibilityHistoryPoint[] }
   );
 }
 
+// ── TrendsDatePicker ──────────────────────────────────────────────────────────
+
+const TREND_PRESETS = [
+  { label: "Today",        days: 1  },
+  { label: "Last 7 days",  days: 7  },
+  { label: "Last 14 days", days: 14 },
+  { label: "Last 28 days", days: 28 },
+  { label: "Last 60 days", days: 60 },
+  { label: "Last 90 days", days: 90 },
+];
+
+function fmtDate(d: Date) {
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+function startOfDaysAgo(n: number): Date {
+  const d = new Date();
+  d.setDate(d.getDate() - (n - 1));
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function endOfToday(): Date {
+  const d = new Date();
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+interface TrendsRange {
+  preset: number; // days, -1 = custom
+  from: Date;
+  to: Date;
+}
+
+function defaultTrendsRange(): TrendsRange {
+  return { preset: 28, from: startOfDaysAgo(28), to: endOfToday() };
+}
+
+interface TrendsDatePickerProps {
+  value: TrendsRange;
+  onChange: (r: TrendsRange) => void;
+  onSeeAll: () => void;
+}
+
+function TrendsDatePicker({ value, onChange, onSeeAll }: TrendsDatePickerProps) {
+  const [open, setOpen] = useState(false);
+  const [showCal, setShowCal] = useState(false);
+  const [calRange, setCalRange] = useState<{ from?: Date; to?: Date }>({});
+
+  const triggerLabel =
+    value.preset === 1
+      ? `Today: ${fmtDate(value.from)}`
+      : value.preset === -1
+      ? `Custom: ${fmtDate(value.from)}–${fmtDate(value.to)}`
+      : `Last ${value.preset} days: ${fmtDate(value.from)}–${fmtDate(value.to)}`;
+
+  const handlePreset = (days: number) => {
+    onChange({ preset: days, from: startOfDaysAgo(days), to: endOfToday() });
+    setOpen(false);
+    setShowCal(false);
+  };
+
+  const handleOpenCustom = () => {
+    setCalRange({ from: value.from, to: value.to });
+    setShowCal(true);
+  };
+
+  const handleApply = () => {
+    if (!calRange.from) return;
+    const to = calRange.to ?? calRange.from;
+    to.setHours(23, 59, 59, 999);
+    onChange({ preset: -1, from: calRange.from, to });
+    setOpen(false);
+    setShowCal(false);
+  };
+
+  return (
+    <div className="flex items-center gap-2.5">
+      <Popover
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o);
+          if (!o) setShowCal(false);
+        }}
+      >
+        <PopoverTrigger asChild>
+          <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card text-xs font-medium text-foreground hover:bg-muted transition-colors">
+            {triggerLabel}
+            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="start" sideOffset={6} className="p-0 w-64 shadow-xl">
+          {!showCal ? (
+            <div className="py-1">
+              {TREND_PRESETS.map(({ label, days }) => {
+                const from = startOfDaysAgo(days);
+                const to   = endOfToday();
+                const isActive = value.preset === days;
+                return (
+                  <button
+                    key={days}
+                    onClick={() => handlePreset(days)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-muted transition-colors"
+                  >
+                    <span className={isActive ? "text-foreground font-medium" : "text-muted-foreground"}>
+                      {label}: {fmtDate(from)}–{fmtDate(to)}
+                    </span>
+                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                      isActive ? "border-primary" : "border-muted-foreground/30"
+                    }`}>
+                      {isActive && <div className="w-2 h-2 rounded-full bg-primary" />}
+                    </div>
+                  </button>
+                );
+              })}
+              <button
+                onClick={handleOpenCustom}
+                className={`w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-muted transition-colors ${
+                  value.preset === -1 ? "text-foreground font-medium" : "text-muted-foreground"
+                }`}
+              >
+                <span>Custom</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <div>
+              <Calendar
+                mode="range"
+                selected={{ from: calRange.from, to: calRange.to }}
+                onSelect={(r) => setCalRange({ from: r?.from, to: r?.to })}
+                disabled={{ after: new Date() }}
+                initialFocus
+              />
+              <div className="flex items-center justify-end gap-2 px-3 pb-3 pt-2 border-t border-border">
+                <Button variant="outline" size="sm" onClick={() => setShowCal(false)}>
+                  Back
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleApply}
+                  disabled={!calRange.from}
+                >
+                  Apply
+                </Button>
+              </div>
+            </div>
+          )}
+        </PopoverContent>
+      </Popover>
+
+      <button
+        onClick={onSeeAll}
+        className="text-xs font-medium text-primary hover:underline underline-offset-2"
+      >
+        See all
+      </button>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 const PRResults = () => {
@@ -482,8 +645,8 @@ const PRResults = () => {
   // Visibility history (for trend chart)
   const [visibilityHistory, setVisibilityHistory] = useState<VisibilityHistoryPoint[]>([]);
 
-  // Trends tab range (scan count)
-  const [trendsRange, setTrendsRange] = useState<5 | 10 | 0>(0); // 0 = all
+  // Trends tab date range
+  const [trendsDateRange, setTrendsDateRange] = useState<TrendsRange>(defaultTrendsRange);
 
   // External mentions
   const [mentions, setMentions] = useState<ExternalMention[]>([]);
@@ -665,17 +828,31 @@ const PRResults = () => {
     setUnreadCount((prev) => Math.max(0, prev - 1));
   }, []);
 
-  // ── Trends — filtered views based on selected scan count ──────────────────
+  // ── Trends — filtered views based on selected date range ──────────────────
 
   const filteredScoreHistory = useMemo(
-    () => (trendsRange === 0 ? scoreHistory : scoreHistory.slice(0, trendsRange)),
-    [scoreHistory, trendsRange],
+    () => scoreHistory.filter((s) => {
+      const d = new Date(s.snapshot_date);
+      return d >= trendsDateRange.from && d <= trendsDateRange.to;
+    }),
+    [scoreHistory, trendsDateRange],
   );
 
   const filteredVisibilityHistory = useMemo(
-    () => (trendsRange === 0 ? visibilityHistory : visibilityHistory.slice(-trendsRange)),
-    [visibilityHistory, trendsRange],
+    () => visibilityHistory.filter((v) => {
+      const d = new Date(v.date);
+      return d >= trendsDateRange.from && d <= trendsDateRange.to;
+    }),
+    [visibilityHistory, trendsDateRange],
   );
+
+  const handleTrendsSeeAll = useCallback(() => {
+    const oldest = scoreHistory[scoreHistory.length - 1];
+    if (!oldest) return;
+    const from = new Date(oldest.snapshot_date);
+    from.setHours(0, 0, 0, 0);
+    setTrendsDateRange({ preset: -1, from, to: endOfToday() });
+  }, [scoreHistory]);
 
   // ── External mentions ──────────────────────────────────────────────────────
 
@@ -1048,32 +1225,22 @@ const PRResults = () => {
         {/* ── Trends ───────────────────────────────────────────────────────── */}
         <TabsContent value="trends" className="space-y-5 mt-4">
 
-          {/* Header + range picker */}
-          <div className="flex items-center justify-between">
+          {/* Header + date range picker */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <h3 className="text-sm font-semibold text-foreground">Score Trends</h3>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {scoreHistory.length >= 2
-                  ? `${scoreHistory.length} scans tracked — showing ${trendsRange === 0 ? "all" : `last ${filteredScoreHistory.length}`} scans`
+                  ? `${filteredScoreHistory.length} of ${scoreHistory.length} scans in range`
                   : "Run at least 2 scans to see how your scores change over time"}
               </p>
             </div>
-            {scoreHistory.length >= 2 && (
-              <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
-                {([5, 10, 0] as const).map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setTrendsRange(n)}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                      trendsRange === n
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {n === 0 ? "All" : `Last ${n}`}
-                  </button>
-                ))}
-              </div>
+            {scoreHistory.length >= 1 && (
+              <TrendsDatePicker
+                value={trendsDateRange}
+                onChange={setTrendsDateRange}
+                onSeeAll={handleTrendsSeeAll}
+              />
             )}
           </div>
 
@@ -1108,8 +1275,7 @@ const PRResults = () => {
                           <span>
                             {delta > 0 ? `+${delta}` : delta} vs{" "}
                             {filteredScoreHistory.length > 1
-                              ? new Date(filteredScoreHistory[filteredScoreHistory.length - 1].snapshot_date)
-                                  .toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+                              ? fmtDate(new Date(filteredScoreHistory[filteredScoreHistory.length - 1].snapshot_date))
                               : "baseline"}
                           </span>
                         </div>
