@@ -3,6 +3,15 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+function calcNextScanAt(freq: string): string | null {
+  const d = new Date();
+  if (freq === "daily")   d.setDate(d.getDate() + 1);
+  else if (freq === "weekly")  d.setDate(d.getDate() + 7);
+  else if (freq === "monthly") d.setDate(d.getDate() + 30);
+  else return null;
+  return d.toISOString();
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -85,6 +94,15 @@ Deno.serve(async (req: Request) => {
 
         triggered.push(project.id);
         console.log(`[pr-scheduler] Triggered scan for ${project.brand_name} (${project.domain})`);
+
+        // Bump next_scan_at so this project won't fire again until the next interval
+        const nextScanAt = calcNextScanAt(project.scan_frequency);
+        if (nextScanAt) {
+          await supabase
+            .from("pr_projects")
+            .update({ next_scan_at: nextScanAt })
+            .eq("id", project.id);
+        }
       } catch (projectErr) {
         console.error(`[pr-scheduler] Error processing project ${project.id}:`, projectErr);
       }

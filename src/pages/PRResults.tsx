@@ -38,6 +38,8 @@ interface PrProject {
   geography: string | null;
   competitors: { name: string; domain: string }[];
   tracked_prompts: { prompt_text: string }[];
+  scan_frequency: "daily" | "weekly" | "monthly" | "manual";
+  next_scan_at: string | null;
 }
 
 interface PrScanJob {
@@ -727,6 +729,7 @@ const PRResults = () => {
   const [result, setResult] = useState<NarrativeResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updatingFreq, setUpdatingFreq] = useState(false);
 
   // Visibility state
   const [visibilityRun, setVisibilityRun] = useState<VisibilityRun | null>(null);
@@ -945,6 +948,32 @@ const PRResults = () => {
     }),
     [visibilityHistory, trendsDateRange],
   );
+
+  // ── Schedule management ────────────────────────────────────────────────────
+
+  function calcNextScanAt(freq: string): string | null {
+    const d = new Date();
+    if (freq === "daily")        d.setDate(d.getDate() + 1);
+    else if (freq === "weekly")  d.setDate(d.getDate() + 7);
+    else if (freq === "monthly") d.setDate(d.getDate() + 30);
+    else return null;
+    return d.toISOString();
+  }
+
+  const updateSchedule = useCallback(async (freq: "daily" | "weekly" | "monthly" | "manual") => {
+    if (!projectId || !project) return;
+    setUpdatingFreq(true);
+    const next = calcNextScanAt(freq);
+    const { error: upErr } = await (supabase as any)
+      .from("pr_projects")
+      .update({ scan_frequency: freq, next_scan_at: next })
+      .eq("id", projectId);
+    if (!upErr) {
+      setProject((p) => p ? { ...p, scan_frequency: freq, next_scan_at: next } : p);
+      toast({ title: "Schedule updated", description: freq === "manual" ? "Rescans are now manual only." : `Next scan scheduled in ${freq === "weekly" ? "7 days" : freq === "monthly" ? "30 days" : "1 day"}.` });
+    }
+    setUpdatingFreq(false);
+  }, [projectId, project]);
 
   const handleTrendsSeeAll = useCallback(() => {
     const oldest = scoreHistory[scoreHistory.length - 1];
@@ -1269,6 +1298,55 @@ const PRResults = () => {
           {/* Score trend chart — show if 2+ scans */}
           {scoreHistory.length >= 2 && (
             <NarrativeTrendChart history={scoreHistory} />
+          )}
+
+          {/* ── Rescan schedule ──────────────────────────────────────────── */}
+          {project && (
+            <Card>
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4 text-muted-foreground" />
+                    <p className="text-sm font-semibold text-foreground">Rescan schedule</p>
+                  </div>
+                  {project.next_scan_at && project.scan_frequency !== "manual" && (
+                    <p className="text-xs text-muted-foreground">
+                      Next:{" "}
+                      <span className="text-foreground font-medium">
+                        {new Date(project.next_scan_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                      </span>
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {(["weekly", "monthly", "manual"] as const).map((freq) => {
+                    const isActive = (project.scan_frequency ?? "manual") === freq;
+                    return (
+                      <button
+                        key={freq}
+                        disabled={updatingFreq}
+                        onClick={() => !isActive && updateSchedule(freq)}
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                          isActive
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                        }`}
+                      >
+                        {freq === "weekly" ? "Weekly" : freq === "monthly" ? "Monthly" : "Manual only"}
+                      </button>
+                    );
+                  })}
+                  {updatingFreq && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+                </div>
+
+                {project.scan_frequency === "manual" && (
+                  <p className="text-xs text-muted-foreground">
+                    No automatic rescans. Use Re-analyse above whenever you want a fresh scan.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
           )}
 
           {/* Top gaps preview */}

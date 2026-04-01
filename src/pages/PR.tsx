@@ -33,6 +33,17 @@ interface PrProject {
   geography: string | null;
   competitors: Competitor[];
   created_at: string;
+  scan_frequency: "daily" | "weekly" | "monthly" | "manual";
+  next_scan_at: string | null;
+}
+
+function calcNextScanAt(freq: string): string | null {
+  const d = new Date();
+  if (freq === "daily")        d.setDate(d.getDate() + 1);
+  else if (freq === "weekly")  d.setDate(d.getDate() + 7);
+  else if (freq === "monthly") d.setDate(d.getDate() + 30);
+  else return null;
+  return d.toISOString();
 }
 
 interface PrScanJob {
@@ -196,7 +207,7 @@ function ProjectCard({
           </div>
         )}
 
-        {/* Scan date + meta row */}
+        {/* Scan date + schedule row */}
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
             {job ? (
@@ -210,11 +221,17 @@ function ProjectCard({
               "No analysis yet"
             )}
           </span>
-          {s && project.competitors?.length > 0 && (
-            <span className="flex items-center gap-1 opacity-60">
-              <Users className="w-3 h-3" /> {project.competitors.length}
+          {/* Next scan / frequency badge */}
+          {project.scan_frequency && project.scan_frequency !== "manual" && project.next_scan_at ? (
+            <span className="flex items-center gap-1 text-primary/70">
+              <RefreshCw className="w-3 h-3" />
+              Next {safeDateShort(project.next_scan_at)}
             </span>
-          )}
+          ) : project.scan_frequency === "manual" ? (
+            <span className="flex items-center gap-1 opacity-50">
+              <RefreshCw className="w-3 h-3" /> Manual
+            </span>
+          ) : null}
         </div>
 
         {/* Actions */}
@@ -369,6 +386,7 @@ function CreateProjectDialog({
           competitors: validCompetitors,
           tracked_prompts: trackedPrompts,
           scan_frequency: scanFrequency,
+          next_scan_at: calcNextScanAt(scanFrequency),
         })
         .select()
         .single();
@@ -567,7 +585,7 @@ const PR = () => {
 
     const { data: projectRows } = await (supabase as any)
       .from("pr_projects")
-      .select("id, brand_name, domain, industry, geography, competitors, created_at")
+      .select("id, brand_name, domain, industry, geography, competitors, created_at, scan_frequency, next_scan_at")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 

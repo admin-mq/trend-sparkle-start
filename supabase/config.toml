@@ -17,3 +17,7 @@ verify_jwt = false
 
 [functions.pr-scan]
 verify_jwt = false
+
+[functions.pr-scheduler]
+verify_jwt = false
+schedule = "0 6 * * *"

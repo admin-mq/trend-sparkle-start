@@ -36,6 +36,15 @@ function normalizeDomain(raw: string): string {
   return raw.trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "").toLowerCase();
 }
 
+function calcNextScanAt(freq: string): string | null {
+  const d = new Date();
+  if (freq === "daily")        d.setDate(d.getDate() + 1);
+  else if (freq === "weekly")  d.setDate(d.getDate() + 7);
+  else if (freq === "monthly") d.setDate(d.getDate() + 30);
+  else return null;
+  return d.toISOString();
+}
+
 // ── Step progress dots ────────────────────────────────────────────────────────
 
 function StepDots({ current, total }: { current: number; total: number }) {
@@ -475,6 +484,7 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
           competitors: validCompetitors,
           tracked_prompts: trackedPrompts,
           scan_frequency: scanFrequency,
+          next_scan_at: calcNextScanAt(scanFrequency),
         })
         .select()
         .single();
