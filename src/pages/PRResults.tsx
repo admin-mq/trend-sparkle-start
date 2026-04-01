@@ -618,6 +618,88 @@ function TrendsDatePicker({ value, onChange, onSeeAll }: TrendsDatePickerProps) 
   );
 }
 
+// ── ThemeOwnershipChart ───────────────────────────────────────────────────────
+
+interface ThemeOwnershipChartProps {
+  brandName: string;
+  brandThemes: BrandNarrative[];
+  compName: string;
+  compThemes: CompetitorNarrative[];
+}
+
+function ThemeOwnershipChart({ brandName, brandThemes, compName, compThemes }: ThemeOwnershipChartProps) {
+  const rows = useMemo(() => {
+    const map = new Map<string, { brand: number; comp: number }>();
+    for (const t of brandThemes)  map.set(t.theme, { brand: t.strength, comp: 0 });
+    for (const t of compThemes) {
+      const ex = map.get(t.theme);
+      if (ex) ex.comp = t.strength;
+      else map.set(t.theme, { brand: 0, comp: t.strength });
+    }
+    return [...map.entries()]
+      .map(([theme, { brand, comp }]) => ({
+        theme: theme.length > 26 ? theme.slice(0, 25) + "…" : theme,
+        [brandName]: brand,
+        [compName]: comp,
+        winner: brand >= comp ? "brand" : "comp",
+      }))
+      .sort((a, b) => Math.max(b[brandName] as number, b[compName] as number) - Math.max(a[brandName] as number, a[compName] as number))
+      .slice(0, 12)
+      .reverse(); // recharts vertical renders bottom-up
+  }, [brandName, brandThemes, compName, compThemes]);
+
+  const chartH = Math.max(260, rows.length * 48);
+
+  const CustomBar = (props: any) => {
+    const { x, y, width, height, value } = props;
+    if (!value) return null;
+    return <rect x={x} y={y} width={width} height={height} rx={3} ry={3} fill={props.fill} />;
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-2 pt-4 px-4">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <BarChart2 className="w-4 h-4 text-primary" />
+          Theme Ownership
+          <span className="text-xs font-normal text-muted-foreground ml-1">strength 0–100, who leads each theme</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-2 pb-4">
+        <ResponsiveContainer width="100%" height={chartH}>
+          <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 16, left: 0, bottom: 4 }} barCategoryGap="28%">
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={true} horizontal={false} />
+            <XAxis
+              type="number"
+              domain={[0, 100]}
+              ticks={[0, 25, 50, 75, 100]}
+              tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+              tickLine={false}
+              axisLine={false}
+            />
+            <YAxis
+              type="category"
+              dataKey="theme"
+              width={130}
+              tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+              tickLine={false}
+              axisLine={false}
+            />
+            <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }} />
+            <Legend
+              iconType="circle"
+              iconSize={8}
+              wrapperStyle={{ fontSize: 11, color: "hsl(var(--muted-foreground))", paddingTop: 12 }}
+            />
+            <Bar dataKey={brandName}   fill="#6366f1" shape={<CustomBar />} maxBarSize={14} />
+            <Bar dataKey={compName}    fill="#f97316" shape={<CustomBar />} maxBarSize={14} />
+          </BarChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 const PRResults = () => {
@@ -647,6 +729,9 @@ const PRResults = () => {
 
   // Trends tab date range
   const [trendsDateRange, setTrendsDateRange] = useState<TrendsRange>(defaultTrendsRange);
+
+  // Competitors tab — which competitor is in focus
+  const [activeCompetitorDomain, setActiveCompetitorDomain] = useState<string | null>(null);
 
   // External mentions
   const [mentions, setMentions] = useState<ExternalMention[]>([]);
@@ -1555,215 +1640,245 @@ const PRResults = () => {
             </Card>
           ) : (() => {
             // ── Derived data ─────────────────────────────────────────────────
-            const brandStrong = result.brand_narratives.filter((n) => n.status === "strong");
             const brandAvg = result.brand_narratives.length > 0
               ? Math.round(result.brand_narratives.reduce((s, n) => s + n.strength, 0) / result.brand_narratives.length)
-              : null;
+              : 0;
+            const brandOwnedCount = result.brand_narratives.filter((n) => n.strength >= 70).length;
 
-            // Brand's 5 scores for benchmark row
-            const brandScores = [
-              { label: "Narrative", value: result.narrative_score },
-              { label: "Authority", value: result.authority_score },
-              { label: "Proof", value: result.proof_density_score },
-              { label: "Risk", value: result.risk_score, invert: true },
-              { label: "Opportunity", value: result.opportunity_score },
-            ];
+            // Competitors with data
+            const compsWithData = competitors.filter(
+              (c) => (result.competitor_narratives[c.domain] || []).length > 0
+            );
+
+            // Active competitor (fallback to first with data)
+            const focusDomain = activeCompetitorDomain ?? compsWithData[0]?.domain ?? null;
+            const focusComp = compsWithData.find((c) => c.domain === focusDomain) ?? compsWithData[0];
+            const focusThemes = focusComp ? (result.competitor_narratives[focusComp.domain] || []) : [];
+            const focusAvg = focusThemes.length > 0
+              ? Math.round(focusThemes.reduce((s, n) => s + n.strength, 0) / focusThemes.length)
+              : 0;
+            const focusOwnedCount = focusThemes.filter((n) => n.strength >= 70).length;
+            const focusTop = [...focusThemes].sort((a, b) => b.strength - a.strength)[0];
+            const brandTop = [...result.brand_narratives].sort((a, b) => b.strength - a.strength);
+            const compTopSorted = [...focusThemes].sort((a, b) => b.strength - a.strength);
+
+            const brandLeads = brandAvg > focusAvg;
+            const tied = Math.abs(brandAvg - focusAvg) <= 5;
+
+            const brandAdvantages = result.brand_narratives.filter((n) => n.strength >= 70);
+            const compThreats = focusThemes.filter((n) => n.strength >= 70);
+
+            // Aggregate snapshot across all competitors
+            let totalThreats = 0;
+            for (const c of compsWithData) {
+              totalThreats += (result.competitor_narratives[c.domain] || []).filter((n) => n.strength >= 70).length;
+            }
 
             return (
               <>
-                {/* ── Brand benchmark baseline ─────────────────────────────── */}
-                <Card className="border-primary/20 bg-primary/5">
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full bg-primary shrink-0" />
-                        <p className="text-sm font-semibold text-foreground">{project.brand_name}</p>
-                        <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">Your brand</Badge>
-                      </div>
-                      {brandAvg != null && (
-                        <p className="text-xs text-muted-foreground">Avg narrative strength: <span className="font-bold text-foreground">{brandAvg}</span></p>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-5 gap-2">
-                      {brandScores.map(({ label, value, invert }) => (
-                        <div key={label} className="text-center space-y-1">
-                          <div className={`text-lg font-bold ${scoreColor(value, invert)}`}>{value ?? "—"}</div>
-                          <div className="text-xs text-muted-foreground">{label}</div>
-                          <div className="w-full bg-secondary rounded-full h-1">
-                            <div
-                              className={`h-1 rounded-full ${
-                                invert
-                                  ? (value != null && value <= 30) ? "bg-emerald-500" : (value != null && value <= 60) ? "bg-yellow-500" : "bg-destructive"
-                                  : (value != null && value >= 70) ? "bg-emerald-500" : (value != null && value >= 40) ? "bg-yellow-500" : "bg-destructive"
-                              }`}
-                              style={{ width: `${Math.min(100, Math.max(0, invert ? 100 - (value ?? 50) : (value ?? 0)))}%` }}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {brandStrong.length > 0 && (
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        {brandStrong.map((n) => (
-                          <Badge key={n.theme} variant="outline" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-1">
-                            <Crown className="w-3 h-3" /> {n.theme}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                {/* ── Competitive snapshot ─────────────────────────────────── */}
+                <div className="grid grid-cols-3 gap-3">
+                  <Card className="p-4 space-y-1">
+                    <p className="text-xs text-muted-foreground">Themes you own</p>
+                    <p className="text-2xl font-bold text-emerald-400">{brandOwnedCount}</p>
+                    <p className="text-xs text-muted-foreground">strength ≥ 70</p>
+                  </Card>
+                  <Card className="p-4 space-y-1">
+                    <p className="text-xs text-muted-foreground">Competitor threats</p>
+                    <p className={`text-2xl font-bold ${totalThreats > brandOwnedCount ? "text-red-400" : "text-yellow-400"}`}>{totalThreats}</p>
+                    <p className="text-xs text-muted-foreground">across {compsWithData.length} competitor{compsWithData.length !== 1 ? "s" : ""}</p>
+                  </Card>
+                  <Card className={`p-4 space-y-1 ${tied ? "border-yellow-500/30" : brandLeads ? "border-emerald-500/30" : "border-red-500/30"}`}>
+                    <p className="text-xs text-muted-foreground">Your position</p>
+                    <p className={`text-lg font-bold ${tied ? "text-yellow-400" : brandLeads ? "text-emerald-400" : "text-red-400"}`}>
+                      {tied ? "Neck and neck" : brandLeads ? "Leading" : "Trailing"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {tied ? `±${Math.abs(brandAvg - focusAvg)} avg pts` : brandLeads ? `+${brandAvg - focusAvg} avg pts` : `−${focusAvg - brandAvg} avg pts`}
+                    </p>
+                  </Card>
+                </div>
 
-                {/* ── Per-competitor head-to-head panels ───────────────────── */}
-                {competitors.map((comp) => {
-                  const compThemes = result.competitor_narratives[comp.domain] || [];
-                  if (compThemes.length === 0) return null;
-
-                  const compAvg = Math.round(compThemes.reduce((s, n) => s + n.strength, 0) / compThemes.length);
-                  const compTop = [...compThemes].sort((a, b) => b.strength - a.strength);
-                  const brandTop = [...result.brand_narratives].sort((a, b) => b.strength - a.strength);
-
-                  // Competitive edge: themes where competitor strength ≥ 70
-                  const compThreats = compTop.filter((n) => n.strength >= 70);
-                  // Brand advantages: brand strong themes (strength ≥ 70)
-                  const brandAdvantages = brandTop.filter((n) => n.strength >= 70);
-
-                  // Lead indicator: compare avg strengths
-                  const brandLeads = (brandAvg ?? 0) > compAvg;
-                  const tied = Math.abs((brandAvg ?? 0) - compAvg) <= 5;
-
-                  return (
-                    <div key={comp.domain} className="space-y-3">
-                      {/* Competitor header */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 rounded-full bg-muted-foreground shrink-0" />
-                          <p className="text-sm font-semibold text-foreground">{comp.name || comp.domain}</p>
-                          <span className="text-xs text-muted-foreground">{comp.domain}</span>
-                        </div>
-                        <Badge
-                          variant="outline"
-                          className={`text-xs ${
-                            tied
-                              ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/30"
-                              : brandLeads
-                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                              : "bg-destructive/10 text-destructive border-destructive/30"
+                {/* ── Competitor selector (if multiple) ────────────────────── */}
+                {compsWithData.length > 1 && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-muted-foreground font-medium">Compare vs:</span>
+                    {compsWithData.map((comp) => {
+                      const isActive = comp.domain === focusDomain;
+                      const cThemes = result.competitor_narratives[comp.domain] || [];
+                      const cAvg = cThemes.length > 0
+                        ? Math.round(cThemes.reduce((s, n) => s + n.strength, 0) / cThemes.length)
+                        : 0;
+                      const cLeads = cAvg > brandAvg;
+                      return (
+                        <button
+                          key={comp.domain}
+                          onClick={() => setActiveCompetitorDomain(comp.domain)}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
+                            isActive
+                              ? "bg-foreground text-background border-foreground"
+                              : "border-border text-muted-foreground hover:border-foreground hover:text-foreground bg-card"
                           }`}
                         >
-                          {tied ? "Neck and neck" : brandLeads ? `You lead · +${(brandAvg ?? 0) - compAvg} avg` : `They lead · +${compAvg - (brandAvg ?? 0)} avg`}
-                        </Badge>
-                      </div>
+                          <div className={`w-2 h-2 rounded-full ${cLeads ? "bg-orange-400" : "bg-emerald-400"}`} />
+                          {comp.name || comp.domain}
+                          <span className="opacity-60">{cAvg} avg</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
-                      {/* Side-by-side narrative themes */}
-                      <div className="grid md:grid-cols-2 gap-3">
-                        {/* Brand column */}
-                        <Card className="border-primary/20">
-                          <CardHeader className="pb-2 pt-3 px-4">
-                            <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
-                              <div className="w-2 h-2 rounded-full bg-primary" />
-                              {project.brand_name}
-                              {brandAvg != null && <span className="text-muted-foreground font-normal ml-auto">avg {brandAvg}</span>}
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent className="px-4 pb-4 space-y-3">
-                            {brandTop.slice(0, 6).map((n, i) => (
-                              <div key={i} className="space-y-1">
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="flex items-center gap-1.5 min-w-0">
-                                    <span className="text-xs text-foreground truncate">{n.theme}</span>
-                                    {n.status === "strong" && <Crown className="w-3 h-3 text-emerald-400 shrink-0" />}
-                                  </div>
-                                  <span className={`text-xs font-bold shrink-0 ${
-                                    n.strength >= 70 ? "text-emerald-400" : n.strength >= 40 ? "text-yellow-400" : "text-destructive"
-                                  }`}>{n.strength}</span>
-                                </div>
-                                <StrengthBar value={n.strength} color={
-                                  n.strength >= 70 ? "bg-emerald-500" : n.strength >= 40 ? "bg-yellow-500" : "bg-destructive"
-                                } />
+                {focusComp && (
+                  <>
+                    {/* ── Side-by-side score comparison ───────────────────── */}
+                    <div className="grid md:grid-cols-2 gap-3">
+                      {/* Brand column */}
+                      <Card className="border-primary/30 bg-primary/5">
+                        <CardContent className="p-4 space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2.5 h-2.5 rounded-full bg-primary" />
+                              <p className="text-sm font-semibold text-foreground">{project.brand_name}</p>
+                              <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/30 py-0">You</Badge>
+                            </div>
+                            <span className="text-xs text-muted-foreground">avg theme strength <span className="font-bold text-foreground">{brandAvg}</span></span>
+                          </div>
+                          <div className="grid grid-cols-4 gap-2">
+                            {[
+                              { label: "Narrative", value: result.narrative_score },
+                              { label: "Authority", value: result.authority_score },
+                              { label: "Proof",     value: result.proof_density_score },
+                              { label: "Opportunity", value: result.opportunity_score },
+                            ].map(({ label, value }) => (
+                              <div key={label} className="text-center">
+                                <div className={`text-xl font-bold tabular-nums ${scoreColor(value)}`}>{value ?? "—"}</div>
+                                <div className="text-[10px] text-muted-foreground mt-0.5">{label}</div>
                               </div>
                             ))}
-                          </CardContent>
-                        </Card>
-
-                        {/* Competitor column */}
-                        <Card>
-                          <CardHeader className="pb-2 pt-3 px-4">
-                            <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
-                              <div className="w-2 h-2 rounded-full bg-muted-foreground" />
-                              {comp.name || comp.domain}
-                              <span className="text-muted-foreground font-normal ml-auto">avg {compAvg}</span>
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent className="px-4 pb-4 space-y-3">
-                            {compTop.slice(0, 6).map((n, i) => (
-                              <div key={i} className="space-y-1">
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="flex items-center gap-1.5 min-w-0">
-                                    <span className="text-xs text-foreground truncate">{n.theme}</span>
-                                    {n.strength >= 70 && <ShieldAlert className="w-3 h-3 text-orange-400 shrink-0" />}
-                                  </div>
-                                  <span className={`text-xs font-bold shrink-0 ${
-                                    n.strength >= 70 ? "text-orange-400" : n.strength >= 40 ? "text-yellow-400" : "text-muted-foreground"
-                                  }`}>{n.strength}</span>
-                                </div>
-                                <StrengthBar value={n.strength} color={
-                                  n.strength >= 70 ? "bg-orange-500" : n.strength >= 40 ? "bg-yellow-500/60" : "bg-muted-foreground/30"
-                                } />
-                              </div>
-                            ))}
-                          </CardContent>
-                        </Card>
-                      </div>
-
-                      {/* Threat & advantage callouts */}
-                      {(compThreats.length > 0 || brandAdvantages.length > 0) && (
-                        <div className="grid md:grid-cols-2 gap-3">
+                          </div>
                           {brandAdvantages.length > 0 && (
-                            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-1.5">
-                              <p className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
-                                <Crown className="w-3.5 h-3.5" /> Your narrative advantages
-                              </p>
-                              {brandAdvantages.slice(0, 3).map((n) => (
-                                <div key={n.theme} className="flex items-center gap-2">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                                  <p className="text-xs text-foreground font-medium">{n.theme}</p>
-                                  <span className="text-xs text-emerald-400 font-bold ml-auto">{n.strength}</span>
-                                </div>
+                            <div className="flex flex-wrap gap-1 pt-1 border-t border-primary/15">
+                              {brandAdvantages.slice(0, 4).map((n) => (
+                                <Badge key={n.theme} variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/25 gap-1 py-0">
+                                  <Crown className="w-2.5 h-2.5" />{n.theme}
+                                </Badge>
                               ))}
                             </div>
                           )}
+                        </CardContent>
+                      </Card>
+
+                      {/* Competitor column */}
+                      <Card className="border-orange-500/20 bg-orange-500/5">
+                        <CardContent className="p-4 space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2.5 h-2.5 rounded-full bg-orange-400" />
+                              <p className="text-sm font-semibold text-foreground">{focusComp.name || focusComp.domain}</p>
+                              <span className="text-xs text-muted-foreground">{focusComp.domain}</span>
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className={`text-[10px] py-0 ${
+                                tied
+                                  ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/30"
+                                  : brandLeads
+                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                  : "bg-red-500/10 text-red-400 border-red-500/30"
+                              }`}
+                            >
+                              {tied ? "Tied" : brandLeads ? `You +${brandAvg - focusAvg}` : `They +${focusAvg - brandAvg}`}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-4 gap-2">
+                            {[
+                              { label: "Avg strength", value: focusAvg },
+                              { label: "Themes owned", value: focusOwnedCount },
+                              { label: "Top score",    value: focusTop?.strength ?? null },
+                              { label: "Total themes", value: focusThemes.length },
+                            ].map(({ label, value }) => (
+                              <div key={label} className="text-center">
+                                <div className="text-xl font-bold tabular-nums text-orange-400">{value ?? "—"}</div>
+                                <div className="text-[10px] text-muted-foreground mt-0.5">{label}</div>
+                              </div>
+                            ))}
+                          </div>
                           {compThreats.length > 0 && (
-                            <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3 space-y-1.5">
-                              <p className="text-xs font-semibold text-orange-400 flex items-center gap-1.5">
-                                <ShieldAlert className="w-3.5 h-3.5" /> Competitor threat themes
-                              </p>
-                              {compThreats.slice(0, 3).map((n) => (
-                                <div key={n.theme} className="space-y-0.5">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0" />
-                                    <p className="text-xs text-foreground font-medium">{n.theme}</p>
-                                    <span className="text-xs text-orange-400 font-bold ml-auto">{n.strength}</span>
-                                  </div>
-                                  {n.description && (
-                                    <p className="text-xs text-muted-foreground pl-3.5 leading-relaxed">{n.description}</p>
-                                  )}
-                                </div>
+                            <div className="flex flex-wrap gap-1 pt-1 border-t border-orange-500/15">
+                              {compThreats.slice(0, 4).map((n) => (
+                                <Badge key={n.theme} variant="outline" className="text-[10px] bg-orange-500/10 text-orange-400 border-orange-500/25 gap-1 py-0">
+                                  <ShieldAlert className="w-2.5 h-2.5" />{n.theme}
+                                </Badge>
                               ))}
                             </div>
                           )}
-                        </div>
-                      )}
-
-                      {/* Separator between competitors */}
-                      {competitors.indexOf(comp) < competitors.length - 1 && (
-                        <div className="border-t border-border" />
-                      )}
+                        </CardContent>
+                      </Card>
                     </div>
-                  );
-                })}
 
-                {/* ── Competitive insight footer ────────────────────────────── */}
+                    {/* ── Theme Ownership Chart ───────────────────────────── */}
+                    <ThemeOwnershipChart
+                      brandName={project.brand_name}
+                      brandThemes={result.brand_narratives}
+                      compName={focusComp.name || focusComp.domain}
+                      compThemes={focusThemes}
+                    />
+
+                    {/* ── Detailed theme lists ────────────────────────────── */}
+                    <div className="grid md:grid-cols-2 gap-3">
+                      <Card className="border-primary/20">
+                        <CardHeader className="pb-2 pt-3 px-4">
+                          <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-primary" />
+                            {project.brand_name}
+                            <span className="text-muted-foreground font-normal ml-auto">avg {brandAvg}</span>
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-4 pb-4 space-y-3">
+                          {brandTop.slice(0, 7).map((n, i) => (
+                            <div key={i} className="space-y-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="text-xs text-foreground truncate">{n.theme}</span>
+                                  {n.status === "strong" && <Crown className="w-3 h-3 text-emerald-400 shrink-0" />}
+                                </div>
+                                <span className={`text-xs font-bold shrink-0 ${n.strength >= 70 ? "text-emerald-400" : n.strength >= 40 ? "text-yellow-400" : "text-destructive"}`}>{n.strength}</span>
+                              </div>
+                              <StrengthBar value={n.strength} color={n.strength >= 70 ? "bg-emerald-500" : n.strength >= 40 ? "bg-yellow-500" : "bg-destructive"} />
+                            </div>
+                          ))}
+                        </CardContent>
+                      </Card>
+
+                      <Card className="border-orange-500/20">
+                        <CardHeader className="pb-2 pt-3 px-4">
+                          <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-orange-400" />
+                            {focusComp.name || focusComp.domain}
+                            <span className="text-muted-foreground font-normal ml-auto">avg {focusAvg}</span>
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-4 pb-4 space-y-3">
+                          {compTopSorted.slice(0, 7).map((n, i) => (
+                            <div key={i} className="space-y-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="text-xs text-foreground truncate">{n.theme}</span>
+                                  {n.strength >= 70 && <ShieldAlert className="w-3 h-3 text-orange-400 shrink-0" />}
+                                </div>
+                                <span className={`text-xs font-bold shrink-0 ${n.strength >= 70 ? "text-orange-400" : n.strength >= 40 ? "text-yellow-400" : "text-muted-foreground"}`}>{n.strength}</span>
+                              </div>
+                              <StrengthBar value={n.strength} color={n.strength >= 70 ? "bg-orange-500" : n.strength >= 40 ? "bg-yellow-500/60" : "bg-muted-foreground/30"} />
+                            </div>
+                          ))}
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </>
+                )}
+
+                {/* ── Footer ───────────────────────────────────────────────── */}
                 <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg bg-secondary/50 border border-border">
                   <Swords className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
                   <p className="text-xs text-muted-foreground">
