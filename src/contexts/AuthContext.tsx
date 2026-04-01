@@ -19,7 +19,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Only honor SIGNED_OUT events when we explicitly trigger sign-out
   const intentionalSignOut = useRef(false);
 
-  const fetchProfile = useCallback(async (userId: string): Promise<UserProfile | null> => {
+  const fetchProfile = useCallback(async (userId: string): Promise<{ data: UserProfile | null; failed: boolean }> => {
     try {
       const result = await Promise.race([
         supabase
@@ -28,18 +28,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .eq('user_id', userId)
           .maybeSingle(),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Profile fetch timeout')), 4000)
+          setTimeout(() => reject(new Error('Profile fetch timeout')), 8000)
         ),
       ]);
 
       if (result.error) {
         console.error('[Auth] Error fetching profile:', result.error);
-        return null;
+        return { data: null, failed: true };
       }
-      return result.data as UserProfile | null;
+      return { data: result.data as UserProfile | null, failed: false };
     } catch (err) {
       console.error('[Auth] fetchProfile failed/timed out:', err);
-      return null;
+      return { data: null, failed: true };
     }
   }, []);
 
@@ -65,10 +65,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(currentSession.user);
       localStorage.setItem(SESSION_EXPIRY_KEY, new Date().toISOString());
 
-      const userProfile = await fetchProfile(currentSession.user.id);
+      const { data: userProfile, failed } = await fetchProfile(currentSession.user.id);
       if (mounted) {
         setProfile(userProfile);
-        setNeedsProfileCompletion(!userProfile);
+        // Only show the profile completion modal when we KNOW the profile is
+        // missing — not when the fetch timed out or errored (which would cause
+        // the modal to appear randomly for users who already have a profile).
+        if (!failed) {
+          setNeedsProfileCompletion(!userProfile);
+        }
         setLoading(false);
       }
     };
