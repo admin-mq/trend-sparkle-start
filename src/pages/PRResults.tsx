@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Megaphone, Loader2, ChevronLeft, CheckCircle2, XCircle,
@@ -6,7 +6,7 @@ import {
   Globe, RefreshCw, ArrowLeft, Zap, Eye, Play, MessageSquare,
   Bell, TrendingDown, ChevronUp, ChevronDown, Clock,
   Link2, ExternalLink, Plus, Trash2, Quote, Swords, Crown, ShieldAlert,
-  Download,
+  Download, Minus, BarChart2,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
@@ -482,6 +482,9 @@ const PRResults = () => {
   // Visibility history (for trend chart)
   const [visibilityHistory, setVisibilityHistory] = useState<VisibilityHistoryPoint[]>([]);
 
+  // Trends tab range
+  const [trendsRange, setTrendsRange] = useState<30 | 60 | 90>(90);
+
   // External mentions
   const [mentions, setMentions] = useState<ExternalMention[]>([]);
   const [newMentionUrl, setNewMentionUrl] = useState("");
@@ -622,7 +625,7 @@ const PRResults = () => {
         .select("id, narrative_score, authority_score, proof_density_score, risk_score, opportunity_score, snapshot_date")
         .eq("project_id", projectId)
         .order("snapshot_date", { ascending: false })
-        .limit(30),
+        .limit(90),
       (supabase as any)
         .from("pr_alerts")
         .select("*")
@@ -661,6 +664,24 @@ const PRResults = () => {
     setAlerts((prev) => prev.filter((a) => a.id !== alertId));
     setUnreadCount((prev) => Math.max(0, prev - 1));
   }, []);
+
+  // ── Trends — filtered views based on selected range ───────────────────────
+
+  const trendsCutoff = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - trendsRange);
+    return d.toISOString();
+  }, [trendsRange]);
+
+  const filteredScoreHistory = useMemo(
+    () => scoreHistory.filter((s) => s.snapshot_date >= trendsCutoff),
+    [scoreHistory, trendsCutoff],
+  );
+
+  const filteredVisibilityHistory = useMemo(
+    () => visibilityHistory.filter((v) => v.date >= trendsCutoff),
+    [visibilityHistory, trendsCutoff],
+  );
 
   // ── External mentions ──────────────────────────────────────────────────────
 
@@ -925,6 +946,9 @@ const PRResults = () => {
       <Tabs defaultValue="overview">
         <TabsList className="w-full justify-start">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="trends" className="gap-1.5">
+            <BarChart2 className="w-3.5 h-3.5" /> Trends
+          </TabsTrigger>
           <TabsTrigger value="narratives">Narrative Map</TabsTrigger>
           <TabsTrigger value="gaps">Proof Gaps</TabsTrigger>
           <TabsTrigger value="actions">Actions</TabsTrigger>
@@ -1022,6 +1046,160 @@ const PRResults = () => {
                     </div>
                   </div>
                 ))}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* ── Trends ───────────────────────────────────────────────────────── */}
+        <TabsContent value="trends" className="space-y-5 mt-4">
+
+          {/* Header + range picker */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Score Trends</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {scoreHistory.length >= 2
+                  ? `${scoreHistory.length} scans tracked — showing last ${trendsRange} days`
+                  : "Run at least 2 scans to see how your scores change over time"}
+              </p>
+            </div>
+            <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
+              {([30, 60, 90] as const).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setTrendsRange(d)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    trendsRange === d
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {d}d
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Delta summary cards */}
+          {filteredScoreHistory.length >= 2 ? (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { key: "narrative_score" as const,      label: "Narrative",    color: "#6366f1" },
+                  { key: "authority_score" as const,      label: "Authority",    color: "#10b981" },
+                  { key: "proof_density_score" as const,  label: "Proof",        color: "#8b5cf6" },
+                  { key: "opportunity_score" as const,    label: "Opportunity",  color: "#f59e0b" },
+                ].map(({ key, label, color }) => {
+                  const latest   = filteredScoreHistory[0]?.[key] as number | null;
+                  const earliest = filteredScoreHistory[filteredScoreHistory.length - 1]?.[key] as number | null;
+                  const delta    = latest != null && earliest != null ? latest - earliest : null;
+                  return (
+                    <Card key={key} className="p-4">
+                      <p className="text-xs text-muted-foreground mb-2">{label}</p>
+                      <p className="text-3xl font-bold tabular-nums" style={{ color }}>
+                        {latest ?? "—"}
+                      </p>
+                      {delta !== null && (
+                        <div className={`flex items-center gap-1 mt-1.5 text-xs font-medium ${
+                          delta > 0 ? "text-emerald-400" : delta < 0 ? "text-red-400" : "text-muted-foreground"
+                        }`}>
+                          {delta > 0
+                            ? <TrendingUp className="w-3.5 h-3.5" />
+                            : delta < 0
+                            ? <TrendingDown className="w-3.5 h-3.5" />
+                            : <Minus className="w-3.5 h-3.5" />}
+                          <span>{delta > 0 ? `+${delta}` : delta} over {trendsRange}d</span>
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })}
+              </div>
+
+              {/* Score trend chart */}
+              <NarrativeTrendChart history={filteredScoreHistory} />
+            </>
+          ) : (
+            <Card className="border-dashed">
+              <CardContent className="p-10 text-center space-y-3">
+                <BarChart2 className="w-10 h-10 text-muted-foreground mx-auto opacity-40" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    {scoreHistory.length === 0 ? "No scans yet" : "Need one more scan"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
+                    {scoreHistory.length === 0
+                      ? "Run your first scan to establish a baseline score."
+                      : "Your baseline is set. Run Re-analyse after making changes to start seeing score trends here."}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* AI Visibility trend */}
+          {filteredVisibilityHistory.length >= 2 && (
+            <div className="space-y-2">
+              <div className="px-0.5">
+                <h3 className="text-sm font-semibold text-foreground">AI Visibility Trend</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Average visibility score + brand presence across tracked prompts</p>
+              </div>
+              <VisibilityTrendChart history={filteredVisibilityHistory} />
+            </div>
+          )}
+
+          {/* Scan timeline */}
+          {scoreHistory.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-muted-foreground" />
+                  Scan History
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 divide-y divide-border">
+                {scoreHistory.slice(0, 10).map((snap, i) => {
+                  const prev = scoreHistory[i + 1];
+                  const delta = prev != null
+                    ? (snap.narrative_score ?? 0) - (prev.narrative_score ?? 0)
+                    : null;
+                  return (
+                    <div key={snap.id} className="flex items-center justify-between py-2.5 gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-2 h-2 rounded-full shrink-0 ${i === 0 ? "bg-primary" : "bg-muted-foreground/30"}`} />
+                        <div>
+                          <p className="text-xs font-medium text-foreground">
+                            {new Date(snap.snapshot_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                            {i === 0 && <span className="ml-2 text-[10px] text-primary font-semibold uppercase tracking-wide">Latest</span>}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        {[
+                          { val: snap.narrative_score,      color: "#6366f1" },
+                          { val: snap.authority_score,      color: "#10b981" },
+                          { val: snap.proof_density_score,  color: "#8b5cf6" },
+                          { val: snap.opportunity_score,    color: "#f59e0b" },
+                        ].map(({ val, color }, j) => (
+                          <span key={j} className="text-xs font-bold tabular-nums w-7 text-right" style={{ color }}>
+                            {val ?? "—"}
+                          </span>
+                        ))}
+                        {delta !== null && (
+                          <span className={`text-xs font-medium w-10 text-right ${delta > 0 ? "text-emerald-400" : delta < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                            {delta > 0 ? `+${delta}` : delta === 0 ? "—" : delta}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {scoreHistory.length > 10 && (
+                  <p className="text-xs text-muted-foreground pt-2">
+                    +{scoreHistory.length - 10} earlier scans not shown
+                  </p>
+                )}
               </CardContent>
             </Card>
           )}
