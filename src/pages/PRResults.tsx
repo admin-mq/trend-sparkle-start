@@ -482,8 +482,8 @@ const PRResults = () => {
   // Visibility history (for trend chart)
   const [visibilityHistory, setVisibilityHistory] = useState<VisibilityHistoryPoint[]>([]);
 
-  // Trends tab range
-  const [trendsRange, setTrendsRange] = useState<30 | 60 | 90>(90);
+  // Trends tab range (scan count)
+  const [trendsRange, setTrendsRange] = useState<5 | 10 | 0>(0); // 0 = all
 
   // External mentions
   const [mentions, setMentions] = useState<ExternalMention[]>([]);
@@ -665,22 +665,16 @@ const PRResults = () => {
     setUnreadCount((prev) => Math.max(0, prev - 1));
   }, []);
 
-  // ── Trends — filtered views based on selected range ───────────────────────
-
-  const trendsCutoff = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - trendsRange);
-    return d.toISOString();
-  }, [trendsRange]);
+  // ── Trends — filtered views based on selected scan count ──────────────────
 
   const filteredScoreHistory = useMemo(
-    () => scoreHistory.filter((s) => s.snapshot_date >= trendsCutoff),
-    [scoreHistory, trendsCutoff],
+    () => (trendsRange === 0 ? scoreHistory : scoreHistory.slice(0, trendsRange)),
+    [scoreHistory, trendsRange],
   );
 
   const filteredVisibilityHistory = useMemo(
-    () => visibilityHistory.filter((v) => v.date >= trendsCutoff),
-    [visibilityHistory, trendsCutoff],
+    () => (trendsRange === 0 ? visibilityHistory : visibilityHistory.slice(-trendsRange)),
+    [visibilityHistory, trendsRange],
   );
 
   // ── External mentions ──────────────────────────────────────────────────────
@@ -1060,25 +1054,27 @@ const PRResults = () => {
               <h3 className="text-sm font-semibold text-foreground">Score Trends</h3>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {scoreHistory.length >= 2
-                  ? `${scoreHistory.length} scans tracked — showing last ${trendsRange} days`
+                  ? `${scoreHistory.length} scans tracked — showing ${trendsRange === 0 ? "all" : `last ${filteredScoreHistory.length}`} scans`
                   : "Run at least 2 scans to see how your scores change over time"}
               </p>
             </div>
-            <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
-              {([30, 60, 90] as const).map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setTrendsRange(d)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                    trendsRange === d
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {d}d
-                </button>
-              ))}
-            </div>
+            {scoreHistory.length >= 2 && (
+              <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
+                {([5, 10, 0] as const).map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setTrendsRange(n)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                      trendsRange === n
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {n === 0 ? "All" : `Last ${n}`}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Delta summary cards */}
@@ -1109,7 +1105,13 @@ const PRResults = () => {
                             : delta < 0
                             ? <TrendingDown className="w-3.5 h-3.5" />
                             : <Minus className="w-3.5 h-3.5" />}
-                          <span>{delta > 0 ? `+${delta}` : delta} over {trendsRange}d</span>
+                          <span>
+                            {delta > 0 ? `+${delta}` : delta} vs{" "}
+                            {filteredScoreHistory.length > 1
+                              ? new Date(filteredScoreHistory[filteredScoreHistory.length - 1].snapshot_date)
+                                  .toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+                              : "baseline"}
+                          </span>
                         </div>
                       )}
                     </Card>
