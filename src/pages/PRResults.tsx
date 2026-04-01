@@ -628,9 +628,10 @@ interface ThemeOwnershipChartProps {
 }
 
 function ThemeOwnershipChart({ brandName, brandThemes, compName, compThemes }: ThemeOwnershipChartProps) {
+  // Use static keys "brand" / "comp" — dynamic keys break Recharts reconciliation
   const rows = useMemo(() => {
     const map = new Map<string, { brand: number; comp: number }>();
-    for (const t of brandThemes)  map.set(t.theme, { brand: t.strength, comp: 0 });
+    for (const t of brandThemes) map.set(t.theme, { brand: t.strength, comp: 0 });
     for (const t of compThemes) {
       const ex = map.get(t.theme);
       if (ex) ex.comp = t.strength;
@@ -639,22 +640,15 @@ function ThemeOwnershipChart({ brandName, brandThemes, compName, compThemes }: T
     return [...map.entries()]
       .map(([theme, { brand, comp }]) => ({
         theme: theme.length > 26 ? theme.slice(0, 25) + "…" : theme,
-        [brandName]: brand,
-        [compName]: comp,
-        winner: brand >= comp ? "brand" : "comp",
+        brand,
+        comp,
       }))
-      .sort((a, b) => Math.max(b[brandName] as number, b[compName] as number) - Math.max(a[brandName] as number, a[compName] as number))
+      .sort((a, b) => Math.max(b.brand, b.comp) - Math.max(a.brand, a.comp))
       .slice(0, 12)
       .reverse(); // recharts vertical renders bottom-up
-  }, [brandName, brandThemes, compName, compThemes]);
+  }, [brandThemes, compThemes]);
 
   const chartH = Math.max(260, rows.length * 48);
-
-  const CustomBar = (props: any) => {
-    const { x, y, width, height, value } = props;
-    if (!value) return null;
-    return <rect x={x} y={y} width={width} height={height} rx={3} ry={3} fill={props.fill} />;
-  };
 
   return (
     <Card>
@@ -662,12 +656,12 @@ function ThemeOwnershipChart({ brandName, brandThemes, compName, compThemes }: T
         <CardTitle className="text-sm font-semibold flex items-center gap-2">
           <BarChart2 className="w-4 h-4 text-primary" />
           Theme Ownership
-          <span className="text-xs font-normal text-muted-foreground ml-1">strength 0–100, who leads each theme</span>
+          <span className="text-xs font-normal text-muted-foreground ml-1">strength 0–100 · who leads each theme</span>
         </CardTitle>
       </CardHeader>
       <CardContent className="px-2 pb-4">
         <ResponsiveContainer width="100%" height={chartH}>
-          <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 16, left: 0, bottom: 4 }} barCategoryGap="28%">
+          <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 16, left: 0, bottom: 4 }} barCategoryGap="30%">
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={true} horizontal={false} />
             <XAxis
               type="number"
@@ -685,14 +679,34 @@ function ThemeOwnershipChart({ brandName, brandThemes, compName, compThemes }: T
               tickLine={false}
               axisLine={false}
             />
-            <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }} />
+            <RechartsTooltip
+              content={({ active, payload, label }) => {
+                if (!active || !payload?.length) return null;
+                return (
+                  <div className="bg-card border border-border rounded-lg shadow-xl p-3 space-y-1 text-xs min-w-[140px]">
+                    <p className="text-muted-foreground font-medium mb-2">{label}</p>
+                    {payload.map((p: any) => (
+                      <div key={p.dataKey} className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full shrink-0" style={{ background: p.fill }} />
+                          <span className="text-muted-foreground">{p.dataKey === "brand" ? brandName : compName}</span>
+                        </div>
+                        <span className="font-bold text-foreground">{p.value ?? "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              }}
+              cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
+            />
             <Legend
+              formatter={(value) => (value === "brand" ? brandName : compName)}
               iconType="circle"
               iconSize={8}
               wrapperStyle={{ fontSize: 11, color: "hsl(var(--muted-foreground))", paddingTop: 12 }}
             />
-            <Bar dataKey={brandName}   fill="#6366f1" shape={<CustomBar />} maxBarSize={14} />
-            <Bar dataKey={compName}    fill="#f97316" shape={<CustomBar />} maxBarSize={14} />
+            <Bar dataKey="brand" name="brand" fill="#6366f1" radius={[0, 3, 3, 0]} maxBarSize={14} />
+            <Bar dataKey="comp"  name="comp"  fill="#f97316" radius={[0, 3, 3, 0]} maxBarSize={14} />
           </BarChart>
         </ResponsiveContainer>
       </CardContent>
