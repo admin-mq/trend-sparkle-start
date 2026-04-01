@@ -9,7 +9,8 @@ import {
   Download, Minus, BarChart2,
 } from "lucide-react";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
+  LineChart, Line, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   ResponsiveContainer, Legend, Dot,
 } from "recharts";
 import { Input } from "@/components/ui/input";
