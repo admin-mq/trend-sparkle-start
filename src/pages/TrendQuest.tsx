@@ -191,23 +191,15 @@ const TrendQuest = () => {
     setDetailedDirection(null);
     setActiveStep("directions");
     try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-directions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`
-        },
-        body: JSON.stringify({
+      const { data, error } = await supabase.functions.invoke('generate-directions', {
+        body: {
           user_profile: userProfile,
           trend_id: trend.trend_id,
           trend_name: trend.trend_name,
           user_id: user?.id || null
-        })
+        }
       });
-      if (!response.ok) {
-        throw new Error('Failed to generate creative directions');
-      }
-      const data = await response.json();
+      if (error) throw new Error('Failed to generate creative directions');
       setCreativeDirections(data.creative_directions || []);
     } catch (err) {
       setDirectionsError(err instanceof Error ? err.message : 'Failed to load creative directions');
@@ -226,23 +218,15 @@ const TrendQuest = () => {
     setSelectedIdeaTitle(direction.title);
     setActiveStep("blueprint");
     try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-blueprint`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`
-        },
-        body: JSON.stringify({
+      const { data, error } = await supabase.functions.invoke('generate-blueprint', {
+        body: {
           user_profile: userProfile,
           trend_id: selectedTrendId,
           chosen_direction: direction,
           user_id: user?.id || null
-        })
+        }
       });
-      if (!response.ok) {
-        throw new Error('Failed to generate execution blueprint');
-      }
-      const data = await response.json();
+      if (error) throw new Error('Failed to generate execution blueprint');
       setTrendHashtags(data.trend_hashtags || '');
       setDetailedDirection(data.detailed_direction || null);
     } catch (err) {
