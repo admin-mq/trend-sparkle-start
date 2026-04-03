@@ -23,6 +23,7 @@ const Index = () => {
   const [brandName, setBrandName] = useState<string>('');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [trendsLoading, setTrendsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Creative directions
   const [creativeDirections, setCreativeDirections] = useState<CreativeDirection[]>([]);
@@ -37,7 +38,7 @@ const Index = () => {
   const [blueprintLoading, setBlueprintLoading] = useState(false);
   const [blueprintError, setBlueprintError] = useState<string | null>(null);
   const [trendHashtags, setTrendHashtags] = useState<string>('');
-  
+
   // Brand memory for learning from feedback
   const [brandMemory, setBrandMemory] = useState<BrandMemory | null>(null);
 
@@ -64,6 +65,42 @@ const Index = () => {
       console.error("Failed to update brand memory:", result.error);
     }
   };
+
+  const handleRefreshTrends = async () => {
+    setIsRefreshing(true);
+    try {
+      await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-trends`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({}),
+      });
+      if (userProfile) {
+        setTrendsLoading(true);
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/recommend-trends`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ user_profile: userProfile, user_id: user?.id || null }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setRecommendations(data.recommended_trends || []);
+        }
+        setTrendsLoading(false);
+      }
+    } catch (err) {
+      console.error('Refresh failed:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+
   const handleRecommendationsReceived = (newRecommendations: RecommendedTrend[]) => {
     setRecommendations(newRecommendations);
     setActiveStep("trends");
@@ -146,7 +183,7 @@ const Index = () => {
   const renderWorkspaceContent = () => {
     switch (activeStep) {
       case "trends":
-        return <RecommendedTrends recommendations={recommendations} brandName={brandName} onViewDirections={handleViewDirections} />;
+        return <RecommendedTrends recommendations={recommendations} brandName={brandName} onViewDirections={handleViewDirections} onRefreshTrends={handleRefreshTrends} isRefreshing={isRefreshing} />;
       case "directions":
         if (directionsError) {
           return <div className="flex items-center justify-center h-full">

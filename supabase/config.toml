@@ -1,4 +1,4 @@
-project_id = "xkwadhydveebpaqmgkei"
+project_id = "njnnpdrevbkhbhzwccuz"
 
 [functions.recommend-trends]
 verify_jwt = false
@@ -21,3 +21,6 @@ verify_jwt = false
 [functions.pr-scheduler]
 verify_jwt = false
 schedule = "0 6 * * *"
+
+[functions.fetch-trends]
+verify_jwt = false

@@ -1,14 +1,22 @@
 import { Button } from "@/components/ui/button";
 import { RecommendedTrend } from "@/types/trends";
-import { TrendingUp, Eye, ArrowRight } from "lucide-react";
+import { TrendingUp, Eye, ArrowRight, RefreshCw } from "lucide-react";
 
 interface RecommendedTrendsProps {
   recommendations: RecommendedTrend[];
   brandName: string;
   onViewDirections: (trend: RecommendedTrend) => void;
+  onRefreshTrends?: () => void;
+  isRefreshing?: boolean;
 }
 
-export const RecommendedTrends = ({ recommendations, brandName, onViewDirections }: RecommendedTrendsProps) => {
+export const RecommendedTrends = ({
+  recommendations,
+  brandName,
+  onViewDirections,
+  onRefreshTrends,
+  isRefreshing = false,
+}: RecommendedTrendsProps) => {
   if (recommendations.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full w-full text-center py-12">
@@ -19,6 +27,18 @@ export const RecommendedTrends = ({ recommendations, brandName, onViewDirections
         <p className="text-muted-foreground text-sm max-w-md">
           Fill in your brand profile and click "Get AI trend suggestions" to discover what's trending for you.
         </p>
+        {onRefreshTrends && (
+          <Button
+            onClick={onRefreshTrends}
+            variant="outline"
+            size="sm"
+            disabled={isRefreshing}
+            className="mt-4 gap-2"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {isRefreshing ? 'Fetching from Instagram…' : 'Refresh trends from Instagram'}
+          </Button>
+        )}
       </div>
     );
   }
@@ -29,9 +49,24 @@ export const RecommendedTrends = ({ recommendations, brandName, onViewDirections
         <h3 className="text-sm text-muted-foreground uppercase tracking-wider">
           {brandName ? `Trending for ${brandName}` : 'Recommended trends'}
         </h3>
-        <span className="text-xs text-muted-foreground">{recommendations.length} trends</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">{recommendations.length} trends</span>
+          {onRefreshTrends && (
+            <Button
+              onClick={onRefreshTrends}
+              variant="ghost"
+              size="sm"
+              disabled={isRefreshing}
+              title="Fetch latest trends from Instagram now"
+              className="h-7 px-2 gap-1 text-xs text-muted-foreground hover:text-primary"
+            >
+              <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {isRefreshing ? 'Refreshing…' : 'Refresh'}
+            </Button>
+          )}
+        </div>
       </div>
-      
+
       <div className="flex-1 space-y-3 overflow-y-auto pr-2">
         {recommendations.map((trend) => (
           <div key={trend.trend_id} className="post-card p-4 hover:shadow-glow transition-shadow">
@@ -48,11 +83,11 @@ export const RecommendedTrends = ({ recommendations, brandName, onViewDirections
                 </div>
               </div>
             </div>
-            
+
             <p className="text-sm text-secondary-foreground mt-3 line-clamp-2">
               {trend.why_good_fit}
             </p>
-            
+
             <div className="hook-highlight mt-3">
               <p className="text-sm italic text-foreground">
                 "{trend.example_hook}"
@@ -63,7 +98,7 @@ export const RecommendedTrends = ({ recommendations, brandName, onViewDirections
               {trend.angle_summary}
             </p>
 
-            <Button 
+            <Button
               onClick={() => onViewDirections(trend)}
               variant="ghost"
               size="sm"
