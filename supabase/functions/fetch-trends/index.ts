@@ -194,7 +194,7 @@ serve(async (req) => {
     } else {
       // ── FALLBACK: OpenAI web search ────────────────────────────────────────
       console.log(`[fetch-trends] Falling back to OpenAI web search...`);
-      const searchPrompt = `Today is ${today}. Search the web and find 20 topics trending on Instagram and TikTok in the UK and USA RIGHT NOW. Be specific — name actual events, matches, shows, songs. List them with hashtag and why it's trending.`;
+      const searchPrompt = `Today is ${today}. Search the web and find 20 topics trending RIGHT NOW specifically in the UK and USA on Instagram and TikTok. Focus ONLY on UK and USA — do NOT include trends from India, Australia, or other countries. Be very specific — name actual breaking news, sports results, TV shows, songs, memes, or viral moments from TODAY. List each with its primary hashtag and why it's trending right now.`;
 
       const searchRes = await fetch('https://api.openai.com/v1/responses', {
         method: 'POST',
