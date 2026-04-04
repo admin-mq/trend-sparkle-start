@@ -352,7 +352,7 @@ export const BrandProfileForm = ({
               value={websiteUrl}
               onChange={(e) => setWebsiteUrl(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAnalyzeWebsite()}
-              placeholder="yourwebsite.com"
+              placeholder="e.g. apple.com"
               className="bg-background border-border/50 focus:border-primary flex-1"
               disabled={isAnalyzing}
             />
