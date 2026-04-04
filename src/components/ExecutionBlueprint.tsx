@@ -27,7 +27,7 @@ export const ExecutionBlueprint = ({ trendName, ideaTitle, blueprint, trendHasht
   }
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="h-full flex flex-col animate-fade-in">
       <div className="flex items-center gap-3 mb-4">
         <Button 
           variant="ghost" 
@@ -46,7 +46,7 @@ export const ExecutionBlueprint = ({ trendName, ideaTitle, blueprint, trendHasht
         </div>
       </div>
       
-      <div className="space-y-4 max-h-[calc(100vh-320px)] overflow-y-auto pr-2">
+      <div className="flex-1 space-y-4 overflow-y-auto pr-2">
         {/* Concept */}
         <div className="post-card p-4">
           <div className="flex items-center gap-2 mb-3">

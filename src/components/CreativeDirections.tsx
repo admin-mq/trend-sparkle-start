@@ -26,7 +26,7 @@ export const CreativeDirections = ({ trendName, directions, onViewBlueprint, onB
   }
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="h-full flex flex-col animate-fade-in">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-3">
           <Button 
@@ -46,7 +46,7 @@ export const CreativeDirections = ({ trendName, directions, onViewBlueprint, onB
         <span className="text-xs text-muted-foreground">{directions.length} ideas</span>
       </div>
       
-      <div className="space-y-3 max-h-[calc(100vh-320px)] overflow-y-auto pr-2">
+      <div className="flex-1 space-y-3 overflow-y-auto pr-2">
         {directions.map((direction, index) => (
           <div key={direction.idea_id} className="post-card p-4 hover:shadow-glow transition-shadow">
             <div className="flex items-start gap-3">
