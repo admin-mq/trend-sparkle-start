@@ -36,7 +36,7 @@ export const RecommendedTrends = ({
             className="mt-4 gap-2"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-            {isRefreshing ? 'Fetching from Instagram…' : 'Refresh trends from Instagram'}
+            {isRefreshing ? 'Fetching fresh trends…' : 'Refresh trends'}
           </Button>
         )}
       </div>
@@ -54,11 +54,11 @@ export const RecommendedTrends = ({
           {onRefreshTrends && (
             <Button
               onClick={onRefreshTrends}
-              variant="ghost"
+              variant="outline"
               size="sm"
               disabled={isRefreshing}
-              title="Fetch latest trends from Instagram now"
-              className="h-7 px-2 gap-1 text-xs text-muted-foreground hover:text-primary"
+              title="Fetch fresh trends now"
+              className="h-7 px-3 gap-1.5 text-xs border-primary/40 text-primary hover:bg-primary/10"
             >
               <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
               {isRefreshing ? 'Refreshing…' : 'Refresh'}
