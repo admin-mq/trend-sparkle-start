@@ -57,7 +57,7 @@ export const RecommendedTrends = ({
               variant="outline"
               size="sm"
               disabled={isRefreshing}
-              title="Fetch fresh trends now"
+              title="Fetch the latest UK & USA trends"
               className="h-7 px-3 gap-1.5 text-xs border-primary/40 text-primary hover:bg-primary/10"
             >
               <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
