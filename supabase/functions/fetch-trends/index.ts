@@ -38,10 +38,11 @@ serve(async (req) => {
     console.log(`[fetch-trends] Starting Instagram-first trend fetch for ${today}`);
 
     // ── Strategy toggle ────────────────────────────────────────────────────────
-    // If Meta credentials are present, mine Instagram directly (zero search-engine lag).
-    // Otherwise fall back to OpenAI web search (1-6 hour lag).
-    const useInstagram = !!(META_USER_ACCESS_TOKEN && META_IG_ACCOUNT_ID);
-    console.log(`[fetch-trends] Mode: ${useInstagram ? 'Instagram-direct' : 'OpenAI-web-search fallback'}`);
+    // Instagram Public Content Access (ig_hashtag_search) requires Meta App Review approval.
+    // Until approved, use OpenAI web search which delivers fresh trends with ~1-6 hour lag.
+    // Set useInstagram = true once Meta grants "Instagram Public Content Access" for this app.
+    const useInstagram = false;
+    console.log(`[fetch-trends] Mode: ${useInstagram ? 'Instagram-direct' : 'OpenAI-web-search'}`);
 
     let trendResearch = '';
 
