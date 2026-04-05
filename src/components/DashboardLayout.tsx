@@ -19,12 +19,14 @@ import {
   Brain,
   X,
 } from "lucide-react";
+// Brain is still used for the Amcue nav item
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AmcueChat } from "@/components/amcue/AmcueChat";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { MQLogo } from "@/components/MQLogo";
 
 // ── Nav structure ─────────────────────────────────────────────────────────────
 
@@ -138,10 +140,7 @@ export const DashboardLayout = () => {
         {/* Logo */}
         <div className="h-14 px-4 flex items-center justify-between border-b border-border shrink-0">
           <div className="flex items-center gap-2.5">
-            {/* Logo mark — replace src with actual logo once provided */}
-            <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center shadow-sm">
-              <Brain className="w-4 h-4 text-white" />
-            </div>
+            <MQLogo size={28} showBackground={true} />
             <span className="text-sm font-bold text-foreground tracking-tight">Marketers Quest</span>
           </div>
           <button
@@ -217,9 +216,7 @@ export const DashboardLayout = () => {
 
           {/* Mobile: logo center */}
           <div className="flex lg:hidden items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-primary flex items-center justify-center">
-              <Brain className="w-3.5 h-3.5 text-white" />
-            </div>
+            <MQLogo size={24} showBackground={true} />
             <span className="text-sm font-bold">Marketers Quest</span>
           </div>
 

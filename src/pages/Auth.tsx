@@ -8,9 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Sparkles, Building2, User, Loader2, AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
+import { Building2, User, Loader2, AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { AccountType } from '@/types/auth';
+import { MQLogo } from '@/components/MQLogo';
 
 const BLOCKED_EMAIL_DOMAINS = ['gmail.com', 'googlemail.com'];
 
@@ -181,12 +182,10 @@ export default function Auth() {
         {/* Logo */}
         <div className="text-center">
           <div className="inline-flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg">
-              <Sparkles className="w-5 h-5 text-primary-foreground" />
-            </div>
+            <MQLogo size={40} showBackground={true} />
             <h1 className="text-2xl font-bold text-foreground">Marketers Quest</h1>
           </div>
-          <p className="text-sm text-muted-foreground">Your AI-powered marketing toolkit</p>
+          <p className="text-sm text-muted-foreground">Your AI-powered marketing platform</p>
         </div>
 
         <Card>
