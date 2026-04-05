@@ -7,9 +7,10 @@ interface MQLogoProps {
 }
 
 /**
- * Marketers Quest logo mark — white geometric MQ monogram.
- * Left element: diagonal stroke with angled ticks (abstract Q / N mark).
- * Right element: clean M shape with two verticals and a centre peak.
+ * Marketers Quest logo mark — white geometric NM monogram on black.
+ * Left element:  N shape — left upright, diagonal (top-left → bottom-right), right upright.
+ * Right element: M shape — left upright, two peak diagonals meeting at centre, right upright.
+ * All strokes use rounded line caps to match the original logo style.
  */
 export function MQLogo({ size = 32, showBackground = true, className }: MQLogoProps) {
   return (
@@ -22,26 +23,26 @@ export function MQLogo({ size = 32, showBackground = true, className }: MQLogoPr
       className={className}
     >
       {showBackground && (
-        <rect width="100" height="100" rx="20" fill="#000000" />
+        <rect width="100" height="100" rx="18" fill="#000000" />
       )}
 
-      {/* Left element — diagonal stroke with angled entry/exit ticks */}
-      {/* Entry tick (upper-right direction) */}
-      <line x1="10" y1="24" x2="24" y2="12" stroke="white" strokeWidth="7" strokeLinecap="round" />
-      {/* Main diagonal (upper-left to lower-right) */}
-      <line x1="24" y1="12" x2="48" y2="78" stroke="white" strokeWidth="7" strokeLinecap="round" />
-      {/* Exit tick (lower-left direction) */}
-      <line x1="48" y1="78" x2="34" y2="88" stroke="white" strokeWidth="7" strokeLinecap="round" />
+      {/* ── Left element: N ── */}
+      {/* Left upright */}
+      <line x1="9"  y1="80" x2="9"  y2="16" stroke="white" strokeWidth="7" strokeLinecap="round" />
+      {/* Diagonal (top-left → bottom-right) */}
+      <line x1="9"  y1="16" x2="43" y2="80" stroke="white" strokeWidth="7" strokeLinecap="round" />
+      {/* Right upright */}
+      <line x1="43" y1="16" x2="43" y2="80" stroke="white" strokeWidth="7" strokeLinecap="round" />
 
-      {/* Right element — M shape */}
-      {/* Left vertical */}
-      <line x1="55" y1="80" x2="55" y2="18" stroke="white" strokeWidth="7" strokeLinecap="round" />
-      {/* Left peak diagonal (down to centre) */}
-      <line x1="55" y1="18" x2="72" y2="52" stroke="white" strokeWidth="7" strokeLinecap="round" />
-      {/* Right peak diagonal (up from centre) */}
-      <line x1="72" y1="52" x2="89" y2="18" stroke="white" strokeWidth="7" strokeLinecap="round" />
-      {/* Right vertical */}
-      <line x1="89" y1="18" x2="89" y2="80" stroke="white" strokeWidth="7" strokeLinecap="round" />
+      {/* ── Right element: M ── */}
+      {/* Left upright */}
+      <line x1="54" y1="80" x2="54" y2="16" stroke="white" strokeWidth="7" strokeLinecap="round" />
+      {/* Left peak (top-left → centre-bottom) */}
+      <line x1="54" y1="16" x2="72" y2="52" stroke="white" strokeWidth="7" strokeLinecap="round" />
+      {/* Right peak (centre-bottom → top-right) */}
+      <line x1="72" y1="52" x2="90" y2="16" stroke="white" strokeWidth="7" strokeLinecap="round" />
+      {/* Right upright */}
+      <line x1="90" y1="16" x2="90" y2="80" stroke="white" strokeWidth="7" strokeLinecap="round" />
     </svg>
   );
 }
