@@ -46,6 +46,7 @@ const TrendQuest = () => {
   const [brandName, setBrandName] = useState<string>('');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [trendsLoading, setTrendsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Creative directions
   const [creativeDirections, setCreativeDirections] = useState<CreativeDirection[]>([]);
@@ -139,6 +140,23 @@ const TrendQuest = () => {
       toast.success("Feedback saved! AI will learn from this.");
     } else {
       console.error("Failed to update brand memory:", result.error);
+    }
+  };
+
+  const handleRefreshTrends = async () => {
+    setIsRefreshing(true);
+    try {
+      await supabase.functions.invoke('fetch-trends', { body: {} });
+      if (userProfile) {
+        const { data } = await supabase.functions.invoke('recommend-trends', {
+          body: { user_profile: userProfile, user_id: user?.id || null }
+        });
+        if (data?.recommended_trends) setRecommendations(data.recommended_trends);
+      }
+    } catch (err) {
+      console.error('Refresh failed:', err);
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -241,7 +259,7 @@ const TrendQuest = () => {
   const renderWorkspaceContent = () => {
     switch (activeStep) {
       case "trends":
-        return <RecommendedTrends recommendations={recommendations} brandName={brandName} onViewDirections={handleViewDirections} />;
+        return <RecommendedTrends recommendations={recommendations} brandName={brandName} onViewDirections={handleViewDirections} onRefreshTrends={handleRefreshTrends} isRefreshing={isRefreshing} />;
       case "directions":
         if (directionsError) {
           return (

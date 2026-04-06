@@ -7,7 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useBrandProfiles, BrandProfileInput } from "@/hooks/useBrandProfiles";
 import { toast } from "sonner";
-import { Building2, Globe, Upload, Save, Loader2, Plus, Pencil, Trash2, X, Briefcase } from "lucide-react";
+import { Building2, Globe, Upload, Save, Loader2, Plus, Pencil, Trash2, X, Briefcase, Sparkles } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,6 +55,8 @@ const Profile = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [websiteUrl, setWebsiteUrl] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   
   const [formData, setFormData] = useState<BrandProfileInput>({
     brand_name: "",
@@ -63,6 +66,45 @@ const Profile = () => {
     business_summary: "",
     logo_url: ""
   });
+
+  const INDUSTRIES_PROFILE = [
+    "Retail & E-commerce", "FMCG/Consumer Goods", "Technology & Software (SaaS/AI)",
+    "Media/Entertainment & Gaming", "Healthcare & Pharmaceuticals", "Finance & Insurance",
+    "Hospitality & Tourism", "Food Services", "Professional Services", "Education & Training", "Other"
+  ];
+
+  const GEOGRAPHIES_PROFILE = [
+    "Global", "North America", "Europe", "Asia Pacific", "Latin America",
+    "Middle East & Africa", "United States", "United Kingdom", "India", "Australia"
+  ];
+
+  const handleAnalyzeWebsite = async () => {
+    if (!websiteUrl.trim()) return;
+    setIsAnalyzing(true);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('analyze-brand-website', {
+        body: { website_url: websiteUrl.trim() }
+      });
+      if (fnError || !data?.brand_profile) {
+        toast.error(data?.error || 'Could not analyse website. Fill in details manually.');
+        return;
+      }
+      const p = data.brand_profile;
+      setFormData(prev => ({
+        ...prev,
+        brand_name: p.brand_name || prev.brand_name,
+        business_summary: p.business_summary || prev.business_summary,
+        industry: INDUSTRIES_PROFILE.includes(p.industry) ? p.industry : (p.industry ? 'Other' : prev.industry),
+        industry_other: !INDUSTRIES_PROFILE.includes(p.industry) && p.industry ? p.industry : prev.industry_other,
+        geography: GEOGRAPHIES_PROFILE.includes(p.geography) ? p.geography : prev.geography,
+      }));
+      toast.success('Brand profile auto-filled from website!');
+    } catch {
+      toast.error('Analysis failed. Please fill in details manually.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   const resetForm = () => {
     setFormData({
@@ -75,6 +117,7 @@ const Profile = () => {
     });
     setEditingId(null);
     setIsCreating(false);
+    setWebsiteUrl('');
   };
 
   const startEditing = (brand: typeof brands[0]) => {
@@ -205,6 +248,37 @@ const Profile = () => {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Website URL Auto-fill */}
+            <div className="space-y-2 p-3 rounded-lg border border-primary/20 bg-primary/5">
+              <Label className="text-sm font-medium flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-primary" />
+                Auto-fill from website
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  value={websiteUrl}
+                  onChange={(e) => setWebsiteUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAnalyzeWebsite()}
+                  placeholder="e.g. apple.com"
+                  disabled={isAnalyzing}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={handleAnalyzeWebsite}
+                  disabled={isAnalyzing || !websiteUrl.trim()}
+                  variant="outline"
+                  className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10 whitespace-nowrap"
+                >
+                  {isAnalyzing ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analysing…</>
+                  ) : (
+                    <><Sparkles className="w-3.5 h-3.5" /> Analyse</>
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Paste your website URL to auto-fill the fields below.</p>
+            </div>
+
             {/* Logo Upload */}
             <div className="space-y-2">
               <Label>Brand Logo</Label>
