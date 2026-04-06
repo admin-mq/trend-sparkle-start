@@ -297,6 +297,7 @@ export const BrandProfileForm = ({
   };
 
   const handleSubmit = async () => {
+    console.log('build ok');
     if (!userProfile.brand_name.trim()) {
       setError('Please enter a brand name');
       return;
