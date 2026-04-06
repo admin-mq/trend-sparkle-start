@@ -345,7 +345,7 @@ export const BrandProfileForm = ({
         <div className="space-y-2 p-3 rounded-lg border border-primary/20 bg-primary/5">
           <Label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
             <Globe className="w-3 h-3" />
-            Auto-fill from website
+            Auto-fill from your website
           </Label>
           <div className="flex gap-2">
             <Input
