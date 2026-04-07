@@ -28,6 +28,7 @@ import FreeScan from "./pages/FreeScan";
 import NotFound from "./pages/NotFound";
 import Amcue from "./pages/Amcue";
 import AmcueBrandProfile from "./pages/AmcueBrandProfile";
+import DataDeletion from "./pages/DataDeletion";
 
 const queryClient = new QueryClient();
 
@@ -44,6 +45,7 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/free-scan" element={<FreeScan />} />
             <Route path="/debug" element={<Debug />} />
+            <Route path="/data-deletion" element={<DataDeletion />} />
             
             {/* Redirect root to dashboard */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
