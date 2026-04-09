@@ -63,7 +63,7 @@ serve(async (req) => {
   }
 
   try {
-    const { user_profile, trend_id, trend_name, user_id } = await req.json();
+    const { user_profile, trend_id, trend_name, why_good_fit, angle_summary, example_hook, timing, region, user_id } = await req.json();
     console.log('Received request for generate-directions:', { user_profile, trend_id, trend_name, user_id: user_id || 'anonymous' });
 
     if (!user_profile || !user_profile.brand_name) {
@@ -182,6 +182,20 @@ Output JSON shape:
 
 Respond ONLY with JSON.`;
 
+      // Build a rich trend context block so GPT always knows WHY the trend is happening
+      const trendContextLines: string[] = [];
+      trendContextLines.push(`Trend name: ${trend.trend_name}`);
+      if (timing) trendContextLines.push(`Trend phase: ${timing} (${timing === 'early' ? 'just breaking — first-mover advantage' : timing === 'peaking' ? 'at peak virality now' : 'already widespread'})`);
+      if (region) trendContextLines.push(`Region: ${region}`);
+      // Description from DB (raw signal context)
+      if (trend.description) trendContextLines.push(`\nWhy it's trending (raw signal):\n${trend.description}`);
+      // why_good_fit from recommend-trends — this is the richest contextual signal
+      if (why_good_fit) trendContextLines.push(`\nWhy this trend fits this brand:\n${why_good_fit}`);
+      if (angle_summary) trendContextLines.push(`\nSuggested angle:\n${angle_summary}`);
+      if (example_hook) trendContextLines.push(`\nExample hook already generated:\n"${example_hook}"`);
+
+      const trendContext = trendContextLines.join('\n');
+
       const userMessage = `
 Here is the brand profile:
 ${JSON.stringify(user_profile, null, 2)}
@@ -189,8 +203,10 @@ ${JSON.stringify(user_profile, null, 2)}
 Here is the brand memory (style guide):
 ${JSON.stringify(brandMemory, null, 2)}
 
-Here is the trend (with a description of why it's currently viral):
-${JSON.stringify(trend, null, 2)}
+⚡ TREND CONTEXT (read this carefully before generating any ideas):
+${trendContext}
+
+IMPORTANT: Every idea MUST be rooted in the specific reason this trend is viral RIGHT NOW (see "Why it's trending" above). Do NOT generate generic ideas that just mention the trend name — the ideas must directly reference the actual story, event, controversy, or meme driving this trend. If the trend is about a ban, scandal, launch, or specific event, every idea should make that crystal clear.
 
 Please create exactly 5 distinct creative directions for how this brand can use this trend.
 
@@ -198,7 +214,7 @@ Return a JSON object with "trend_id" and "creative_directions" array (5 items).
 Each idea needs: idea_id, title, summary, hook, visual_idea, suggested_cta.
 
 Make each idea feel different (different formats, different emotional angles).
-Use specific details from the trend description – no generic phrases or marketing buzzwords.
+Use specific details from the trend context – no generic phrases or marketing buzzwords.
 `;
 
       console.log('Calling OpenAI API for creative directions...');

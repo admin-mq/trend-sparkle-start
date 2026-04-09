@@ -130,6 +130,11 @@ const Index = () => {
           user_profile: userProfile,
           trend_id: trend.trend_id,
           trend_name: trend.trend_name,
+          why_good_fit: trend.why_good_fit,
+          angle_summary: trend.angle_summary,
+          example_hook: trend.example_hook,
+          timing: trend.timing,
+          region: trend.region,
           user_id: user?.id || null
         })
       });
