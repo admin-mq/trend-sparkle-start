@@ -14,10 +14,17 @@ export interface UserProfile {
   primary_goal: string;
 }
 
+export type TrendTiming = 'early' | 'peaking' | 'saturated';
+
 export interface Trend {
   trend_id: string;
   trend_name: string;
   views_last_60h_millions: number | null;
+  region?: string;
+  timing?: TrendTiming;
+  ig_confirmed?: boolean;
+  virality_score?: number;
+  source_signals?: string[];
 }
 
 export interface RecommendedTrend extends Trend {
