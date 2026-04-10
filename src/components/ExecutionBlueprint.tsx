@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { DetailedDirection } from "@/types/trends";
-import { ArrowLeft, FileText, Hash, Lightbulb, Play, MessageSquare, Heart, Meh, ThumbsDown } from "lucide-react";
+import { ArrowLeft, FileText, Hash, Lightbulb, Play, MessageSquare, Heart, Meh, ThumbsDown, Zap } from "lucide-react";
 
 interface ExecutionBlueprintProps {
   trendName: string;
@@ -8,10 +8,11 @@ interface ExecutionBlueprintProps {
   blueprint: DetailedDirection | null;
   trendHashtags: string;
   onBack: () => void;
+  onOptimizeHashtags?: () => void;
   onFeedback?: (params: { outputType: "caption" | "blueprint"; newOutput: string; userFeedback: "love" | "ok" | "dislike" }) => void;
 }
 
-export const ExecutionBlueprint = ({ trendName, ideaTitle, blueprint, trendHashtags, onBack, onFeedback }: ExecutionBlueprintProps) => {
+export const ExecutionBlueprint = ({ trendName, ideaTitle, blueprint, trendHashtags, onBack, onOptimizeHashtags, onFeedback }: ExecutionBlueprintProps) => {
   if (!blueprint) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center py-12">
@@ -120,18 +121,31 @@ export const ExecutionBlueprint = ({ trendName, ideaTitle, blueprint, trendHasht
 
         {/* Hashtags */}
         <div className="post-card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Hash className="w-4 h-4 text-primary" />
-            <h4 className="font-semibold text-foreground text-sm uppercase tracking-wider">Hashtags</h4>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Hash className="w-4 h-4 text-primary" />
+              <h4 className="font-semibold text-foreground text-sm uppercase tracking-wider">Hashtags</h4>
+            </div>
+            {onOptimizeHashtags && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onOptimizeHashtags}
+                className="gap-1.5 text-xs h-7 border-primary/30 text-primary hover:bg-primary/10"
+              >
+                <Zap className="w-3 h-3" />
+                Optimize
+              </Button>
+            )}
           </div>
-          
+
           {trendHashtags && (
             <div className="mb-3">
               <p className="text-xs text-muted-foreground mb-2">From trend data:</p>
               <p className="text-sm text-accent">{trendHashtags}</p>
             </div>
           )}
-          
+
           <div>
             <p className="text-xs text-muted-foreground mb-2">AI suggested:</p>
             <div className="flex flex-wrap gap-2">

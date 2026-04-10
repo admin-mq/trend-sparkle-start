@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { BrandSelector } from "@/components/BrandSelector";
 import { RecommendedTrends } from "@/components/RecommendedTrends";
 import { CreativeDirections } from "@/components/CreativeDirections";
@@ -30,6 +31,7 @@ const DEFAULT_INPUT_VALUES: TrendQuestInputValues = {
 
 const TrendQuest = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { brands, loading: brandsLoading } = useBrandProfiles();
   
   // Selected brand
@@ -256,6 +258,21 @@ const TrendQuest = () => {
 
   const isLoading = trendsLoading || directionsLoading || blueprintLoading;
 
+  const handleOptimizeHashtags = () => {
+    if (!detailedDirection || !userProfile) return;
+    navigate("/hashtag-analysis", {
+      state: {
+        fromTrendQuest:  true,
+        caption:         detailedDirection.caption,
+        idea_title:      selectedIdeaTitle,
+        trend_name:      selectedTrendName,
+        trend_id:        selectedTrendId,
+        trend_hashtags:  trendHashtags,
+        brand_profile:   userProfile,
+      },
+    });
+  };
+
   const renderWorkspaceContent = () => {
     switch (activeStep) {
       case "trends":
@@ -277,7 +294,7 @@ const TrendQuest = () => {
             </div>
           );
         }
-        return <ExecutionBlueprint trendName={selectedTrendName} ideaTitle={selectedIdeaTitle} blueprint={detailedDirection} trendHashtags={trendHashtags} onBack={() => setActiveStep("directions")} onFeedback={handleFeedback} />;
+        return <ExecutionBlueprint trendName={selectedTrendName} ideaTitle={selectedIdeaTitle} blueprint={detailedDirection} trendHashtags={trendHashtags} onBack={() => setActiveStep("directions")} onOptimizeHashtags={detailedDirection ? handleOptimizeHashtags : undefined} onFeedback={handleFeedback} />;
     }
   };
 

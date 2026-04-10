@@ -24,3 +24,6 @@ schedule = "0 6 * * *"
 
 [functions.fetch-trends]
 verify_jwt = false
+
+[functions.analyze-hashtags]
+verify_jwt = false
