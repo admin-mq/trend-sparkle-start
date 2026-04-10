@@ -11,6 +11,7 @@ import {
   Hash, ArrowLeft, Copy, Check, Zap, BookOpen,
   ChevronDown, ChevronUp, AlertTriangle, Clock,
   Sparkles, ArrowRight, Eye, Bookmark, Share2, UserPlus, BarChart2,
+  Shield, FlaskConical,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -27,7 +28,6 @@ interface HashtagItem {
     competition_efficiency: number;
     platform_fit: number;
   };
-  alternatives: Array<{ tag: string; type: "safer" | "niche"; reason: string }>;
 }
 
 interface DistributionReadiness {
@@ -37,8 +37,10 @@ interface DistributionReadiness {
   intent_coherence: "Matched" | "Mixed" | "Fragmented";
 }
 
-interface HashtagResult {
-  request_id?: string;
+interface HashtagSet {
+  set_type: "safe" | "experimental";
+  set_label: string;
+  set_description: string;
   set_score: number;
   confidence_level: "high" | "moderate" | "experimental";
   distribution_readiness: DistributionReadiness;
@@ -47,6 +49,12 @@ interface HashtagResult {
   best_posting_time: string;
   caption_keywords: string[];
   warnings: string[];
+}
+
+interface AnalysisResult {
+  request_id?: string;
+  safe: HashtagSet;
+  experimental: HashtagSet;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -83,7 +91,7 @@ const ANALYSIS_STEPS = [
   "Identifying audience signals",
   "Scanning hashtag clusters",
   "Evaluating trend & platform fit",
-  "Building your optimal mix",
+  "Building Safe + Experimental sets",
 ];
 
 const ROLE_STYLES: Record<string, string> = {
@@ -130,26 +138,19 @@ const GOAL_MAP: Record<string, string> = {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-const ScoreRing = ({ score, size = 88 }: { score: number; size?: number }) => {
-  const r    = (size - 12) / 2;
+const ScoreRing = ({ score, size = 72, color = "hsl(var(--primary))" }: { score: number; size?: number; color?: string }) => {
+  const r    = (size - 10) / 2;
   const circ = 2 * Math.PI * r;
   const dash = circ - (score / 100) * circ;
   return (
     <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="hsl(var(--border))" strokeWidth="4" />
-        <circle
-          cx={size / 2} cy={size / 2} r={r}
-          fill="none"
-          stroke="hsl(var(--primary))"
-          strokeWidth="4"
-          strokeDasharray={circ}
-          strokeDashoffset={dash}
-          strokeLinecap="round"
-          className="transition-all duration-1000 ease-out"
-        />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="hsl(var(--border))" strokeWidth="3.5" />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth="3.5"
+          strokeDasharray={circ} strokeDashoffset={dash} strokeLinecap="round"
+          className="transition-all duration-1000 ease-out" />
       </svg>
-      <span className="absolute text-xl font-bold text-foreground">{score}</span>
+      <span className="absolute text-base font-bold text-foreground">{score}</span>
     </div>
   );
 };
@@ -158,14 +159,189 @@ const SubscoreBar = ({ label, value }: { label: string; value: number }) => (
   <div className="flex items-center gap-3">
     <span className="text-xs text-muted-foreground w-40 flex-shrink-0">{label}</span>
     <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
-      <div
-        className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all duration-700 ease-out"
-        style={{ width: `${value}%` }}
-      />
+      <div className="h-full bg-gradient-to-r from-primary to-accent rounded-full transition-all duration-700 ease-out"
+        style={{ width: `${value}%` }} />
     </div>
     <span className="text-xs text-muted-foreground w-6 text-right tabular-nums">{value}</span>
   </div>
 );
+
+// ─── HashtagSetPanel ──────────────────────────────────────────────────────────
+
+const HashtagSetPanel = ({
+  set,
+  isChosen,
+  isSafe,
+  expandedTag,
+  onExpandTag,
+  onChoose,
+  onCopy,
+  copiedSet,
+}: {
+  set: HashtagSet;
+  isChosen: boolean;
+  isSafe: boolean;
+  expandedTag: string | null;
+  onExpandTag: (tag: string | null) => void;
+  onChoose: () => void;
+  onCopy: () => void;
+  copiedSet: boolean;
+}) => {
+  const borderClass = isChosen
+    ? isSafe
+      ? "border-primary/60 shadow-[0_0_0_1px_hsl(var(--primary)/0.4)]"
+      : "border-orange-500/60 shadow-[0_0_0_1px_hsl(24_100%_50%/0.3)]"
+    : "border-border";
+
+  const scoreColor = isSafe ? "hsl(var(--primary))" : "hsl(24 100% 55%)";
+
+  return (
+    <div className={`post-card overflow-hidden border transition-all duration-300 ${borderClass}`}>
+
+      {/* Set header */}
+      <div className={`px-4 py-3 flex items-center justify-between border-b border-border ${
+        isSafe ? "bg-primary/5" : "bg-orange-500/5"
+      }`}>
+        <div className="flex items-center gap-2.5">
+          {isSafe
+            ? <Shield className="w-4 h-4 text-primary" />
+            : <FlaskConical className="w-4 h-4 text-orange-400" />
+          }
+          <div>
+            <p className={`text-sm font-semibold ${isSafe ? "text-primary" : "text-orange-400"}`}>
+              {set.set_label}
+            </p>
+            <p className="text-xs text-muted-foreground leading-tight mt-0.5">{set.set_description}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <ScoreRing score={set.set_score} size={52} color={scoreColor} />
+        </div>
+      </div>
+
+      {/* Distribution readiness strip */}
+      <div className="px-4 py-2.5 flex items-center gap-4 border-b border-border bg-secondary/20 flex-wrap">
+        <div className="flex items-center gap-1.5 text-xs">
+          <BookOpen className="w-3 h-3 text-muted-foreground" />
+          <span className="text-muted-foreground">{set.distribution_readiness.topic_clarity}</span>
+        </div>
+        <div className="flex items-center gap-3 ml-auto flex-shrink-0">
+          <span className={`text-xs font-medium ${SATURATION_COLOR[set.distribution_readiness.saturation_exposure]}`}>
+            {set.distribution_readiness.saturation_exposure} saturation
+          </span>
+          <span className={`text-xs font-medium ${COHERENCE_COLOR[set.distribution_readiness.intent_coherence]}`}>
+            {set.distribution_readiness.intent_coherence}
+          </span>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CONFIDENCE_STYLES[set.confidence_level]}`}>
+            {set.confidence_level === "high" ? "High" : set.confidence_level === "moderate" ? "Moderate" : "Exp."}
+          </span>
+        </div>
+      </div>
+
+      {/* Hashtag cards */}
+      <div className="divide-y divide-border">
+        {set.hashtags.map((item, i) => (
+          <div key={`${set.set_type}-${item.tag}`} className="animate-fade-in" style={{ animationDelay: `${i * 60}ms` }}>
+            <div
+              className="px-4 py-3 cursor-pointer hover:bg-secondary/20 transition-colors select-none"
+              onClick={() => onExpandTag(expandedTag === `${set.set_type}-${item.tag}` ? null : `${set.set_type}-${item.tag}`)}
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                    <span className="text-sm font-semibold text-foreground">{item.tag}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium leading-none ${
+                      ROLE_STYLES[item.role] ?? "bg-secondary text-muted-foreground border border-border"
+                    }`}>{item.role}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-snug">{item.explanation}</p>
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <span className="text-base font-bold text-foreground tabular-nums">{item.score}</span>
+                  {expandedTag === `${set.set_type}-${item.tag}`
+                    ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+                    : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                  }
+                </div>
+              </div>
+            </div>
+
+            {expandedTag === `${set.set_type}-${item.tag}` && (
+              <div className="px-4 pb-3 bg-secondary/20 space-y-2 animate-fade-in border-t border-border">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider pt-3 mb-2">Score Breakdown</p>
+                <SubscoreBar label="Relevance"              value={item.subscores.relevance} />
+                <SubscoreBar label="Audience Match"         value={item.subscores.audience_match} />
+                <SubscoreBar label="Trend Velocity"         value={item.subscores.trend_velocity} />
+                <SubscoreBar label="Competition Efficiency" value={item.subscores.competition_efficiency} />
+                <SubscoreBar label="Platform Fit"           value={item.subscores.platform_fit} />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Why this works */}
+      <div className="px-4 py-3 border-t border-border bg-secondary/10">
+        <div className="flex items-center gap-1.5 mb-1">
+          <Sparkles className="w-3.5 h-3.5 text-muted-foreground" />
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Why this works</p>
+        </div>
+        <p className="text-xs text-secondary-foreground leading-relaxed">{set.why_this_works}</p>
+      </div>
+
+      {/* Warnings */}
+      {set.warnings.length > 0 && (
+        <div className="px-4 py-2.5 border-t border-amber-500/20 bg-amber-500/5">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+            <ul className="space-y-0.5">
+              {set.warnings.map((w, i) => (
+                <li key={i} className="text-xs text-amber-300/80">{w}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {/* Footer actions */}
+      <div className="px-4 py-3 border-t border-border flex items-center gap-2">
+        {isChosen ? (
+          <div className="flex items-center gap-2 flex-1">
+            <div className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg ${
+              isSafe ? "bg-primary/15 text-primary" : "bg-orange-500/15 text-orange-400"
+            }`}>
+              <Check className="w-3.5 h-3.5" />
+              Using this set
+            </div>
+            <Button variant="ghost" size="sm" onClick={onCopy} className="gap-1.5 text-xs h-7 ml-auto">
+              {copiedSet ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              {copiedSet ? "Copied!" : "Copy"}
+            </Button>
+          </div>
+        ) : (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onChoose}
+              className={`flex-1 gap-1.5 text-xs h-8 ${
+                isSafe
+                  ? "border-primary/30 text-primary hover:bg-primary/10"
+                  : "border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
+              }`}
+            >
+              I'm using this set
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onCopy} className="gap-1.5 text-xs h-8">
+              {copiedSet ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              {copiedSet ? "Copied!" : "Copy"}
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -179,9 +355,14 @@ const HashtagAnalysis = () => {
   const [region,      setRegion]      = useState("global");
   const [goal,        setGoal]        = useState("reach");
   const [caption,     setCaption]     = useState("");
-  const [result,      setResult]      = useState<HashtagResult | null>(null);
+
+  const [result,      setResult]      = useState<AnalysisResult | null>(null);
   const [expandedTag, setExpandedTag] = useState<string | null>(null);
-  const [copied,      setCopied]      = useState(false);
+
+  // Which set the user chose — "safe" | "experimental" | null
+  const [chosenSet,   setChosenSet]   = useState<"safe" | "experimental" | null>(null);
+  const [copiedSafe,  setCopiedSafe]  = useState(false);
+  const [copiedExp,   setCopiedExp]   = useState(false);
 
   // Performance feedback
   const [feedbackState, setFeedbackState] = useState<"idle" | "open" | "submitting" | "submitted">("idle");
@@ -190,17 +371,15 @@ const HashtagAnalysis = () => {
   const [perfShares,  setPerfShares]  = useState("");
   const [perfFollows, setPerfFollows] = useState("");
 
-  // Trend Quest pre-fill via router state
   const tqState        = location.state as Record<string, unknown> | null;
   const fromTrendQuest = tqState?.fromTrendQuest === true;
 
   useEffect(() => {
     if (!fromTrendQuest || !tqState) return;
     if (typeof tqState.caption === "string") setCaption(tqState.caption);
-
     const bp = tqState.brand_profile as Record<string, string> | undefined;
     if (bp?.geography) {
-      const key = bp.geography.toLowerCase();
+      const key   = bp.geography.toLowerCase();
       const match = Object.entries(GEO_MAP).find(([phrase]) => key.includes(phrase));
       if (match) setRegion(match[1]);
     }
@@ -212,12 +391,11 @@ const HashtagAnalysis = () => {
 
   const runAnalysis = async () => {
     if (!caption.trim()) { toast.error("Add your post idea or caption to analyze"); return; }
-
     setView("loading");
     setLoadingStep(0);
     setExpandedTag(null);
+    setChosenSet(null);
 
-    // Step timings while API call runs
     const handles = [600, 1500, 2600, 3700].map((ms, i) =>
       setTimeout(() => setLoadingStep(i + 1), ms)
     );
@@ -241,13 +419,11 @@ const HashtagAnalysis = () => {
           user_id: user?.id ?? null,
         },
       });
-
       handles.forEach(clearTimeout);
       if (error) throw error;
-
       setLoadingStep(5);
       setTimeout(() => {
-        setResult(data as HashtagResult);
+        setResult(data as AnalysisResult);
         setView("results");
       }, 350);
     } catch (err) {
@@ -258,40 +434,47 @@ const HashtagAnalysis = () => {
     }
   };
 
-  const handleCopyAll = () => {
+  const handleChooseSet = (setType: "safe" | "experimental") => {
+    setChosenSet(setType);
+    setFeedbackState("idle");
+    toast.success(`${setType === "safe" ? "Safe Reach" : "Experimental Reach"} set selected — good luck with the post!`);
+  };
+
+  const handleCopySet = (setType: "safe" | "experimental") => {
     if (!result) return;
-    navigator.clipboard.writeText(result.hashtags.map((h) => h.tag).join(" "));
-    setCopied(true);
-    toast.success("Hashtags copied to clipboard");
-    setTimeout(() => setCopied(false), 2000);
+    const tags = result[setType].hashtags.map((h) => h.tag).join(" ");
+    navigator.clipboard.writeText(tags);
+    if (setType === "safe") {
+      setCopiedSafe(true);
+      setTimeout(() => setCopiedSafe(false), 2000);
+    } else {
+      setCopiedExp(true);
+      setTimeout(() => setCopiedExp(false), 2000);
+    }
+    toast.success("Hashtags copied!");
   };
 
   const handleReset = () => {
-    setView("input"); setResult(null); setExpandedTag(null);
+    setView("input"); setResult(null); setExpandedTag(null); setChosenSet(null);
     setFeedbackState("idle");
     setPerfViews(""); setPerfSaves(""); setPerfShares(""); setPerfFollows("");
   };
 
   const submitFeedback = async () => {
-    if (!result?.request_id) {
-      toast.error("Sign in to track performance");
-      return;
-    }
-    const hasAnyValue = perfViews || perfSaves || perfShares || perfFollows;
-    if (!hasAnyValue) {
-      toast.error("Add at least one metric to log");
-      return;
-    }
+    if (!result?.request_id) { toast.error("Sign in to track performance"); return; }
+    const hasAny = perfViews || perfSaves || perfShares || perfFollows;
+    if (!hasAny) { toast.error("Add at least one metric to log"); return; }
     setFeedbackState("submitting");
     try {
       const { error } = await supabase.from("hashtag_outcomes").insert({
-        request_id:    result.request_id,
-        user_id:       user?.id ?? null,
-        views:         perfViews   ? parseInt(perfViews,   10) : null,
-        saves:         perfSaves   ? parseInt(perfSaves,   10) : null,
-        shares:        perfShares  ? parseInt(perfShares,  10) : null,
+        request_id:     result.request_id,
+        user_id:        user?.id ?? null,
+        set_chosen:     chosenSet,
+        views:          perfViews   ? parseInt(perfViews,   10) : null,
+        saves:          perfSaves   ? parseInt(perfSaves,   10) : null,
+        shares:         perfShares  ? parseInt(perfShares,  10) : null,
         follows_gained: perfFollows ? parseInt(perfFollows, 10) : null,
-        posted_at:     new Date().toISOString(),
+        posted_at:      new Date().toISOString(),
       });
       if (error) throw error;
       setFeedbackState("submitted");
@@ -315,7 +498,7 @@ const HashtagAnalysis = () => {
             </div>
             <h1 className="text-2xl font-bold text-foreground tracking-tight">Hashtag Intelligence</h1>
             <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-              Not a generator — a strategy engine that tells you exactly which hashtags to use and why.
+              Returns two optimised sets — a Safe strategy and an Experimental one. Pick your bet.
             </p>
           </div>
 
@@ -334,12 +517,8 @@ const HashtagAnalysis = () => {
           )}
 
           <div className="post-card p-5 space-y-4">
-
-            {/* Platform selector */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 block">
-                Platform
-              </label>
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 block">Platform</label>
               <div className="flex gap-2 flex-wrap">
                 {PLATFORMS.map((p) => (
                   <button
@@ -355,19 +534,15 @@ const HashtagAnalysis = () => {
                           : "bg-secondary/40 text-muted-foreground/50 cursor-not-allowed",
                     ].join(" ")}
                   >
-                    <span>{p.emoji}</span>
-                    {p.label}
+                    <span>{p.emoji}</span>{p.label}
                     {!p.available && <span className="text-[10px] opacity-50 ml-0.5">soon</span>}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Caption */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 block">
-                Post Idea or Caption
-              </label>
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 block">Post Idea or Caption</label>
               <Textarea
                 placeholder="Paste your caption, describe what you're posting, or drop your full post idea here..."
                 value={caption}
@@ -376,42 +551,28 @@ const HashtagAnalysis = () => {
               />
             </div>
 
-            {/* Region + Goal */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 block">Region</label>
                 <Select value={region} onValueChange={setRegion}>
-                  <SelectTrigger className="bg-secondary/50 border-border text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger className="bg-secondary/50 border-border text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {REGIONS.map((r) => (
-                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                    ))}
+                    {REGIONS.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 block">Goal</label>
                 <Select value={goal} onValueChange={setGoal}>
-                  <SelectTrigger className="bg-secondary/50 border-border text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger className="bg-secondary/50 border-border text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {GOALS.map((g) => (
-                      <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>
-                    ))}
+                    {GOALS.map((g) => <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            <Button
-              onClick={runAnalysis}
-              disabled={!caption.trim()}
-              className="w-full gap-2 font-medium"
-              size="lg"
-            >
+            <Button onClick={runAnalysis} disabled={!caption.trim()} className="w-full gap-2 font-medium" size="lg">
               <Zap className="w-4 h-4" />
               Analyze Distribution
               <ArrowRight className="w-4 h-4" />
@@ -419,7 +580,7 @@ const HashtagAnalysis = () => {
           </div>
 
           <p className="text-center text-xs text-muted-foreground">
-            Optimized for Instagram 2026 algorithm · Scores every hashtag across 10 dimensions
+            Returns Safe + Experimental sets · Instagram 2026 algorithm · 10-dimension scoring
           </p>
         </div>
       </div>
@@ -436,9 +597,8 @@ const HashtagAnalysis = () => {
               <Hash className="w-6 h-6 text-primary" />
             </div>
             <h2 className="text-lg font-semibold text-foreground">Analyzing your content</h2>
-            <p className="text-sm text-muted-foreground">Running the intelligence engine</p>
+            <p className="text-sm text-muted-foreground">Building Safe + Experimental sets</p>
           </div>
-
           <div className="space-y-3.5">
             {ANALYSIS_STEPS.map((step, i) => {
               const done   = i < loadingStep;
@@ -446,16 +606,12 @@ const HashtagAnalysis = () => {
               return (
                 <div key={i} className={`flex items-center gap-3 transition-all duration-300 ${done || active ? "opacity-100" : "opacity-25"}`}>
                   <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-300 ${
-                    done   ? "bg-primary text-primary-foreground"
-                    : active ? "bg-primary/20 border border-primary/60"
-                    : "bg-secondary border border-border"
+                    done ? "bg-primary text-primary-foreground" : active ? "bg-primary/20 border border-primary/60" : "bg-secondary border border-border"
                   }`}>
                     {done   && <Check className="w-3 h-3" />}
                     {active && <div className="w-2 h-2 rounded-full bg-primary loading-pulse" />}
                   </div>
-                  <span className={`text-sm ${done || active ? "text-foreground" : "text-muted-foreground"}`}>
-                    {step}
-                  </span>
+                  <span className={`text-sm ${done || active ? "text-foreground" : "text-muted-foreground"}`}>{step}</span>
                 </div>
               );
             })}
@@ -468,219 +624,102 @@ const HashtagAnalysis = () => {
   // ── RESULTS ────────────────────────────────────────────────────────────────
   if (!result) return null;
 
+  const activeSet = chosenSet ? result[chosenSet] : null;
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-4 lg:p-6">
-        <div className="max-w-5xl mx-auto space-y-4">
+        <div className="max-w-6xl mx-auto space-y-4">
 
           {/* Top bar */}
           <div className="flex items-center justify-between">
-            <button
-              onClick={handleReset}
-              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
+            <button onClick={handleReset} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="w-4 h-4" />
               New analysis
             </button>
-            <div className="flex items-center gap-2">
-              {fromTrendQuest && tqState?.idea_title && (
-                <span className="hidden sm:block text-xs text-muted-foreground max-w-[200px] truncate">
-                  {tqState.idea_title as string}
-                </span>
-              )}
-              <Button variant="outline" size="sm" onClick={handleCopyAll} className="gap-1.5 text-xs h-8">
-                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                {copied ? "Copied!" : "Copy all"}
-              </Button>
-            </div>
+            {fromTrendQuest && tqState?.idea_title && (
+              <span className="hidden sm:block text-xs text-muted-foreground max-w-[260px] truncate">
+                {tqState.idea_title as string}
+              </span>
+            )}
           </div>
 
-          {/* Two-column grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-[288px_1fr] gap-4 items-start">
-
-            {/* LEFT: Score + readiness panel */}
-            <div className="space-y-3">
-
-              <div className="post-card p-5 text-center space-y-3">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Distribution Strength</p>
-                <ScoreRing score={result.set_score} />
-                <span className={`inline-block text-xs px-2.5 py-1 rounded-full font-medium ${CONFIDENCE_STYLES[result.confidence_level]}`}>
-                  {result.confidence_level === "high"
-                    ? "High Confidence"
-                    : result.confidence_level === "moderate"
-                      ? "Moderate Confidence"
-                      : "Experimental"}
-                </span>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {result.set_score >= 80
-                    ? "Well-positioned for niche discovery on this platform."
-                    : result.set_score >= 65
-                      ? "Good coverage with room to sharpen the angle."
-                      : "Consider refining the content angle for stronger signals."}
+          {/* Choose-your-set prompt — shown until a set is chosen */}
+          {!chosenSet && (
+            <div className="post-card p-4 flex items-center gap-3 border-primary/20 bg-primary/5 animate-fade-in">
+              <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0">
+                <Zap className="w-4 h-4 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-foreground">Two sets ready — which are you using?</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Tap "I'm using this set" on the one you post with. We'll track what works.
                 </p>
               </div>
-
-              <div className="post-card p-4 space-y-3">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Distribution Readiness</p>
-                <div className="flex items-start gap-2">
-                  <BookOpen className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-secondary-foreground leading-relaxed">
-                    {result.distribution_readiness.topic_clarity}
-                  </p>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Audience precision</span>
-                  <div className="flex gap-0.5">
-                    {[1,2,3,4,5].map((i) => (
-                      <div key={i} className={`w-1.5 h-4 rounded-sm transition-colors ${
-                        i <= result.distribution_readiness.audience_precision ? "bg-primary" : "bg-secondary"
-                      }`} />
-                    ))}
-                  </div>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Saturation risk</span>
-                  <span className={`font-medium ${SATURATION_COLOR[result.distribution_readiness.saturation_exposure]}`}>
-                    {result.distribution_readiness.saturation_exposure}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Intent coherence</span>
-                  <span className={`font-medium ${COHERENCE_COLOR[result.distribution_readiness.intent_coherence]}`}>
-                    {result.distribution_readiness.intent_coherence}
-                  </span>
-                </div>
-              </div>
-
-              {result.caption_keywords.length > 0 && (
-                <div className="post-card p-4 space-y-2.5">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Caption Keywords</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {result.caption_keywords.map((kw) => (
-                      <span key={kw} className="text-xs px-2 py-1 bg-primary/10 text-primary rounded-md font-medium">
-                        {kw}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">Include in your caption to reinforce hashtag signals.</p>
-                </div>
-              )}
-
-              {result.best_posting_time && (
-                <div className="post-card p-4 flex items-start gap-3">
-                  <Clock className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Best Time to Post</p>
-                    <p className="text-sm text-foreground leading-snug">{result.best_posting_time}</p>
-                  </div>
-                </div>
-              )}
             </div>
+          )}
 
-            {/* RIGHT: Hashtag cards + strategy */}
-            <div className="space-y-3">
-              {result.hashtags.map((item, i) => (
-                <div
-                  key={item.tag}
-                  className="post-card overflow-hidden animate-fade-in"
-                  style={{ animationDelay: `${i * 70}ms` }}
-                >
-                  <div
-                    className="p-4 cursor-pointer hover:bg-secondary/20 transition-colors select-none"
-                    onClick={() => setExpandedTag(expandedTag === item.tag ? null : item.tag)}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className="text-base font-semibold text-foreground">{item.tag}</span>
-                          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium leading-none ${
-                            ROLE_STYLES[item.role] ?? "bg-secondary text-muted-foreground border border-border"
-                          }`}>
-                            {item.role}
-                          </span>
-                        </div>
-                        <p className="text-sm text-muted-foreground leading-snug">{item.explanation}</p>
-                      </div>
-                      <div className="flex items-center gap-2.5 flex-shrink-0">
-                        <div className="text-right">
-                          <div className="text-xl font-bold text-foreground tabular-nums">{item.score}</div>
-                          <div className="text-[10px] text-muted-foreground">score</div>
-                        </div>
-                        {expandedTag === item.tag
-                          ? <ChevronUp   className="w-4 h-4 text-muted-foreground" />
-                          : <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                        }
-                      </div>
-                    </div>
-                  </div>
+          {chosenSet && (
+            <div className="post-card p-3.5 flex items-center gap-3 border-emerald-500/20 bg-emerald-500/5 animate-fade-in">
+              <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              <p className="text-sm text-emerald-400 font-medium">
+                {chosenSet === "safe" ? "Safe Reach" : "Experimental Reach"} selected
+                <span className="text-muted-foreground font-normal ml-1.5">— go post it!</span>
+              </p>
+            </div>
+          )}
 
-                  {expandedTag === item.tag && (
-                    <div className="border-t border-border p-4 bg-secondary/20 space-y-5 animate-fade-in">
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Score Breakdown</p>
-                        <div className="space-y-2.5">
-                          <SubscoreBar label="Relevance"              value={item.subscores.relevance} />
-                          <SubscoreBar label="Audience Match"         value={item.subscores.audience_match} />
-                          <SubscoreBar label="Trend Velocity"         value={item.subscores.trend_velocity} />
-                          <SubscoreBar label="Competition Efficiency" value={item.subscores.competition_efficiency} />
-                          <SubscoreBar label="Platform Fit"           value={item.subscores.platform_fit} />
-                        </div>
-                      </div>
-
-                      {item.alternatives.length > 0 && (
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2.5">Alternatives</p>
-                          <div className="space-y-2">
-                            {item.alternatives.map((alt) => (
-                              <div key={alt.tag} className="flex items-start gap-3 p-2.5 rounded-lg bg-secondary/60">
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 mb-0.5">
-                                    <span className="text-sm font-medium text-foreground">{alt.tag}</span>
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                                      alt.type === "safer"
-                                        ? "bg-blue-500/15 text-blue-400"
-                                        : "bg-emerald-500/15 text-emerald-400"
-                                    }`}>
-                                      {alt.type}
-                                    </span>
-                                  </div>
-                                  <p className="text-xs text-muted-foreground">{alt.reason}</p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+          {/* Shared signal strip (caption keywords + posting time from safe set) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {result.safe.caption_keywords.length > 0 && (
+              <div className="post-card p-3.5 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Caption Keywords</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {result.safe.caption_keywords.map((kw) => (
+                    <span key={kw} className="text-xs px-2 py-1 bg-primary/10 text-primary rounded-md font-medium">{kw}</span>
+                  ))}
                 </div>
-              ))}
-
-              <div className="post-card p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <Sparkles className="w-4 h-4 text-primary" />
-                  <p className="text-xs font-semibold text-foreground uppercase tracking-wider">Why This Mix Works</p>
-                </div>
-                <p className="text-sm text-secondary-foreground leading-relaxed">{result.why_this_works}</p>
+                <p className="text-[10px] text-muted-foreground">Include in your caption to reinforce the hashtag signals.</p>
               </div>
-
-              {result.warnings.length > 0 && (
-                <div className="post-card p-4 border-amber-500/25 bg-amber-500/5">
-                  <div className="flex items-start gap-2.5">
-                    <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-xs font-medium text-amber-400 uppercase tracking-wider mb-2">Heads Up</p>
-                      <ul className="space-y-1">
-                        {result.warnings.map((w, i) => (
-                          <li key={i} className="text-xs text-secondary-foreground">{w}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
+            )}
+            {result.safe.best_posting_time && (
+              <div className="post-card p-3.5 flex items-start gap-3">
+                <Clock className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Best Time to Post</p>
+                  <p className="text-sm text-foreground leading-snug">{result.safe.best_posting_time}</p>
                 </div>
-              )}
+              </div>
+            )}
+          </div>
 
-              {/* ── Performance feedback card ─────────────────────── */}
+          {/* A/B set panels side by side */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+            <HashtagSetPanel
+              set={result.safe}
+              isChosen={chosenSet === "safe"}
+              isSafe={true}
+              expandedTag={expandedTag}
+              onExpandTag={setExpandedTag}
+              onChoose={() => handleChooseSet("safe")}
+              onCopy={() => handleCopySet("safe")}
+              copiedSet={copiedSafe}
+            />
+            <HashtagSetPanel
+              set={result.experimental}
+              isChosen={chosenSet === "experimental"}
+              isSafe={false}
+              expandedTag={expandedTag}
+              onExpandTag={setExpandedTag}
+              onChoose={() => handleChooseSet("experimental")}
+              onCopy={() => handleCopySet("experimental")}
+              copiedSet={copiedExp}
+            />
+          </div>
+
+          {/* Performance feedback — shown once a set is chosen */}
+          {chosenSet && (
+            <div className="animate-fade-in">
               {feedbackState === "idle" && (
                 <div className="post-card p-4 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3 min-w-0">
@@ -688,18 +727,12 @@ const HashtagAnalysis = () => {
                       <BarChart2 className="w-4 h-4 text-primary" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground">Posted with these hashtags?</p>
-                      <p className="text-xs text-muted-foreground">Log your results — every data point makes future recs smarter.</p>
+                      <p className="text-sm font-medium text-foreground">Posted? Log how it performed.</p>
+                      <p className="text-xs text-muted-foreground">Helps the system learn what works for your content.</p>
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setFeedbackState("open")}
-                    className="flex-shrink-0 text-xs gap-1.5"
-                  >
-                    Log Results
-                    <ArrowRight className="w-3 h-3" />
+                  <Button variant="outline" size="sm" onClick={() => setFeedbackState("open")} className="flex-shrink-0 text-xs gap-1.5">
+                    Log Results <ArrowRight className="w-3 h-3" />
                   </Button>
                 </div>
               )}
@@ -708,9 +741,12 @@ const HashtagAnalysis = () => {
                 <div className="post-card p-5 space-y-4 animate-fade-in">
                   <div>
                     <p className="text-sm font-semibold text-foreground">How did this post perform?</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">All fields optional — add whatever you have.</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Logging results for the <span className={`font-medium ${chosenSet === "safe" ? "text-primary" : "text-orange-400"}`}>
+                        {chosenSet === "safe" ? "Safe Reach" : "Experimental Reach"}
+                      </span> set. All fields optional.
+                    </p>
                   </div>
-
                   <div className="grid grid-cols-2 gap-3">
                     {[
                       { label: "Views",   icon: Eye,      value: perfViews,   set: setPerfViews   },
@@ -720,37 +756,21 @@ const HashtagAnalysis = () => {
                     ].map(({ label, icon: Icon, value, set }) => (
                       <div key={label}>
                         <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                          <Icon className="w-3.5 h-3.5" />
-                          {label}
+                          <Icon className="w-3.5 h-3.5" />{label}
                         </label>
                         <Input
-                          type="number"
-                          min="0"
-                          placeholder="0"
-                          value={value}
+                          type="number" min="0" placeholder="0" value={value}
                           onChange={(e) => set(e.target.value)}
                           className="bg-secondary/50 border-border text-sm h-9"
                         />
                       </div>
                     ))}
                   </div>
-
                   <div className="flex items-center gap-2">
-                    <Button
-                      onClick={submitFeedback}
-                      disabled={feedbackState === "submitting"}
-                      size="sm"
-                      className="gap-1.5 text-xs"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      Save Results
+                    <Button onClick={submitFeedback} disabled={feedbackState === "submitting"} size="sm" className="gap-1.5 text-xs">
+                      <Check className="w-3.5 h-3.5" /> Save Results
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setFeedbackState("idle")}
-                      className="text-xs text-muted-foreground"
-                    >
+                    <Button variant="ghost" size="sm" onClick={() => setFeedbackState("idle")} className="text-xs text-muted-foreground">
                       Cancel
                     </Button>
                   </div>
@@ -779,15 +799,14 @@ const HashtagAnalysis = () => {
                           </div>
                         ))}
                       </div>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        The system will factor this into your future recommendations.
-                      </p>
+                      <p className="text-xs text-muted-foreground mt-2">The system will factor this into your future recommendations.</p>
                     </div>
                   </div>
                 </div>
               )}
             </div>
-          </div>
+          )}
+
         </div>
       </div>
     </div>
