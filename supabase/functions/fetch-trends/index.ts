@@ -521,7 +521,8 @@ Return ONLY valid JSON:
       "timing": "early",
       "ig_confirmed": false,
       "virality_score": 87,
-      "source_signals": ["google_trends_uk", "reddit"]
+      "source_signals": ["google_trends_uk", "reddit"],
+      "category": "Entertainment"
     }
   ]
 }
@@ -529,6 +530,7 @@ Return ONLY valid JSON:
 Rules:
 - hashtag = lowercase, no # symbol, no spaces
 - region = UK | USA | Global
+- category = exactly one of: Entertainment | Sports | Music | Tech | News | Fashion | Food | Gaming | Finance | Lifestyle
 - Order: early first, then peaking, then saturated — within each group sort by virality_score desc
 - NEVER add a trend not in the signal list above`;
 
@@ -582,6 +584,7 @@ Rules:
           ig_confirmed:            trend.ig_confirmed ?? false,
           virality_score:          trend.virality_score ?? 50,
           source_signals:          trend.source_signals || [],
+          category:                trend.category || 'Entertainment',
         },
         { onConflict: 'trend_id', ignoreDuplicates: false }
       );

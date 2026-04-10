@@ -16,6 +16,18 @@ export interface UserProfile {
 
 export type TrendTiming = 'early' | 'peaking' | 'saturated';
 
+export type TrendCategory =
+  | 'Entertainment'
+  | 'Sports'
+  | 'Music'
+  | 'Tech'
+  | 'News'
+  | 'Fashion'
+  | 'Food'
+  | 'Gaming'
+  | 'Finance'
+  | 'Lifestyle';
+
 export interface Trend {
   trend_id: string;
   trend_name: string;
@@ -25,6 +37,7 @@ export interface Trend {
   ig_confirmed?: boolean;
   virality_score?: number;
   source_signals?: string[];
+  category?: TrendCategory | string;
 }
 
 export interface RecommendedTrend extends Trend {

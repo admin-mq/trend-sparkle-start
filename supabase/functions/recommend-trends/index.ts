@@ -63,8 +63,8 @@ serve(async (req) => {
   }
 
   try {
-    const { user_profile, user_id } = await req.json();
-    console.log('Received user_profile:', user_profile, 'user_id:', user_id || 'anonymous');
+    const { user_profile, user_id, selected_categories } = await req.json();
+    console.log('Received user_profile:', user_profile, 'user_id:', user_id || 'anonymous', 'categories:', selected_categories || 'all');
 
     if (!user_profile || !user_profile.brand_name) {
       return new Response(
@@ -82,15 +82,24 @@ serve(async (req) => {
     const brandMemory = await getBrandMemory(externalSupabase, userId, brandName);
     console.log('Brand memory:', brandMemory ? 'found' : 'not found');
 
-    // Fetch candidate trends from external Supabase
-    const { data: trends, error: trendsError } = await externalSupabase
+    // Fetch candidate trends from external Supabase (optionally filtered by category)
+    const categories: string[] = Array.isArray(selected_categories) && selected_categories.length > 0
+      ? selected_categories
+      : [];
+
+    let query = externalSupabase
       .from('trends')
-      .select('trend_id, trend_name, description, hashtags, views_last_60h_millions, region, premium_only, active')
-      .eq('region', 'Global')
+      .select('trend_id, trend_name, description, hashtags, views_last_60h_millions, region, premium_only, active, timing, ig_confirmed, virality_score, source_signals, category')
       .eq('premium_only', false)
       .eq('active', true)
-      .order('views_last_60h_millions', { ascending: false })
+      .order('virality_score', { ascending: false })
       .limit(30);
+
+    if (categories.length > 0) {
+      query = query.in('category', categories);
+    }
+
+    const { data: trends, error: trendsError } = await query;
 
     if (trendsError) {
       console.error('External Supabase error:', trendsError);
@@ -245,6 +254,12 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
             trend_id: fullTrend.trend_id,
             trend_name: fullTrend.trend_name,
             views_last_60h_millions: fullTrend.views_last_60h_millions,
+            region: fullTrend.region || null,
+            timing: fullTrend.timing || 'peaking',
+            ig_confirmed: fullTrend.ig_confirmed ?? false,
+            virality_score: fullTrend.virality_score ?? 50,
+            source_signals: fullTrend.source_signals || [],
+            category: fullTrend.category || null,
             why_good_fit: rec.why_good_fit || '',
             example_hook: rec.example_hook || '',
             angle_summary: rec.angle_summary || ''

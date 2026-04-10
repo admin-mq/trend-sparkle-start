@@ -1,5 +1,6 @@
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { RecommendedTrend, TrendTiming } from "@/types/trends";
+import { RecommendedTrend, TrendTiming, TrendCategory } from "@/types/trends";
 import { TrendingUp, Eye, ArrowRight, RefreshCw, Zap, Clock, Flame } from "lucide-react";
 
 interface RecommendedTrendsProps {
@@ -10,6 +11,24 @@ interface RecommendedTrendsProps {
   isRefreshing?: boolean;
 }
 
+// ── Category config ────────────────────────────────────────────────────────────
+const CATEGORY_CONFIG: Record<string, { emoji: string; color: string }> = {
+  Entertainment: { emoji: '🎭', color: 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/30' },
+  Sports:        { emoji: '⚽', color: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30' },
+  Music:         { emoji: '🎵', color: 'bg-pink-500/15 text-pink-600 dark:text-pink-400 border-pink-500/30' },
+  Tech:          { emoji: '💻', color: 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border-cyan-500/30' },
+  News:          { emoji: '📰', color: 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30' },
+  Fashion:       { emoji: '💄', color: 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30' },
+  Food:          { emoji: '🍔', color: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30' },
+  Gaming:        { emoji: '🎮', color: 'bg-green-500/15 text-green-600 dark:text-green-400 border-green-500/30' },
+  Finance:       { emoji: '💰', color: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' },
+  Lifestyle:     { emoji: '🌿', color: 'bg-teal-500/15 text-teal-600 dark:text-teal-400 border-teal-500/30' },
+};
+
+const getCategoryConfig = (cat?: string) =>
+  (cat && CATEGORY_CONFIG[cat]) || { emoji: '✨', color: 'bg-secondary text-muted-foreground border-border' };
+
+// ── Sub-components ─────────────────────────────────────────────────────────────
 const TimingBadge = ({ timing }: { timing?: TrendTiming }) => {
   if (!timing) return null;
 
@@ -41,6 +60,16 @@ const TimingBadge = ({ timing }: { timing?: TrendTiming }) => {
   );
 };
 
+const CategoryBadge = ({ category }: { category?: string }) => {
+  if (!category) return null;
+  const { emoji, color } = getCategoryConfig(category);
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${color}`}>
+      {emoji} {category}
+    </span>
+  );
+};
+
 const ViralityBar = ({ score }: { score?: number }) => {
   if (!score) return null;
   const width = `${score}%`;
@@ -59,6 +88,7 @@ const ViralityBar = ({ score }: { score?: number }) => {
   );
 };
 
+// ── Main component ─────────────────────────────────────────────────────────────
 export const RecommendedTrends = ({
   recommendations,
   brandName,
@@ -66,6 +96,29 @@ export const RecommendedTrends = ({
   onRefreshTrends,
   isRefreshing = false,
 }: RecommendedTrendsProps) => {
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+
+  // Derive unique categories present in current recommendations
+  const availableCategories = useMemo(() => {
+    const cats = recommendations
+      .map(t => t.category)
+      .filter((c): c is string => Boolean(c));
+    return [...new Set(cats)].sort();
+  }, [recommendations]);
+
+  // Toggle a category chip
+  const toggleCategory = (cat: string) => {
+    setSelectedCategories(prev =>
+      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+    );
+  };
+
+  // Filter trends for display
+  const displayedTrends = useMemo(() => {
+    if (selectedCategories.length === 0) return recommendations;
+    return recommendations.filter(t => t.category && selectedCategories.includes(t.category));
+  }, [recommendations, selectedCategories]);
+
   if (recommendations.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full w-full text-center py-12">
@@ -96,7 +149,8 @@ export const RecommendedTrends = ({
 
   return (
     <div className="h-full w-full flex flex-col animate-fade-in">
-      <div className="flex items-center justify-between mb-3">
+      {/* Header row */}
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <h3 className="text-sm text-muted-foreground uppercase tracking-wider">
             {brandName ? `Trending for ${brandName}` : 'Recommended trends'}
@@ -108,7 +162,9 @@ export const RecommendedTrends = ({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">{recommendations.length} trends</span>
+          <span className="text-xs text-muted-foreground">
+            {displayedTrends.length}/{recommendations.length} trends
+          </span>
           {onRefreshTrends && (
             <Button
               onClick={onRefreshTrends}
@@ -125,8 +181,58 @@ export const RecommendedTrends = ({
         </div>
       </div>
 
+      {/* Category filter chips */}
+      {availableCategories.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap mb-3">
+          {/* All chip */}
+          <button
+            onClick={() => setSelectedCategories([])}
+            className={`text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors ${
+              selectedCategories.length === 0
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-secondary text-muted-foreground border-border hover:border-primary/40 hover:text-foreground'
+            }`}
+          >
+            All
+          </button>
+          {availableCategories.map(cat => {
+            const { emoji } = getCategoryConfig(cat);
+            const active = selectedCategories.includes(cat);
+            return (
+              <button
+                key={cat}
+                onClick={() => toggleCategory(cat)}
+                className={`text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors flex items-center gap-1 ${
+                  active
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-secondary text-muted-foreground border-border hover:border-primary/40 hover:text-foreground'
+                }`}
+              >
+                {emoji} {cat}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Empty state for filtered view */}
+      {displayedTrends.length === 0 && selectedCategories.length > 0 && (
+        <div className="flex flex-col items-center justify-center flex-1 text-center py-8">
+          <p className="text-muted-foreground text-sm">
+            No trends in <strong>{selectedCategories.join(', ')}</strong> right now.
+          </p>
+          <button
+            onClick={() => setSelectedCategories([])}
+            className="mt-2 text-xs text-primary hover:underline"
+          >
+            Clear filter
+          </button>
+        </div>
+      )}
+
+      {/* Trend cards */}
       <div className="flex-1 space-y-3 overflow-y-auto pr-2">
-        {recommendations.map((trend) => (
+        {displayedTrends.map((trend) => (
           <div
             key={trend.trend_id}
             className={`post-card p-4 hover:shadow-glow transition-shadow ${
@@ -146,6 +252,7 @@ export const RecommendedTrends = ({
                       {trend.region}
                     </span>
                   )}
+                  <CategoryBadge category={trend.category} />
                 </div>
 
                 {/* Views + virality */}
