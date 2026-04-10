@@ -3,13 +3,14 @@ import { useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
   Hash, ArrowLeft, Copy, Check, Zap, BookOpen,
   ChevronDown, ChevronUp, AlertTriangle, Clock,
-  Sparkles, ArrowRight,
+  Sparkles, ArrowRight, Eye, Bookmark, Share2, UserPlus, BarChart2,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -182,6 +183,13 @@ const HashtagAnalysis = () => {
   const [expandedTag, setExpandedTag] = useState<string | null>(null);
   const [copied,      setCopied]      = useState(false);
 
+  // Performance feedback
+  const [feedbackState, setFeedbackState] = useState<"idle" | "open" | "submitting" | "submitted">("idle");
+  const [perfViews,   setPerfViews]   = useState("");
+  const [perfSaves,   setPerfSaves]   = useState("");
+  const [perfShares,  setPerfShares]  = useState("");
+  const [perfFollows, setPerfFollows] = useState("");
+
   // Trend Quest pre-fill via router state
   const tqState        = location.state as Record<string, unknown> | null;
   const fromTrendQuest = tqState?.fromTrendQuest === true;
@@ -258,7 +266,42 @@ const HashtagAnalysis = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleReset = () => { setView("input"); setResult(null); setExpandedTag(null); };
+  const handleReset = () => {
+    setView("input"); setResult(null); setExpandedTag(null);
+    setFeedbackState("idle");
+    setPerfViews(""); setPerfSaves(""); setPerfShares(""); setPerfFollows("");
+  };
+
+  const submitFeedback = async () => {
+    if (!result?.request_id) {
+      toast.error("Sign in to track performance");
+      return;
+    }
+    const hasAnyValue = perfViews || perfSaves || perfShares || perfFollows;
+    if (!hasAnyValue) {
+      toast.error("Add at least one metric to log");
+      return;
+    }
+    setFeedbackState("submitting");
+    try {
+      const { error } = await supabase.from("hashtag_outcomes").insert({
+        request_id:    result.request_id,
+        user_id:       user?.id ?? null,
+        views:         perfViews   ? parseInt(perfViews,   10) : null,
+        saves:         perfSaves   ? parseInt(perfSaves,   10) : null,
+        shares:        perfShares  ? parseInt(perfShares,  10) : null,
+        follows_gained: perfFollows ? parseInt(perfFollows, 10) : null,
+        posted_at:     new Date().toISOString(),
+      });
+      if (error) throw error;
+      setFeedbackState("submitted");
+      toast.success("Results logged — the system will learn from this.");
+    } catch (err) {
+      console.error("Feedback error:", err);
+      toast.error("Couldn't save results. Try again.");
+      setFeedbackState("open");
+    }
+  };
 
   // ── INPUT ──────────────────────────────────────────────────────────────────
   if (view === "input") {
@@ -632,6 +675,113 @@ const HashtagAnalysis = () => {
                           <li key={i} className="text-xs text-secondary-foreground">{w}</li>
                         ))}
                       </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Performance feedback card ─────────────────────── */}
+              {feedbackState === "idle" && (
+                <div className="post-card p-4 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <BarChart2 className="w-4 h-4 text-primary" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">Posted with these hashtags?</p>
+                      <p className="text-xs text-muted-foreground">Log your results — every data point makes future recs smarter.</p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setFeedbackState("open")}
+                    className="flex-shrink-0 text-xs gap-1.5"
+                  >
+                    Log Results
+                    <ArrowRight className="w-3 h-3" />
+                  </Button>
+                </div>
+              )}
+
+              {feedbackState === "open" && (
+                <div className="post-card p-5 space-y-4 animate-fade-in">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">How did this post perform?</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">All fields optional — add whatever you have.</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { label: "Views",   icon: Eye,      value: perfViews,   set: setPerfViews   },
+                      { label: "Saves",   icon: Bookmark, value: perfSaves,   set: setPerfSaves   },
+                      { label: "Shares",  icon: Share2,   value: perfShares,  set: setPerfShares  },
+                      { label: "Follows", icon: UserPlus, value: perfFollows, set: setPerfFollows },
+                    ].map(({ label, icon: Icon, value, set }) => (
+                      <div key={label}>
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+                          <Icon className="w-3.5 h-3.5" />
+                          {label}
+                        </label>
+                        <Input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={value}
+                          onChange={(e) => set(e.target.value)}
+                          className="bg-secondary/50 border-border text-sm h-9"
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={submitFeedback}
+                      disabled={feedbackState === "submitting"}
+                      size="sm"
+                      className="gap-1.5 text-xs"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      Save Results
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setFeedbackState("idle")}
+                      className="text-xs text-muted-foreground"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {feedbackState === "submitted" && (
+                <div className="post-card p-4 bg-emerald-500/5 border-emerald-500/20 animate-fade-in">
+                  <div className="flex items-start gap-3">
+                    <div className="w-7 h-7 rounded-full bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-emerald-400 mb-1.5">Results logged</p>
+                      <div className="flex flex-wrap gap-3">
+                        {[
+                          { label: "Views",   icon: Eye,      value: perfViews   },
+                          { label: "Saves",   icon: Bookmark, value: perfSaves   },
+                          { label: "Shares",  icon: Share2,   value: perfShares  },
+                          { label: "Follows", icon: UserPlus, value: perfFollows },
+                        ].filter(m => m.value).map(({ label, icon: Icon, value }) => (
+                          <div key={label} className="flex items-center gap-1 text-xs text-secondary-foreground">
+                            <Icon className="w-3 h-3 text-muted-foreground" />
+                            <span className="font-medium text-foreground">{parseInt(value).toLocaleString()}</span>
+                            <span className="text-muted-foreground">{label}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        The system will factor this into your future recommendations.
+                      </p>
                     </div>
                   </div>
                 </div>
