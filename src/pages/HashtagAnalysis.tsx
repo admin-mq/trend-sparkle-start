@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import {
   Hash, ArrowLeft, Copy, Check, Zap, BookOpen,
   ChevronDown, ChevronUp, AlertTriangle, Clock,
   Sparkles, ArrowRight, Eye, Bookmark, Share2, UserPlus, BarChart2,
-  Shield, FlaskConical,
+  Shield, FlaskConical, History, Instagram, RefreshCw, Link2,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -348,6 +348,7 @@ const HashtagSetPanel = ({
 const HashtagAnalysis = () => {
   const { user }   = useAuth();
   const location   = useLocation();
+  const navigate   = useNavigate();
 
   const [view,        setView]        = useState<"input" | "loading" | "results">("input");
   const [loadingStep, setLoadingStep] = useState(0);
@@ -371,12 +372,20 @@ const HashtagAnalysis = () => {
   const [perfShares,  setPerfShares]  = useState("");
   const [perfFollows, setPerfFollows] = useState("");
 
+  // Instagram connection
+  const [igConnection, setIgConnection] = useState<{ username: string; last_synced_at: string | null } | null>(null);
+  const [igConnecting, setIgConnecting] = useState(false);
+  const [igSyncing,    setIgSyncing]    = useState(false);
+
   const tqState        = location.state as Record<string, unknown> | null;
   const fromTrendQuest = tqState?.fromTrendQuest === true;
 
   useEffect(() => {
     if (!fromTrendQuest || !tqState) return;
-    if (typeof tqState.caption === "string") setCaption(tqState.caption);
+    if (typeof tqState.caption === "string")   setCaption(tqState.caption);
+    if (typeof tqState.platform === "string")  setPlatform(tqState.platform);
+    if (typeof tqState.region === "string")    setRegion(tqState.region);
+    if (typeof tqState.goal === "string")      setGoal(tqState.goal);
     const bp = tqState.brand_profile as Record<string, string> | undefined;
     if (bp?.geography) {
       const key   = bp.geography.toLowerCase();
@@ -388,6 +397,59 @@ const HashtagAnalysis = () => {
       if (mapped) setGoal(mapped);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Handle re-analyze pre-fill from HashtagHistory page
+  useEffect(() => {
+    if (!tqState || fromTrendQuest) return;
+    if (typeof tqState.prefillCaption === "string") setCaption(tqState.prefillCaption);
+    if (typeof tqState.region         === "string") setRegion(tqState.region);
+    if (typeof tqState.goal           === "string") setGoal(tqState.goal);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Check Instagram connection status
+  useEffect(() => {
+    if (!user) return;
+    supabase.functions.invoke("instagram-auth", {
+      body: { action: "status", user_id: user.id },
+    }).then(({ data }) => {
+      if (data?.connected && data?.connection) {
+        setIgConnection({ username: data.connection.username, last_synced_at: data.connection.last_synced_at });
+      }
+    }).catch(console.warn);
+  }, [user]);
+
+  const handleConnectInstagram = async () => {
+    if (!user) { toast.error("Sign in to connect Instagram"); return; }
+    setIgConnecting(true);
+    try {
+      const redirectUri = `${window.location.origin}/instagram-callback`;
+      const { data, error } = await supabase.functions.invoke("instagram-auth", {
+        body: { action: "initiate", redirect_uri: redirectUri },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message);
+      window.location.href = data.url;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not start Instagram connection");
+      setIgConnecting(false);
+    }
+  };
+
+  const handleSyncInstagram = async () => {
+    if (!user) return;
+    setIgSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("instagram-sync", {
+        body: { user_id: user.id, link_request_id: result?.request_id ?? null },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message);
+      toast.success(`Synced ${data.synced} posts from Instagram${data.linked > 0 ? ` · ${data.linked} linked to this analysis` : ""}`);
+      setIgConnection((c) => c ? { ...c, last_synced_at: new Date().toISOString() } : c);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Sync failed");
+    } finally {
+      setIgSyncing(false);
+    }
+  };
 
   const runAnalysis = async () => {
     if (!caption.trim()) { toast.error("Add your post idea or caption to analyze"); return; }
@@ -492,14 +554,23 @@ const HashtagAnalysis = () => {
       <div className="h-full flex items-start justify-center p-4 lg:p-6 pt-8 lg:pt-14 overflow-y-auto">
         <div className="w-full max-w-xl space-y-6">
 
-          <div className="text-center space-y-2">
-            <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center mx-auto mb-3">
-              <Hash className="w-5 h-5 text-primary" />
+          <div className="flex items-start justify-between">
+            <div className="text-center flex-1 space-y-2">
+              <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center mx-auto mb-3">
+                <Hash className="w-5 h-5 text-primary" />
+              </div>
+              <h1 className="text-2xl font-bold text-foreground tracking-tight">Hashtag Intelligence</h1>
+              <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                Returns two optimised sets — a Safe strategy and an Experimental one. Pick your bet.
+              </p>
             </div>
-            <h1 className="text-2xl font-bold text-foreground tracking-tight">Hashtag Intelligence</h1>
-            <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-              Returns two optimised sets — a Safe strategy and an Experimental one. Pick your bet.
-            </p>
+            <button
+              onClick={() => navigate("/hashtag-history")}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1 flex-shrink-0"
+            >
+              <History className="w-3.5 h-3.5" />
+              History
+            </button>
           </div>
 
           {fromTrendQuest && (
@@ -637,11 +708,20 @@ const HashtagAnalysis = () => {
               <ArrowLeft className="w-4 h-4" />
               New analysis
             </button>
-            {fromTrendQuest && tqState?.idea_title && (
-              <span className="hidden sm:block text-xs text-muted-foreground max-w-[260px] truncate">
-                {tqState.idea_title as string}
-              </span>
-            )}
+            <div className="flex items-center gap-3">
+              {fromTrendQuest && tqState?.idea_title && (
+                <span className="hidden sm:block text-xs text-muted-foreground max-w-[200px] truncate">
+                  {tqState.idea_title as string}
+                </span>
+              )}
+              <button
+                onClick={() => navigate("/hashtag-history")}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <History className="w-3.5 h-3.5" />
+                History
+              </button>
+            </div>
           </div>
 
           {/* Choose-your-set prompt — shown until a set is chosen */}
@@ -806,6 +886,67 @@ const HashtagAnalysis = () => {
               )}
             </div>
           )}
+
+          {/* Instagram Connection panel */}
+          <div className="post-card p-4 border-border animate-fade-in">
+            {igConnection ? (
+              /* Connected state */
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-pink-500/10 flex items-center justify-center flex-shrink-0">
+                  <Instagram className="w-4 h-4 text-pink-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-foreground">
+                      @{igConnection.username}
+                    </p>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-medium">
+                      Connected
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {igConnection.last_synced_at
+                      ? `Last synced ${new Date(igConnection.last_synced_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+                      : "Not synced yet"
+                    }
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSyncInstagram}
+                  disabled={igSyncing}
+                  className="flex-shrink-0 gap-1.5 text-xs border-pink-500/30 text-pink-400 hover:bg-pink-500/10"
+                >
+                  <RefreshCw className={`w-3 h-3 ${igSyncing ? "animate-spin" : ""}`} />
+                  {igSyncing ? "Syncing..." : "Sync Now"}
+                </Button>
+              </div>
+            ) : (
+              /* Not connected state */
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center flex-shrink-0">
+                  <Instagram className="w-4 h-4 text-muted-foreground" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">Connect Instagram</p>
+                  <p className="text-xs text-muted-foreground">
+                    Auto-pull real post performance instead of logging manually.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleConnectInstagram}
+                  disabled={igConnecting}
+                  className="flex-shrink-0 gap-1.5 text-xs border-pink-500/30 text-pink-400 hover:bg-pink-500/10"
+                >
+                  <Link2 className="w-3 h-3" />
+                  {igConnecting ? "Redirecting..." : "Connect"}
+                </Button>
+              </div>
+            )}
+          </div>
 
         </div>
       </div>
