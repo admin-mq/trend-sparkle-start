@@ -11,7 +11,7 @@ import {
   Hash, ArrowLeft, Copy, Check, Zap, BookOpen,
   ChevronDown, ChevronUp, AlertTriangle, Clock,
   Sparkles, ArrowRight, Eye, Bookmark, Share2, UserPlus, BarChart2,
-  Shield, FlaskConical, History, Instagram, RefreshCw, Link2, Brain,
+  Shield, FlaskConical, History, Instagram, RefreshCw, Link2, Brain, Unlink,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -448,6 +448,21 @@ const HashtagAnalysis = () => {
       toast.error(err instanceof Error ? err.message : "Sync failed");
     } finally {
       setIgSyncing(false);
+    }
+  };
+
+  const handleDisconnectInstagram = async () => {
+    if (!user) return;
+    if (!window.confirm("Disconnect Instagram? You can reconnect a different account at any time.")) return;
+    try {
+      const { data, error } = await supabase.functions.invoke("instagram-auth", {
+        body: { action: "disconnect", user_id: user.id },
+      });
+      if (error || data?.error) throw new Error(data?.error || error?.message);
+      setIgConnection(null);
+      toast.success("Instagram disconnected.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Disconnect failed");
     }
   };
 
@@ -907,36 +922,60 @@ const HashtagAnalysis = () => {
           <div className="post-card p-4 border-border animate-fade-in">
             {igConnection ? (
               /* Connected state */
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-pink-500/10 flex items-center justify-center flex-shrink-0">
-                  <Instagram className="w-4 h-4 text-pink-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-foreground">
-                      @{igConnection.username}
-                    </p>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-medium">
-                      Connected
-                    </span>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-pink-500/10 flex items-center justify-center flex-shrink-0">
+                    <Instagram className="w-4 h-4 text-pink-400" />
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {igConnection.last_synced_at
-                      ? `Last synced ${new Date(igConnection.last_synced_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
-                      : "Not synced yet"
-                    }
-                  </p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-foreground">
+                        @{igConnection.username}
+                      </p>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-medium">
+                        Connected
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {igConnection.last_synced_at
+                        ? `Last synced ${new Date(igConnection.last_synced_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+                        : "Not synced yet"
+                      }
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSyncInstagram}
+                    disabled={igSyncing}
+                    className="flex-shrink-0 gap-1.5 text-xs border-pink-500/30 text-pink-400 hover:bg-pink-500/10"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${igSyncing ? "animate-spin" : ""}`} />
+                    {igSyncing ? "Syncing..." : "Sync Now"}
+                  </Button>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSyncInstagram}
-                  disabled={igSyncing}
-                  className="flex-shrink-0 gap-1.5 text-xs border-pink-500/30 text-pink-400 hover:bg-pink-500/10"
-                >
-                  <RefreshCw className={`w-3 h-3 ${igSyncing ? "animate-spin" : ""}`} />
-                  {igSyncing ? "Syncing..." : "Sync Now"}
-                </Button>
+                {/* Disconnect / reconnect row */}
+                <div className="flex items-center gap-2 pt-1 border-t border-border">
+                  <p className="text-xs text-muted-foreground flex-1">
+                    Want to connect a different account?
+                  </p>
+                  <button
+                    onClick={handleDisconnectInstagram}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-red-400 transition-colors"
+                  >
+                    <Unlink className="w-3 h-3" />
+                    Disconnect
+                  </button>
+                  <span className="text-muted-foreground/30 text-xs">·</span>
+                  <button
+                    onClick={handleConnectInstagram}
+                    disabled={igConnecting}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-pink-400 transition-colors"
+                  >
+                    <Link2 className="w-3 h-3" />
+                    {igConnecting ? "Redirecting..." : "Reconnect"}
+                  </button>
+                </div>
               </div>
             ) : (
               /* Not connected state */
