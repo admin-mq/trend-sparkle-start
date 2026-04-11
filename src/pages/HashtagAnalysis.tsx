@@ -51,10 +51,29 @@ interface HashtagSet {
   warnings: string[];
 }
 
+interface PositioningMismatch {
+  hashtag: string;
+  present_in: "safe" | "experimental" | "both";
+  conflict: string;
+  severity: "high" | "medium" | "low";
+  fix: string;
+}
+
+interface ContentPositioning {
+  hook_tone: string;
+  detected_content_intent: string;
+  positioning_score: number;
+  overall_verdict: "aligned" | "minor_drift" | "significant_mismatch";
+  mismatches: PositioningMismatch[];
+  recommendation: string;
+  caption_tone_tips: string[];
+}
+
 interface AnalysisResult {
   request_id?: string;
   safe: HashtagSet;
   experimental: HashtagSet;
+  positioning?: ContentPositioning;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -165,6 +184,171 @@ const SubscoreBar = ({ label, value }: { label: string; value: number }) => (
     <span className="text-xs text-muted-foreground w-6 text-right tabular-nums">{value}</span>
   </div>
 );
+
+// ─── ContentPositioningPanel ─────────────────────────────────────────────────
+
+const VERDICT_CONFIG = {
+  aligned: {
+    label: "Aligned",
+    color: "text-emerald-400",
+    bg: "bg-emerald-500/10 border-emerald-500/20",
+    pill: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30",
+    ring: "hsl(142 71% 45%)",
+  },
+  minor_drift: {
+    label: "Minor Drift",
+    color: "text-amber-400",
+    bg: "bg-amber-500/10 border-amber-500/20",
+    pill: "bg-amber-500/15 text-amber-400 border border-amber-500/30",
+    ring: "hsl(38 92% 50%)",
+  },
+  significant_mismatch: {
+    label: "Mismatch Detected",
+    color: "text-red-400",
+    bg: "bg-red-500/10 border-red-500/20",
+    pill: "bg-red-500/15 text-red-400 border border-red-500/30",
+    ring: "hsl(0 72% 51%)",
+  },
+};
+
+const SEVERITY_CONFIG = {
+  high:   { label: "High",   style: "bg-red-500/15 text-red-400 border border-red-500/30",   bar: "border-l-red-400" },
+  medium: { label: "Medium", style: "bg-amber-500/15 text-amber-400 border border-amber-500/30", bar: "border-l-amber-400" },
+  low:    { label: "Low",    style: "bg-secondary text-muted-foreground border border-border",    bar: "border-l-border" },
+};
+
+const SET_PILL: Record<string, string> = {
+  safe:         "bg-primary/10 text-primary",
+  experimental: "bg-orange-500/10 text-orange-400",
+  both:         "bg-secondary text-muted-foreground",
+};
+
+const ContentPositioningPanel = ({ positioning }: { positioning: ContentPositioning }) => {
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const verdict = VERDICT_CONFIG[positioning.overall_verdict];
+  const hasMismatches = positioning.mismatches.length > 0;
+
+  return (
+    <div className={`post-card overflow-hidden border ${verdict.bg} animate-fade-in`}>
+
+      {/* Header */}
+      <div className="px-4 py-3 flex items-center gap-3 border-b border-border/50">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-semibold text-foreground">Content Positioning</p>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${verdict.pill}`}>
+              {verdict.label}
+            </span>
+            <span className="text-xs text-muted-foreground hidden sm:block">
+              {positioning.hook_tone} · {positioning.detected_content_intent}
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5 sm:hidden">
+            {positioning.hook_tone} · {positioning.detected_content_intent}
+          </p>
+        </div>
+
+        {/* Score ring */}
+        <div className="flex-shrink-0 relative">
+          <svg width={48} height={48} className="-rotate-90">
+            <circle cx={24} cy={24} r={19} fill="none" stroke="hsl(var(--border))" strokeWidth="3" />
+            <circle cx={24} cy={24} r={19} fill="none" stroke={verdict.ring} strokeWidth="3"
+              strokeDasharray={2 * Math.PI * 19}
+              strokeDashoffset={2 * Math.PI * 19 * (1 - positioning.positioning_score / 100)}
+              strokeLinecap="round" className="transition-all duration-1000 ease-out" />
+          </svg>
+          <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-foreground">
+            {positioning.positioning_score}
+          </span>
+        </div>
+      </div>
+
+      {/* Recommendation */}
+      <div className="px-4 py-3 border-b border-border/50 bg-secondary/10">
+        <p className="text-xs text-secondary-foreground leading-relaxed">{positioning.recommendation}</p>
+      </div>
+
+      {/* Mismatches */}
+      {hasMismatches && (
+        <div className="divide-y divide-border/50">
+          {positioning.mismatches.map((m, i) => {
+            const sev = SEVERITY_CONFIG[m.severity];
+            const isOpen = expanded === i;
+            return (
+              <div key={i} className={`border-l-2 ${sev.bar}`}>
+                <button
+                  className="w-full px-4 py-3 flex items-start gap-3 hover:bg-secondary/10 transition-colors text-left"
+                  onClick={() => setExpanded(isOpen ? null : i)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="text-sm font-semibold text-foreground">{m.hashtag}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium leading-none ${sev.style}`}>
+                        {sev.label}
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium leading-none ${SET_PILL[m.present_in]}`}>
+                        {m.present_in === "both" ? "both sets" : m.present_in}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-snug">{m.conflict}</p>
+                  </div>
+                  <div className="flex-shrink-0 mt-0.5">
+                    {isOpen
+                      ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+                      : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                    }
+                  </div>
+                </button>
+
+                {isOpen && (
+                  <div className="px-4 pb-3 bg-secondary/15 animate-fade-in border-t border-border/30">
+                    <div className="flex items-start gap-2 pt-2.5">
+                      <Zap className="w-3.5 h-3.5 text-primary flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Fix</p>
+                        <p className="text-xs text-foreground leading-snug">{m.fix}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* No mismatches — affirm */}
+      {!hasMismatches && (
+        <div className="px-4 py-3 flex items-center gap-2">
+          <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+          <p className="text-xs text-emerald-400/80">
+            No intent mismatches detected — your hashtags and content tone are pulling in the same direction.
+          </p>
+        </div>
+      )}
+
+      {/* Caption tone tips */}
+      {positioning.caption_tone_tips.length > 0 && (
+        <div className="px-4 py-3 border-t border-border/50 bg-secondary/5">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+            Caption tone tips
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {positioning.caption_tone_tips.map((tip, i) => (
+              <span key={i} className="text-xs px-2.5 py-1 rounded-md border border-border bg-secondary/50 text-secondary-foreground font-medium">
+                {tip}
+              </span>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-2">
+            Weave these into your caption body to reinforce the intent signal for Instagram's NLP.
+          </p>
+        </div>
+      )}
+
+    </div>
+  );
+};
 
 // ─── HashtagSetPanel ──────────────────────────────────────────────────────────
 
@@ -827,6 +1011,11 @@ const HashtagAnalysis = () => {
               copiedSet={copiedExp}
             />
           </div>
+
+          {/* Content Positioning analysis */}
+          {result.positioning && (
+            <ContentPositioningPanel positioning={result.positioning} />
+          )}
 
           {/* Performance feedback — shown once a set is chosen */}
           {chosenSet && (

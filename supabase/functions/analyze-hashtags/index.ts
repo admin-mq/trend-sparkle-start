@@ -10,7 +10,6 @@ const corsHeaders = {
 const EXTERNAL_SUPABASE_URL = "https://njnnpdrevbkhbhzwccuz.supabase.co";
 const EXTERNAL_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qbm5wZHJldmJraGJoendjY3V6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQzOTg3ODQsImV4cCI6MjA3OTk3NDc4NH0.WKuei-3pR2TphEKjSOOhvNlECrX93Jt9NE5SK2TcD-M";
 
-// Shared hashtag item schema description (reused in both set prompts)
 const HASHTAG_ITEM_SCHEMA = `{
   "tag": string (with # prefix, lowercase),
   "score": number (0–100, after penalties),
@@ -36,8 +35,11 @@ INSTAGRAM 2026 ALGORITHM REALITY:
 - Classification strength matters more than volume popularity
 
 YOUR TASK:
-Return TWO distinct hashtag sets for the same post — a Safe set and an Experimental set.
-These must be genuinely different strategies, not just swapping one tag.
+Return THREE things for the same post: a Safe hashtag set, an Experimental hashtag set, and a Content Positioning analysis.
+
+═══════════════════════════════════════════════
+PART 1 & 2 — HASHTAG SETS
+═══════════════════════════════════════════════
 
 SCORING MODEL (weights sum to 100%):
 1. Relevance (25%): Semantic match to actual content. If weak, almost never select regardless of trend status.
@@ -63,8 +65,7 @@ SAFE SET rules:
 - Prioritise low saturation risk — smaller accounts can still rank here
 - Conservative trend exposure: only include a trend tag if relevance score ≥ 80
 - All 3–5 tags must score ≥ 70 after penalties
-- set_type: "safe"
-- set_label: "Safe Reach"
+- set_type: "safe" | set_label: "Safe Reach"
 - set_description: one sentence — what this set is optimised for
 
 EXPERIMENTAL SET rules:
@@ -73,14 +74,12 @@ EXPERIMENTAL SET rules:
 - May include one emerging or niche-crossing tag that has upside but less certainty
 - Target a wider potential reach at the cost of some precision
 - At least 3 of the 5 tags must still score ≥ 65 after penalties
-- set_type: "experimental"
-- set_label: "Experimental Reach"
+- set_type: "experimental" | set_label: "Experimental Reach"
 - set_description: one sentence — the higher-upside bet this set is making
 
 CRITICAL: The two sets must be meaningfully different.
 - At most 2 overlapping tags between Safe and Experimental
 - They should represent genuinely different distribution strategies
-- If the content is very niche with few hashtag options, explain that in set_description
 
 PORTFOLIO STRUCTURE (apply to each set):
 - 1 Category Anchor, 1 Audience Signal, 1 Niche Discovery
@@ -94,9 +93,61 @@ DISTRIBUTION READINESS per set:
 - saturation_exposure: "Low" | "Moderate" | "High"
 - intent_coherence: "Matched" | "Mixed" | "Fragmented"
 
-EXPLANATION: Specific to THIS post. Never generic.
-Bad: "Popular fitness hashtag"
-Good: "Precise match for beginner home workout content — filters in the right audience without competing against gym brands"
+═══════════════════════════════════════════════
+PART 3 — CONTENT POSITIONING ANALYSIS
+═══════════════════════════════════════════════
+
+Analyse the semantic alignment between the post's hook tone and every hashtag's intent signal.
+This is separate from hashtag scoring — it is a diagnostic layer on top of both sets.
+
+HOOK TONE CLASSIFICATION (pick the dominant one):
+- "Educational" — teaches, explains, gives tips or how-to
+- "Inspirational" — motivates, uplifts, aspirational narrative
+- "Entertaining" — humour, storytelling, POV, relatable content
+- "Sales / Promotional" — offer, CTA, product push, urgency
+- "Community" — conversation starter, shared identity, polls, relatable struggle
+- "News / Commentary" — trend reaction, opinion, industry take
+- "Personal / Narrative" — day-in-life, behind-the-scenes, personal story
+
+CONTENT INTENT (what action the algorithm should drive):
+discovery | education | inspiration | entertainment | shopping | community | awareness
+
+MISMATCH DETECTION RULES — flag a mismatch when:
+- A hashtag's audience primarily expects DIFFERENT content than what this post delivers
+  Examples:
+  · Educational hook + #aesthetic / #vibes → entertainment/lifestyle intent clash
+  · Sales hook + #selfcare / #wellness → trust signal dilution (community hashtags signal no-sell zones)
+  · Personal/narrative hook + #howto / #tips → educational signal contradiction
+  · Entertainment hook + #businesstips / #entrepreneurship → intent audience mismatch
+  · Inspirational hook + buyer-intent hashtags → premature conversion pressure
+- A hashtag is present in BOTH sets but misaligned in BOTH — flag as present_in: "both"
+- Only flag genuine mismatches. If the sets are well-aligned, mismatches array should be empty.
+
+SEVERITY:
+- "high": Directly contradicts the content intent — algorithm receives actively confused classification
+- "medium": Adjacent but not aligned — adds noise to classification signal
+- "low": Subtle drift — worth noting but not harmful
+
+POSITIONING SCORE (0–100):
+- 90–100: Full coherence — hashtags and content tone are reinforcing the same intent cluster
+- 70–89: Minor drift — 1 tag slightly misaligned, overall signal clear
+- 50–69: Mixed signal — hashtag set and content tone pulling in different directions
+- Below 50: Significant mismatch — algorithm will likely misclassify this content
+
+OVERALL VERDICT:
+- "aligned": Score ≥ 80 and zero high-severity mismatches
+- "minor_drift": Score 60–79, or 1–2 low/medium mismatches
+- "significant_mismatch": Score < 60, or any high-severity mismatch
+
+SPECIFICITY RULES — every field must be specific to THIS post:
+- conflict: name the exact semantic clash, not a generic description
+- fix: give an actual replacement hashtag or specific caption/framing change
+- recommendation: reference the hook tone and the specific mismatch pattern detected
+- caption_tone_tips: short phrases that bridge the detected gap — NOT hashtags, NOT generic advice
+
+═══════════════════════════════════════════════
+FULL JSON SCHEMA
+═══════════════════════════════════════════════
 
 Return ONLY valid JSON:
 {
@@ -113,9 +164,9 @@ Return ONLY valid JSON:
       "intent_coherence": "Matched" | "Mixed" | "Fragmented"
     },
     "hashtags": [${HASHTAG_ITEM_SCHEMA}],
-    "why_this_works": string (2–3 sentences on portfolio logic),
+    "why_this_works": string,
     "best_posting_time": string,
-    "caption_keywords": string[] (3–5 items),
+    "caption_keywords": string[],
     "warnings": string[]
   },
   "experimental": {
@@ -131,10 +182,27 @@ Return ONLY valid JSON:
       "intent_coherence": "Matched" | "Mixed" | "Fragmented"
     },
     "hashtags": [${HASHTAG_ITEM_SCHEMA}],
-    "why_this_works": string (2–3 sentences on portfolio logic),
+    "why_this_works": string,
     "best_posting_time": string,
-    "caption_keywords": string[] (3–5 items),
+    "caption_keywords": string[],
     "warnings": string[]
+  },
+  "positioning": {
+    "hook_tone": string (one of the 7 tones above),
+    "detected_content_intent": string (one of: discovery | education | inspiration | entertainment | shopping | community | awareness),
+    "positioning_score": number (0–100),
+    "overall_verdict": "aligned" | "minor_drift" | "significant_mismatch",
+    "mismatches": [
+      {
+        "hashtag": string (with # prefix),
+        "present_in": "safe" | "experimental" | "both",
+        "conflict": string (one sharp sentence — the exact semantic clash for THIS post),
+        "severity": "high" | "medium" | "low",
+        "fix": string (one actionable sentence — actual replacement or specific framing change)
+      }
+    ],
+    "recommendation": string (1–2 sentences — most important positioning action, specific to this post),
+    "caption_tone_tips": string[] (2–3 short phrases to include in the caption to close the detected gap — NOT hashtags)
   }
 }`;
 
@@ -200,7 +268,7 @@ serve(async (req) => {
       content_description ? `\nAdditional context: ${content_description}` : null,
     ].filter(Boolean).join('\n');
 
-    console.log('Calling OpenAI for A/B hashtag analysis. Platform:', platform, 'Region:', region, 'Goal:', goal_type);
+    console.log('Calling OpenAI for hashtag + positioning analysis. Platform:', platform, 'Region:', region, 'Goal:', goal_type);
 
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -215,7 +283,7 @@ serve(async (req) => {
           { role: 'user', content: userMessage },
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.45, // Slightly higher to allow genuine set differentiation
+        temperature: 0.4,
       }),
     });
 
@@ -228,17 +296,24 @@ serve(async (req) => {
     const content = openaiData.choices?.[0]?.message?.content;
     if (!content) throw new Error('No content returned from OpenAI');
 
-    const parsed = JSON.parse(content);
-    const safeSet = parsed.safe;
+    const parsed         = JSON.parse(content);
+    const safeSet        = parsed.safe;
     const experimentalSet = parsed.experimental;
+    const positioning    = parsed.positioning ?? null;
 
-    console.log('Analysis complete. Safe score:', safeSet?.set_score, 'Experimental score:', experimentalSet?.set_score);
+    console.log(
+      'Analysis complete. Safe:', safeSet?.set_score,
+      'Experimental:', experimentalSet?.set_score,
+      'Positioning:', positioning?.positioning_score,
+      'Verdict:', positioning?.overall_verdict,
+      'Mismatches:', positioning?.mismatches?.length ?? 0,
+    );
 
     // Persist to DB for authenticated users
     let requestId: string | null = null;
     if (user_id) {
       try {
-        const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const supabaseUrl        = Deno.env.get('SUPABASE_URL');
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
         if (supabaseUrl && supabaseServiceKey) {
@@ -248,32 +323,31 @@ serve(async (req) => {
             .from('hashtag_requests')
             .insert({
               user_id,
-              brand_name: brand_profile?.brand_name || null,
+              brand_name:          brand_profile?.brand_name || null,
               platform,
               region,
-              caption: caption.trim(),
+              caption:             caption.trim(),
               content_description: content_description || null,
               goal_type,
-              from_trend_quest: from_trend_quest || null,
+              from_trend_quest:    from_trend_quest || null,
             })
             .select('id')
             .single();
 
           if (requestRow?.id) {
             requestId = requestRow.id;
-            // Store both sets in hashtag_results as JSONB
             await mainSupabase
               .from('hashtag_results')
               .insert({
-                request_id:            requestId,
-                set_score:             safeSet.set_score,
-                confidence_level:      safeSet.confidence_level,
+                request_id:             requestId,
+                set_score:              safeSet.set_score,
+                confidence_level:       safeSet.confidence_level,
                 distribution_readiness: safeSet.distribution_readiness,
-                hashtags:              { safe: safeSet.hashtags, experimental: experimentalSet.hashtags },
-                why_this_works:        safeSet.why_this_works,
-                best_posting_time:     safeSet.best_posting_time,
-                caption_keywords:      safeSet.caption_keywords,
-                warnings:              safeSet.warnings,
+                hashtags:               { safe: safeSet.hashtags, experimental: experimentalSet.hashtags },
+                why_this_works:         safeSet.why_this_works,
+                best_posting_time:      safeSet.best_posting_time,
+                caption_keywords:       safeSet.caption_keywords,
+                warnings:               safeSet.warnings,
               });
           }
         }
@@ -283,7 +357,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ safe: safeSet, experimental: experimentalSet, request_id: requestId }),
+      JSON.stringify({ safe: safeSet, experimental: experimentalSet, positioning, request_id: requestId }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
