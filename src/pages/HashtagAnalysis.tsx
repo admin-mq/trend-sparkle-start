@@ -11,7 +11,7 @@ import {
   Hash, ArrowLeft, Copy, Check, Zap, BookOpen,
   ChevronDown, ChevronUp, AlertTriangle, Clock,
   Sparkles, ArrowRight, Eye, Bookmark, Share2, UserPlus, BarChart2,
-  Shield, FlaskConical, History, Instagram, RefreshCw, Link2,
+  Shield, FlaskConical, History, Instagram, RefreshCw, Link2, Brain,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -564,13 +564,22 @@ const HashtagAnalysis = () => {
                 Returns two optimised sets — a Safe strategy and an Experimental one. Pick your bet.
               </p>
             </div>
-            <button
-              onClick={() => navigate("/hashtag-history")}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1 flex-shrink-0"
-            >
-              <History className="w-3.5 h-3.5" />
-              History
-            </button>
+            <div className="flex items-center gap-3 mt-1">
+              <button
+                onClick={() => navigate("/hashtag-history")}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <History className="w-3.5 h-3.5" />
+                History
+              </button>
+              <button
+                onClick={() => navigate("/creator-intelligence")}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+              >
+                <Brain className="w-3.5 h-3.5" />
+                Intelligence
+              </button>
+            </div>
           </div>
 
           {fromTrendQuest && (
@@ -720,6 +729,13 @@ const HashtagAnalysis = () => {
               >
                 <History className="w-3.5 h-3.5" />
                 History
+              </button>
+              <button
+                onClick={() => navigate("/creator-intelligence")}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+              >
+                <Brain className="w-3.5 h-3.5" />
+                Intelligence
               </button>
             </div>
           </div>
