@@ -114,15 +114,25 @@ function fmtNum(n: number): string {
   return n.toLocaleString();
 }
 
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+
+const avgArr = (arr: number[]) =>
+  arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+
+// Engagement score: saves most signal-rich, then shares, then views
+const eng = (v: number, s: number, sh: number) =>
+  (v ?? 0) * 0.2 + (s ?? 0) * 100 * 0.5 + (sh ?? 0) * 50 * 0.3;
+
+const getResult = (row: OutcomeRow) =>
+  Array.isArray(row.hashtag_results) ? row.hashtag_results[0] : (row.hashtag_results as any);
+
+const getRequest = (row: OutcomeRow) =>
+  Array.isArray(row.hashtag_requests) ? row.hashtag_requests[0] : (row.hashtag_requests as any);
+
 // ─── Core computation (client-side, no API needed) ────────────────────────────
 
 function computeIntelligence(rows: OutcomeRow[]): Intelligence {
-  const avg = (arr: number[]) =>
-    arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-
-  // Weighted engagement score: saves are high-signal, shares next, views last
-  const eng = (v: number, s: number, sh: number) =>
-    (v ?? 0) * 0.2 + (s ?? 0) * 100 * 0.5 + (sh ?? 0) * 50 * 0.3;
+  const avg = avgArr;
 
   // ── Tag performance map ──────────────────────────────────────────────────
   const tagMap = new Map<string, { role: string; views: number[]; saves: number[]; shares: number[] }>();
@@ -273,6 +283,254 @@ function computeIntelligence(rows: OutcomeRow[]): Intelligence {
     insights,
   };
 }
+
+// ─── Next Actions computation ─────────────────────────────────────────────────
+
+interface NextAction {
+  id:      string;
+  type:    "strategy" | "tags" | "timing" | "consistency";
+  title:   string;
+  detail:  string;
+  cta?:    string;
+  ctaPath?: string;
+}
+
+const ACTION_ICON: Record<NextAction["type"], React.ElementType> = {
+  strategy:    Shield,
+  tags:        Hash,
+  timing:      Clock,
+  consistency: TrendingUp,
+};
+
+const ACTION_COLOR: Record<NextAction["type"], string> = {
+  strategy:    "text-primary bg-primary/10",
+  tags:        "text-emerald-400 bg-emerald-500/10",
+  timing:      "text-amber-400 bg-amber-500/10",
+  consistency: "text-orange-400 bg-orange-500/10",
+};
+
+function computeNextActions(rows: OutcomeRow[], intel: Intelligence): NextAction[] {
+  const actions: Array<NextAction & { priority: number }> = [];
+  const { set_comparison, top_tags, role_breakdown, posting_patterns, best_hour } = intel;
+
+  // Sort rows most-recent-first using hashtag_requests.created_at
+  const sorted = [...rows].sort((a, b) => {
+    const aDate = new Date(getRequest(a)?.created_at ?? 0).getTime();
+    const bDate = new Date(getRequest(b)?.created_at ?? 0).getTime();
+    return bDate - aDate;
+  });
+  const recent = sorted.slice(0, 5);
+
+  // ── Rule 1: Strategy drift ───────────────────────────────────────────────
+  // Winner set is clear, but recent posts are using the other set
+  if (
+    set_comparison.winner !== "tied" &&
+    set_comparison.safe.count >= 2 &&
+    set_comparison.experimental.count >= 2
+  ) {
+    const winner   = set_comparison.winner;
+    const loser    = winner === "safe" ? "experimental" : "safe";
+    const recentChoices = recent.map(r => r.set_chosen).filter(Boolean);
+    const driftCount    = recentChoices.filter(c => c === loser).length;
+
+    if (driftCount >= 3 && recentChoices.length >= 4) {
+      const winEng  = set_comparison[winner].engagement;
+      const loseEng = set_comparison[loser].engagement;
+      const uplift  = loseEng > 0
+        ? Math.round(((winEng - loseEng) / loseEng) * 100)
+        : 0;
+
+      actions.push({
+        id:       "strategy-drift",
+        priority: 1,
+        type:     "strategy",
+        title:    `Switch back to ${winner === "safe" ? "Safe Reach" : "Experimental"} for your next 3 posts`,
+        detail:   `Your ${winner === "safe" ? "Safe Reach" : "Experimental"} set delivers ${
+          uplift > 0 ? `${uplift}% more engagement` : "stronger results"
+        }, but ${driftCount} of your last ${recentChoices.length} posts used the ${
+          loser === "safe" ? "Safe" : "Experimental"
+        } set instead.`,
+        cta:      "Run New Analysis",
+        ctaPath:  "/hashtag-analysis",
+      });
+    }
+  }
+
+  // ── Rule 2: Best role underuse ────────────────────────────────────────────
+  if (top_tags.length >= 3 && role_breakdown.length >= 2) {
+    const bestRole = role_breakdown[0];
+    const postsWithRole = rows.filter(row => {
+      const chosen = row.set_chosen as "safe" | "experimental";
+      const result = getResult(row);
+      const tags: HashtagItem[] = result?.hashtags?.[chosen] ?? [];
+      return tags.some(t => t.role === bestRole.role);
+    }).length;
+    const useRate = Math.round((postsWithRole / rows.length) * 100);
+
+    if (useRate < 60) {
+      actions.push({
+        id:       "role-underuse",
+        priority: 2,
+        type:     "tags",
+        title:    `Make ${bestRole.role} a non-negotiable in every analysis`,
+        detail:   `This is your highest-performing role (avg score ${bestRole.avg_score}) but it only appears in ${useRate}% of your posts. Lock it in as your anchor slot.`,
+        cta:      "New Analysis",
+        ctaPath:  "/hashtag-analysis",
+      });
+    }
+  }
+
+  // ── Rule 3: Top tag underuse in recent posts ──────────────────────────────
+  if (top_tags.length > 0 && top_tags[0].appearances >= 3) {
+    const topTag = top_tags[0];
+    const recentWithTag = recent.filter(row => {
+      const chosen = row.set_chosen as "safe" | "experimental";
+      const result = getResult(row);
+      const tags: HashtagItem[] = result?.hashtags?.[chosen] ?? [];
+      return tags.some(t => t.tag === topTag.tag);
+    }).length;
+
+    if (recentWithTag === 0 && recent.length >= 3) {
+      actions.push({
+        id:       "top-tag-absent",
+        priority: 3,
+        type:     "tags",
+        title:    `Bring ${topTag.tag} back — it's been missing from your last ${recent.length} posts`,
+        detail:   `This is your #1 tag${
+          topTag.avg_saves > 0 ? ` (avg ${fmtNum(topTag.avg_saves)} saves)` : ""
+        }. Use it as a Category Anchor in your next analysis.`,
+        cta:      "New Analysis",
+        ctaPath:  "/hashtag-analysis",
+      });
+    }
+  }
+
+  // ── Rule 4: Posting time gap ──────────────────────────────────────────────
+  if (best_hour !== null && posting_patterns.length >= 3) {
+    const bestPattern = posting_patterns.find(p => p.hour === best_hour);
+    const recentHours = recent
+      .filter(r => r.posted_at)
+      .map(r => new Date(r.posted_at!).getHours());
+
+    const nearBest = recentHours.filter(h => Math.abs(h - best_hour) <= 1).length;
+
+    if (nearBest === 0 && recentHours.length >= 3) {
+      const allAvg  = avgArr(posting_patterns.map(p => p.avg_engagement));
+      const uplift  = allAvg > 0 && bestPattern
+        ? Math.round(((bestPattern.avg_engagement - allAvg) / allAvg) * 100)
+        : 0;
+
+      actions.push({
+        id:       "timing-gap",
+        priority: 4,
+        type:     "timing",
+        title:    `Schedule your next post at ${hourLabel(best_hour)}`,
+        detail:   uplift > 0
+          ? `Posts in this window average ${uplift}% more engagement than your other times, but none of your last ${recentHours.length} posts landed here.`
+          : `This is your highest-engagement window, but none of your recent posts used it.`,
+      });
+    }
+  }
+
+  // ── Rule 5: Declining set quality ────────────────────────────────────────
+  const recentScores = recent
+    .map(r => getResult(r)?.set_score ?? null)
+    .filter((s): s is number => s !== null);
+
+  if (recentScores.length >= 4) {
+    const half    = Math.floor(recentScores.length / 2);
+    const older   = avgArr(recentScores.slice(half));
+    const newer   = avgArr(recentScores.slice(0, half));
+    if (older - newer > 8) {
+      actions.push({
+        id:       "quality-decline",
+        priority: 5,
+        type:     "consistency",
+        title:    "Recent hashtag set quality is slipping — tighten the brief",
+        detail:   `Your last ${half} analyses averaged a set score of ${Math.round(newer)}, down from ${Math.round(older)}. Review the Content Positioning card on your next post to realign hook tone with hashtag intent.`,
+      });
+    }
+  }
+
+  const top3 = actions
+    .sort((a, b) => a.priority - b.priority)
+    .slice(0, 3)
+    .map(({ priority: _p, ...rest }) => rest);
+
+  return top3;
+}
+
+// ─── WhatToDoNextCard ─────────────────────────────────────────────────────────
+
+const WhatToDoNextCard = ({
+  actions,
+  post_count,
+  navigate,
+}: {
+  actions:    NextAction[];
+  post_count: number;
+  navigate:   ReturnType<typeof useNavigate>;
+}) => (
+  <div className="post-card overflow-hidden border-primary/20 bg-primary/3 animate-fade-in">
+    {/* Header */}
+    <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <Sparkles className="w-4 h-4 text-primary" />
+        <h2 className="text-sm font-semibold text-foreground">What to do next</h2>
+      </div>
+      <span className="text-xs text-muted-foreground">based on {post_count} posts</span>
+    </div>
+
+    {actions.length === 0 ? (
+      /* On-track state */
+      <div className="px-4 py-5 flex items-start gap-3">
+        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+          <TrendingUp className="w-4 h-4 text-emerald-400" />
+        </div>
+        <div>
+          <p className="text-sm font-medium text-foreground">You're on track — keep the momentum</p>
+          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+            No pattern drift detected. Stick to your current strategy and keep logging results after each post.
+          </p>
+        </div>
+      </div>
+    ) : (
+      <div className="divide-y divide-border">
+        {actions.map((action, i) => {
+          const Icon = ACTION_ICON[action.type];
+          return (
+            <div key={action.id} className="px-4 py-4 flex items-start gap-3">
+              {/* Priority number */}
+              <span className="w-5 h-5 rounded-full bg-primary/15 text-primary text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                {i + 1}
+              </span>
+
+              {/* Icon */}
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${ACTION_COLOR[action.type]}`}>
+                <Icon className="w-3.5 h-3.5" />
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 min-w-0 space-y-1">
+                <p className="text-sm font-semibold text-foreground leading-snug">{action.title}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">{action.detail}</p>
+                {action.cta && action.ctaPath && (
+                  <button
+                    onClick={() => navigate(action.ctaPath!)}
+                    className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium mt-1.5 transition-colors"
+                  >
+                    {action.cta}
+                    <ChevronRight className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    )}
+  </div>
+);
 
 // ─── Mini bar chart ───────────────────────────────────────────────────────────
 
@@ -476,6 +734,11 @@ const CreatorIntelligence = () => {
     [rawData]
   );
 
+  const nextActions = useMemo(
+    () => (intelligence ? computeNextActions(rawData, intelligence) : []),
+    [rawData, intelligence]
+  );
+
   // ── Loading ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -535,6 +798,13 @@ const CreatorIntelligence = () => {
               </p>
             </div>
           </div>
+
+          {/* ── What to do next ───────────────────────────────────────────── */}
+          <WhatToDoNextCard
+            actions={nextActions}
+            post_count={intelligence.post_count}
+            navigate={navigate}
+          />
 
           {/* ── Key Insights strip ─────────────────────────────────────────── */}
           {insights.length > 0 && (
