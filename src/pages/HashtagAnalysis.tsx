@@ -12,6 +12,7 @@ import {
   ChevronDown, ChevronUp, AlertTriangle, Clock,
   Sparkles, ArrowRight, Eye, Bookmark, Share2, UserPlus, BarChart2,
   Shield, FlaskConical, History, Instagram, RefreshCw, Link2, Brain, Unlink,
+  TrendingUp,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -153,6 +154,248 @@ const GOAL_MAP: Record<string, string> = {
   leads: "reach", sales: "sales", community: "community",
   "brand awareness": "reach", reach: "reach",
   "app downloads": "reach", traffic: "reach",
+};
+
+// ─── Forecast computation ─────────────────────────────────────────────────────
+
+interface ForecastDimension {
+  key:          string;
+  label:        string;
+  score:        number;        // 0–100 normalised
+  value_label:  string;
+  tip:          string;        // one-line context shown below the bar
+  variant:      "green" | "amber" | "red";
+}
+
+interface ForecastData {
+  dimensions:     ForecastDimension[];
+  overall_score:  number;
+  summary:        string;
+  confidence_note: string;
+}
+
+function avg(arr: number[]) {
+  return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+}
+
+function clamp(n: number) { return Math.min(100, Math.max(0, Math.round(n))); }
+
+function computeForecast(set: HashtagSet, positioning?: ContentPositioning): ForecastData {
+  const dr      = set.distribution_readiness;
+  const tags    = set.hashtags;
+  const confMul = set.confidence_level === "high" ? 1.0 : set.confidence_level === "moderate" ? 0.87 : 0.72;
+
+  // ── 1. Expected Reach ──────────────────────────────────────────────────────
+  const satBonus =
+    dr.saturation_exposure === "Low"      ?  12 :
+    dr.saturation_exposure === "Moderate" ?   0 : -18;
+  const avgTrend = avg(tags.map(t => t.subscores.trend_velocity));
+  const trendBonus = avgTrend > 68 ? 8 : avgTrend < 38 ? -6 : 0;
+  const reachRaw   = clamp((set.set_score + satBonus + trendBonus) * confMul);
+  const reachLabel =
+    reachRaw >= 78 ? "High" :
+    reachRaw >= 58 ? "Moderate" :
+    reachRaw >= 38 ? "Lower" : "Limited";
+  const reachVariant: ForecastDimension["variant"] =
+    reachRaw >= 70 ? "green" : reachRaw >= 50 ? "amber" : "red";
+
+  // ── 2. Audience Precision ─────────────────────────────────────────────────
+  const precBase     = (dr.audience_precision / 5) * 100;
+  const cohBonus     =
+    dr.intent_coherence === "Matched"    ?  10 :
+    dr.intent_coherence === "Fragmented" ? -16 : 0;
+  const avgAudMatch  = avg(tags.map(t => t.subscores.audience_match));
+  const precRaw      = clamp(precBase * 0.35 + avgAudMatch * 0.65 + cohBonus);
+  const precLabel    =
+    precRaw >= 78 ? "Strong" :
+    precRaw >= 58 ? "Moderate" :
+    precRaw >= 38 ? "Broad" : "Weak";
+  const precVariant: ForecastDimension["variant"] =
+    precRaw >= 70 ? "green" : precRaw >= 50 ? "amber" : "red";
+
+  // ── 3. Saturation Risk (higher score = lower risk = better) ───────────────
+  const satBase  =
+    dr.saturation_exposure === "Low"      ? 88 :
+    dr.saturation_exposure === "Moderate" ? 58 : 28;
+  const avgComp  = avg(tags.map(t => t.subscores.competition_efficiency));
+  const satRaw   = clamp(satBase * 0.55 + avgComp * 0.45);
+  const satLabel =
+    satRaw >= 72 ? "Low" :
+    satRaw >= 48 ? "Moderate" : "High";
+  const satVariant: ForecastDimension["variant"] =
+    satRaw >= 68 ? "green" : satRaw >= 46 ? "amber" : "red";
+
+  // ── 4. Positioning alignment ──────────────────────────────────────────────
+  const posRaw   = positioning ? positioning.positioning_score : clamp(set.set_score * 0.9);
+  const posLabel =
+    posRaw >= 82 ? "Aligned" :
+    posRaw >= 62 ? "Minor Drift" : "Misaligned";
+  const posVariant: ForecastDimension["variant"] =
+    posRaw >= 75 ? "green" : posRaw >= 55 ? "amber" : "red";
+
+  const dimensions: ForecastDimension[] = [
+    {
+      key:         "reach",
+      label:       "Expected Reach",
+      score:       reachRaw,
+      value_label: reachLabel,
+      tip:
+        dr.saturation_exposure === "Low"
+          ? "Low saturation gives you a clear run at ranking in this cluster."
+          : dr.saturation_exposure === "High"
+          ? "High saturation — harder to surface without strong existing authority."
+          : "Moderate competition — strong content quality will be the deciding factor.",
+      variant:     reachVariant,
+    },
+    {
+      key:         "precision",
+      label:       "Audience Precision",
+      score:       precRaw,
+      value_label: precLabel,
+      tip:
+        precRaw >= 70
+          ? "Hashtags are attracting the right viewer, not just any viewer."
+          : precRaw >= 48
+          ? "Some signal dilution — the audience cluster isn't fully aligned."
+          : "Broad audience signal — consider tighter niche tags.",
+      variant:     precVariant,
+    },
+    {
+      key:         "saturation",
+      label:       "Saturation Risk",
+      score:       satRaw,
+      value_label: satLabel,
+      tip:
+        satRaw >= 68
+          ? "Tags have healthy discovery windows — low risk of getting buried."
+          : satRaw >= 46
+          ? "Some tags are competitive — posting quality will affect ranking."
+          : "High competition in this tag cluster — harder to rank.",
+      variant:     satVariant,
+    },
+    {
+      key:         "positioning",
+      label:       "Positioning",
+      score:       posRaw,
+      value_label: posLabel,
+      tip:
+        posRaw >= 75
+          ? "Hook tone and hashtag intent are pulling in the same direction."
+          : posRaw >= 55
+          ? "Minor semantic drift — Instagram's classifier may add noise."
+          : "Intent mismatch detected — review positioning analysis below.",
+      variant:     posVariant,
+    },
+  ];
+
+  const overall = clamp(
+    reachRaw * 0.30 + precRaw * 0.25 + satRaw * 0.25 + posRaw * 0.20
+  );
+
+  const summary =
+    overall >= 78
+      ? "Strong distribution signal — good to post."
+      : overall >= 60
+      ? "Solid setup with some room to sharpen."
+      : overall >= 45
+      ? "Mixed signals — worth reviewing the notes below before posting."
+      : "Significant friction detected — address the flagged items first.";
+
+  const confidence_note =
+    set.confidence_level === "high"
+      ? "High model confidence on this set."
+      : set.confidence_level === "moderate"
+      ? "Moderate confidence — niche has limited reference data."
+      : "Experimental — lower certainty, higher upside.";
+
+  return { dimensions, overall_score: overall, summary, confidence_note };
+}
+
+// ─── ForecastPanel ────────────────────────────────────────────────────────────
+
+const VARIANT_BAR: Record<ForecastDimension["variant"], string> = {
+  green: "bg-emerald-500",
+  amber: "bg-amber-400",
+  red:   "bg-red-500",
+};
+
+const VARIANT_LABEL: Record<ForecastDimension["variant"], string> = {
+  green: "text-emerald-400",
+  amber: "text-amber-400",
+  red:   "text-red-400",
+};
+
+const ForecastPanel = ({
+  set,
+  isSafe,
+  positioning,
+}: {
+  set:          HashtagSet;
+  isSafe:       boolean;
+  positioning?: ContentPositioning;
+}) => {
+  const forecast = computeForecast(set, positioning);
+  const accent   = isSafe ? "text-primary" : "text-orange-400";
+  const border   = isSafe ? "border-primary/20" : "border-orange-500/20";
+  const bg       = isSafe ? "bg-primary/3" : "bg-orange-500/3";
+
+  return (
+    <div className={`post-card overflow-hidden border ${border} ${bg} animate-fade-in`}>
+
+      {/* Header */}
+      <div className="px-4 py-3 flex items-center justify-between border-b border-border/50">
+        <div className="flex items-center gap-2">
+          <TrendingUp className={`w-4 h-4 ${accent}`} />
+          <p className="text-sm font-semibold text-foreground">Pre-Post Forecast</p>
+          <span className="text-xs text-muted-foreground hidden sm:block">
+            · {isSafe ? "Safe Reach" : "Experimental Reach"} set
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`text-lg font-bold tabular-nums ${
+            forecast.overall_score >= 75 ? "text-emerald-400" :
+            forecast.overall_score >= 55 ? "text-amber-400" : "text-red-400"
+          }`}>
+            {forecast.overall_score}
+          </span>
+          <span className="text-xs text-muted-foreground">/ 100</span>
+        </div>
+      </div>
+
+      {/* Dimension bars */}
+      <div className="px-4 py-4 space-y-4">
+        {forecast.dimensions.map((dim) => (
+          <div key={dim.key} className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-foreground">{dim.label}</span>
+              <span className={`text-xs font-bold tabular-nums ${VARIANT_LABEL[dim.variant]}`}>
+                {dim.value_label}
+              </span>
+            </div>
+            {/* Bar */}
+            <div className="h-2 bg-secondary rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ease-out ${VARIANT_BAR[dim.variant]}`}
+                style={{ width: `${dim.score}%` }}
+              />
+            </div>
+            {/* Tip */}
+            <p className="text-[11px] text-muted-foreground leading-snug">{dim.tip}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Summary footer */}
+      <div className="px-4 py-3 border-t border-border/50 flex items-start gap-2.5 bg-secondary/10">
+        <Sparkles className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${accent}`} />
+        <div className="space-y-0.5 min-w-0">
+          <p className="text-xs font-medium text-foreground">{forecast.summary}</p>
+          <p className="text-[11px] text-muted-foreground">{forecast.confidence_note}</p>
+        </div>
+      </div>
+
+    </div>
+  );
 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -959,9 +1202,18 @@ const HashtagAnalysis = () => {
               <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
               <p className="text-sm text-emerald-400 font-medium">
                 {chosenSet === "safe" ? "Safe Reach" : "Experimental Reach"} selected
-                <span className="text-muted-foreground font-normal ml-1.5">— go post it!</span>
+                <span className="text-muted-foreground font-normal ml-1.5">— here's what to expect.</span>
               </p>
             </div>
+          )}
+
+          {/* Pre-Post Forecast — shown the moment a set is chosen */}
+          {chosenSet && (
+            <ForecastPanel
+              set={result[chosenSet]}
+              isSafe={chosenSet === "safe"}
+              positioning={result.positioning}
+            />
           )}
 
           {/* Shared signal strip (caption keywords + posting time from safe set) */}
