@@ -144,7 +144,32 @@ export default function MasterAdmin() {
   }
 
   if (!user || !MASTER_ADMIN_EMAILS.includes(user.email ?? "")) {
-    return <Navigate to="/dashboard" replace />;
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="max-w-sm w-full rounded-xl border border-border bg-card p-8 text-center space-y-4">
+          <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto">
+            <ShieldCheck className="w-6 h-6 text-red-400" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Access Denied</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              This page is restricted to the master admin account only.
+            </p>
+          </div>
+          {user && (
+            <p className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
+              Logged in as: <span className="font-medium text-foreground">{user.email}</span>
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Please log out and sign in as <span className="font-medium text-foreground">admin@marketers.quest</span>
+          </p>
+          <Link to="/dashboard" className="block text-xs text-primary hover:underline">
+            ← Back to dashboard
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   // ── Queries ──
