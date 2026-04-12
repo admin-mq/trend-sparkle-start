@@ -3,7 +3,6 @@ import { Users, CheckCircle2, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -17,26 +16,30 @@ import type { Influencer } from "@/hooks/useInfluencers";
 function formatFollowers(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
+  return n > 0 ? String(n) : "—";
 }
 
 function ShimmerRows() {
   return (
-    <div className="divide-y divide-border">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="flex items-center gap-4 px-5 py-4">
-          <Skeleton className="h-11 w-11 rounded-full" />
-          <div className="space-y-2 flex-1">
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-3 w-24" />
-          </div>
-          <Skeleton className="h-4 w-16" />
-          <Skeleton className="h-4 w-20" />
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-8 w-20" />
-        </div>
+    <>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <tr key={i} className="border-b border-border">
+          <td className="px-4 py-3">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-10 w-10 rounded-full flex-shrink-0" />
+              <div className="space-y-1.5">
+                <Skeleton className="h-3.5 w-28" />
+                <Skeleton className="h-3 w-20" />
+              </div>
+            </div>
+          </td>
+          <td className="px-4 py-3"><Skeleton className="h-3.5 w-12 mx-auto" /></td>
+          <td className="px-4 py-3"><Skeleton className="h-5 w-24 mx-auto rounded-full" /></td>
+          <td className="px-4 py-3"><Skeleton className="h-5 w-16 mx-auto rounded-full" /></td>
+          <td className="px-4 py-3"><Skeleton className="h-7 w-20 mx-auto rounded-md" /></td>
+        </tr>
       ))}
-    </div>
+    </>
   );
 }
 
@@ -76,7 +79,7 @@ function ConnectDialog({ influencer, onClose, onSuccess }: ConnectDialogProps) {
           brand_email: user.email,
           message: message.trim() || null,
         },
-      }).catch(() => {/* best-effort */});
+      }).catch(() => {});
 
       toast.success(`Connection request sent to ${influencer.name}!`);
       onSuccess(influencer.id);
@@ -147,120 +150,115 @@ interface Props {
 export function InfluencerList({ influencers, loading }: Props) {
   const { user } = useAuth();
   const [connectTarget, setConnectTarget] = useState<Influencer | null>(null);
-  // Track which influencer IDs have had requests sent this session
   const [requested, setRequested] = useState<Set<string>>(new Set());
-
-  if (loading) {
-    return (
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="px-5 py-3 border-b border-border bg-card/50">
-          <Skeleton className="h-4 w-24" />
-        </div>
-        <ShimmerRows />
-      </div>
-    );
-  }
 
   return (
     <>
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-card/50">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Count bar */}
+        <div className="px-5 py-3 border-b border-border bg-card/50 flex-shrink-0">
           <span className="text-sm text-muted-foreground font-medium">
-            {influencers.length} profile{influencers.length !== 1 ? "s" : ""}
+            {loading ? "Loading…" : `${influencers.length} profile${influencers.length !== 1 ? "s" : ""}`}
           </span>
-          <div className="flex items-center gap-6 text-xs font-medium text-muted-foreground">
-            <span className="w-20 text-center">Followers</span>
-            <span className="w-24 text-center">Niche</span>
-            <span className="w-28 text-center">Geography</span>
-            <span className="w-24 text-center">Barter</span>
-            <span className="w-28 text-center"></span>
-          </div>
         </div>
 
-        {/* List */}
-        <ScrollArea className="flex-1">
-          {influencers.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
-              <Users className="h-10 w-10 opacity-40" />
-              <p className="text-sm">No influencers found. Add your first one!</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {influencers.map((inf) => {
-                const hasRequested = requested.has(inf.id);
-                return (
-                  <div
-                    key={inf.id}
-                    className="flex items-center gap-4 px-5 py-4 hover:bg-secondary/30 transition-colors group"
-                  >
-                    {/* Avatar + Name */}
-                    <div className="flex items-center gap-3 min-w-[200px] flex-1">
-                      <Avatar className="h-11 w-11">
-                        {inf.avatar_url && <AvatarImage src={inf.avatar_url} alt={inf.name} />}
-                        <AvatarFallback className="bg-primary/10 text-primary text-sm font-semibold">
-                          {inf.name.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0">
-                        <span className="text-sm font-medium text-foreground truncate block">{inf.name}</span>
-                        <span className="text-xs text-muted-foreground truncate block">@{inf.username}</span>
-                      </div>
+        {/* Scrollable table */}
+        <div className="flex-1 overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 z-10">
+              <tr className="border-b border-border bg-card/90 backdrop-blur-sm">
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Creator</th>
+                <th className="text-center px-3 py-2.5 text-xs font-medium text-muted-foreground w-24">Followers</th>
+                <th className="text-center px-3 py-2.5 text-xs font-medium text-muted-foreground w-36">Niche</th>
+                <th className="text-center px-3 py-2.5 text-xs font-medium text-muted-foreground w-24">Barter</th>
+                <th className="text-center px-3 py-2.5 text-xs font-medium text-muted-foreground w-28"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <ShimmerRows />
+              ) : influencers.length === 0 ? (
+                <tr>
+                  <td colSpan={5}>
+                    <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
+                      <Users className="h-10 w-10 opacity-40" />
+                      <p className="text-sm">No influencers found. Add your first one!</p>
                     </div>
+                  </td>
+                </tr>
+              ) : (
+                influencers.map((inf) => {
+                  const hasRequested = requested.has(inf.id);
+                  return (
+                    <tr
+                      key={inf.id}
+                      className="border-b border-border hover:bg-secondary/30 transition-colors"
+                    >
+                      {/* Creator */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-10 w-10 flex-shrink-0">
+                            {inf.avatar_url && <AvatarImage src={inf.avatar_url} alt={inf.name} />}
+                            <AvatarFallback className="bg-primary/10 text-primary text-sm font-semibold">
+                              {inf.name.charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <p className="font-medium text-foreground truncate">{inf.name}</p>
+                            <p className="text-xs text-muted-foreground truncate">@{inf.username}</p>
+                          </div>
+                        </div>
+                      </td>
 
-                    {/* Followers */}
-                    <span className="w-20 text-center text-sm text-foreground">
-                      {formatFollowers(inf.followers)}
-                    </span>
+                      {/* Followers */}
+                      <td className="px-3 py-3 text-center text-sm tabular-nums text-foreground">
+                        {formatFollowers(inf.followers)}
+                      </td>
 
-                    {/* Niche */}
-                    <span className="w-24 text-center">
-                      {inf.niche_audience ? (
-                        <Badge variant="secondary" className="text-xs">{inf.niche_audience}</Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </span>
+                      {/* Niche */}
+                      <td className="px-3 py-3 text-center">
+                        {inf.niche_audience ? (
+                          <Badge variant="secondary" className="text-xs">{inf.niche_audience}</Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
 
-                    {/* Geography */}
-                    <span className="w-28 text-center text-xs text-muted-foreground">
-                      {inf.geography || "—"}
-                    </span>
+                      {/* Barter */}
+                      <td className="px-3 py-3 text-center">
+                        {inf.barter_open ? (
+                          <Badge variant="outline" className="text-xs border-emerald-500/40 text-emerald-400">
+                            Barter ✓
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
 
-                    {/* Barter */}
-                    <span className="w-24 text-center">
-                      {inf.barter_open ? (
-                        <Badge variant="outline" className="text-xs border-emerald-500/40 text-emerald-400">
-                          Barter ✓
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </span>
-
-                    {/* Connect */}
-                    <span className="w-28 flex justify-center">
-                      {hasRequested ? (
-                        <span className="flex items-center gap-1 text-xs text-emerald-400 font-medium">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Requested
-                        </span>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs border-primary/40 text-primary hover:bg-primary/10"
-                          onClick={() => user && setConnectTarget(inf)}
-                        >
-                          Connect
-                        </Button>
-                      )}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </ScrollArea>
+                      {/* Connect */}
+                      <td className="px-3 py-3 text-center">
+                        {hasRequested ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-emerald-400 font-medium">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Requested
+                          </span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs border-primary/40 text-primary hover:bg-primary/10"
+                            onClick={() => user && setConnectTarget(inf)}
+                          >
+                            Connect
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <ConnectDialog
