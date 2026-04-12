@@ -1,9 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  Search, Loader2, UserPlus, Instagram,
-  AlertCircle, CheckCircle2, Sparkles, LogOut,
-} from "lucide-react";
+import { Search, Loader2, UserPlus, Instagram, AlertCircle, CheckCircle2, Sparkles, LogOut } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -13,9 +10,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 
 const NICHES = [
-  "Fashion & Clothing", "Health & Fitness", "Beauty & Skincare",
-  "Food & Nutrition", "Travel & Lifestyle", "Tech & Gaming",
-  "Parenting & Family", "Finance & Business", "Home & Interior", "Sports & Fitness",
+  "Fashion & Clothing",
+  "Health & Fitness",
+  "Beauty & Skincare",
+  "Food & Nutrition",
+  "Travel & Lifestyle",
+  "Tech & Gaming",
+  "Parenting & Family",
+  "Finance & Business",
+  "Home & Interior",
+  "Sports & Fitness",
 ];
 
 interface IGProfile {
@@ -38,7 +42,6 @@ export default function MasterAdmin() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // ── Loading ──
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -47,19 +50,18 @@ export default function MasterAdmin() {
     );
   }
 
-  // ── Not logged in ──
   if (!user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <div className="max-w-sm w-full rounded-xl border border-border bg-card p-8 text-center space-y-4">
           <h2 className="text-base font-semibold text-foreground">Sign in required</h2>
-          <Link to="/auth" className="block text-xs text-primary hover:underline">Go to sign in →</Link>
+          <Link to="/auth" className="block text-xs text-primary hover:underline">
+            Go to sign in →
+          </Link>
         </div>
       </div>
     );
   }
-
-  // ── Handlers ──
 
   const handleFetch = async () => {
     const u = username.trim().replace(/^@/, "");
@@ -99,7 +101,6 @@ export default function MasterAdmin() {
       if (data?.error) throw new Error(data.error);
       setSaved(true);
       toast.success(`${profile.name} added to the influencer dashboard!`);
-      // Reset for next entry
       setUsername("");
       setProfile(null);
       setFollowers("");
@@ -110,11 +111,8 @@ export default function MasterAdmin() {
     setSaving(false);
   };
 
-  // ── Main UI ──
-
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border bg-card px-6 py-4 flex items-center gap-3">
         <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center">
           <Sparkles className="w-4 h-4 text-white" />
@@ -141,7 +139,6 @@ export default function MasterAdmin() {
         </Button>
       </header>
 
-      {/* Content */}
       <div className="max-w-xl mx-auto px-6 py-12 space-y-8">
         <div>
           <h1 className="text-xl font-bold text-foreground">Add Creator by Instagram Username</h1>
@@ -150,31 +147,31 @@ export default function MasterAdmin() {
           </p>
         </div>
 
-        {/* Input */}
         <div className="flex gap-2">
           <div className="relative flex-1">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm select-none">@</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm select-none">
+              @
+            </span>
             <Input
               className="pl-7 h-11 text-base"
               placeholder="instagram_username"
               value={username}
-              onChange={(e) => { setUsername(e.target.value); setProfile(null); setError(null); setSaved(false); }}
+              onChange={(e) => {
+                setUsername(e.target.value);
+                setProfile(null);
+                setError(null);
+                setSaved(false);
+              }}
               onKeyDown={(e) => e.key === "Enter" && handleFetch()}
               autoFocus
             />
           </div>
-          <Button
-            size="lg"
-            onClick={handleFetch}
-            disabled={fetching || !username.trim()}
-            className="gap-2 px-5"
-          >
+          <Button size="lg" onClick={handleFetch} disabled={fetching || !username.trim()} className="gap-2 px-5">
             {fetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
             {fetching ? "Fetching…" : "Fetch"}
           </Button>
         </div>
 
-        {/* Error */}
         {error && (
           <div className="flex items-start gap-2.5 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
             <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
@@ -182,15 +179,11 @@ export default function MasterAdmin() {
           </div>
         )}
 
-        {/* Profile card */}
         {profile && (
           <div className="rounded-xl border border-border bg-card overflow-hidden">
-            {/* Profile header */}
             <div className="p-5 flex items-center gap-4 border-b border-border">
               <Avatar className="h-16 w-16 flex-shrink-0">
-                {profile.avatar_url && (
-                  <AvatarImage src={profile.avatar_url} alt={profile.name} />
-                )}
+                {profile.avatar_url && <AvatarImage src={profile.avatar_url} alt={profile.name} />}
                 <AvatarFallback className="bg-primary/10 text-primary text-xl font-bold">
                   {profile.name?.charAt(0).toUpperCase()}
                 </AvatarFallback>
@@ -198,24 +191,22 @@ export default function MasterAdmin() {
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-foreground text-base">{profile.name}</p>
                 <p className="text-sm text-muted-foreground flex items-center gap-1">
-                  <Instagram className="w-3.5 h-3.5 text-pink-400 flex-shrink-0" />
-                  @{profile.username}
+                  <Instagram className="w-3.5 h-3.5 text-pink-400 flex-shrink-0" />@{profile.username}
                 </p>
               </div>
             </div>
 
-            {/* Bio */}
             {profile.biography && (
               <div className="px-5 py-4 border-b border-border">
                 <p className="text-sm text-muted-foreground leading-relaxed">{profile.biography}</p>
               </div>
             )}
 
-            {/* Save controls */}
             <div className="px-5 py-4 space-y-4 bg-muted/20">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Before adding to dashboard</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Before adding to dashboard
+              </p>
               <div className="grid grid-cols-2 gap-4">
-                {/* Followers */}
                 <div className="space-y-1.5">
                   <label className="text-xs text-muted-foreground">Followers count</label>
                   <Input
@@ -225,37 +216,51 @@ export default function MasterAdmin() {
                     onChange={(e) => setFollowers(e.target.value)}
                   />
                 </div>
-                {/* Niche */}
                 <div className="space-y-1.5">
                   <label className="text-xs text-muted-foreground">Niche</label>
                   <Select value={niche} onValueChange={setNiche}>
-                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
-                      {NICHES.map((n) => <SelectItem key={n} value={n} className="text-sm">{n}</SelectItem>)}
+                      {NICHES.map((n) => (
+                        <SelectItem key={n} value={n} className="text-sm">
+                          {n}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
-
               <div className="space-y-1.5">
                 <label className="text-xs text-muted-foreground">Open to barter?</label>
                 <div className="flex gap-2">
-                  <Button size="sm" variant={barter ? "default" : "outline"} className="flex-1 h-9 text-sm" onClick={() => setBarter(true)}>Yes</Button>
-                  <Button size="sm" variant={!barter ? "default" : "outline"} className="flex-1 h-9 text-sm" onClick={() => setBarter(false)}>No</Button>
+                  <Button
+                    size="sm"
+                    variant={barter ? "default" : "outline"}
+                    className="flex-1 h-9 text-sm"
+                    onClick={() => setBarter(true)}
+                  >
+                    Yes
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={!barter ? "default" : "outline"}
+                    className="flex-1 h-9 text-sm"
+                    onClick={() => setBarter(false)}
+                  >
+                    No
+                  </Button>
                 </div>
               </div>
-
               <Button onClick={handleAdd} disabled={saving} className="w-full gap-2 h-10">
-                {saving
-                  ? <Loader2 className="w-4 h-4 animate-spin" />
-                  : <UserPlus className="w-4 h-4" />}
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
                 {saving ? "Adding to dashboard…" : "Add to Dashboard"}
               </Button>
             </div>
           </div>
         )}
 
-        {/* Success nudge */}
         {saved && (
           <div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3">
             <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
