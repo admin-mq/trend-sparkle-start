@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdminUsersTab } from "@/components/admin/AdminUsersTab";
 import { AdminUsageTab } from "@/components/admin/AdminUsageTab";
 import { AdminSettingsTab } from "@/components/admin/AdminSettingsTab";
+import { AdminInfluencersTab } from "@/components/admin/AdminInfluencersTab";
 
 const Admin = () => {
   return (
@@ -39,6 +40,12 @@ const Admin = () => {
           >
             System Settings
           </TabsTrigger>
+          <TabsTrigger
+            value="influencers"
+            className="px-4 py-2 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+          >
+            Influencers
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="mt-6">
@@ -51,6 +58,10 @@ const Admin = () => {
 
         <TabsContent value="settings" className="mt-6">
           <AdminSettingsTab />
+        </TabsContent>
+
+        <TabsContent value="influencers" className="mt-6">
+          <AdminInfluencersTab />
         </TabsContent>
       </Tabs>
     </div>

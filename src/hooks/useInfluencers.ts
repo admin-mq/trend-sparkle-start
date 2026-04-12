@@ -10,6 +10,11 @@ export interface Influencer {
   followers: number;
   niche_audience: string | null;
   geography: string | null;
+  avatar_url: string | null;
+  barter_open: boolean | null;
+  email: string | null;
+  phone: string | null;
+  signup_date: string | null;
   created_at: string;
 }
 
