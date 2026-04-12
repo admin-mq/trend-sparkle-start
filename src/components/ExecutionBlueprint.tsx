@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { DetailedDirection } from "@/types/trends";
-import { ArrowLeft, FileText, Hash, Lightbulb, Play, MessageSquare } from "lucide-react";
+import { ArrowLeft, FileText, Hash, Lightbulb, Play, MessageSquare, Heart, Meh, ThumbsDown, Zap } from "lucide-react";
 
 interface ExecutionBlueprintProps {
   trendName: string;
@@ -8,9 +8,11 @@ interface ExecutionBlueprintProps {
   blueprint: DetailedDirection | null;
   trendHashtags: string;
   onBack: () => void;
+  onOptimizeHashtags?: () => void;
+  onFeedback?: (params: { outputType: "caption" | "blueprint"; newOutput: string; userFeedback: "love" | "ok" | "dislike" }) => void;
 }
 
-export const ExecutionBlueprint = ({ trendName, ideaTitle, blueprint, trendHashtags, onBack }: ExecutionBlueprintProps) => {
+export const ExecutionBlueprint = ({ trendName, ideaTitle, blueprint, trendHashtags, onBack, onOptimizeHashtags, onFeedback }: ExecutionBlueprintProps) => {
   if (!blueprint) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center py-12">
@@ -26,7 +28,7 @@ export const ExecutionBlueprint = ({ trendName, ideaTitle, blueprint, trendHasht
   }
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="h-full flex flex-col animate-fade-in">
       <div className="flex items-center gap-3 mb-4">
         <Button 
           variant="ghost" 
@@ -45,7 +47,7 @@ export const ExecutionBlueprint = ({ trendName, ideaTitle, blueprint, trendHasht
         </div>
       </div>
       
-      <div className="space-y-4 max-h-[calc(100vh-320px)] overflow-y-auto pr-2">
+      <div className="flex-1 space-y-4 overflow-y-auto pr-2">
         {/* Concept */}
         <div className="post-card p-4">
           <div className="flex items-center gap-2 mb-3">
@@ -75,9 +77,42 @@ export const ExecutionBlueprint = ({ trendName, ideaTitle, blueprint, trendHasht
 
         {/* Caption */}
         <div className="post-card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <MessageSquare className="w-4 h-4 text-primary" />
-            <h4 className="font-semibold text-foreground text-sm uppercase tracking-wider">Caption</h4>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-primary" />
+              <h4 className="font-semibold text-foreground text-sm uppercase tracking-wider">Caption</h4>
+            </div>
+            {onFeedback && (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-green-500 hover:bg-green-500/10"
+                  onClick={() => onFeedback({ outputType: "caption", newOutput: blueprint.caption, userFeedback: "love" })}
+                  title="Love this caption"
+                >
+                  <Heart className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-yellow-500 hover:bg-yellow-500/10"
+                  onClick={() => onFeedback({ outputType: "caption", newOutput: blueprint.caption, userFeedback: "ok" })}
+                  title="It's okay"
+                >
+                  <Meh className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
+                  onClick={() => onFeedback({ outputType: "caption", newOutput: blueprint.caption, userFeedback: "dislike" })}
+                  title="Not a fan"
+                >
+                  <ThumbsDown className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
           </div>
           <div className="bg-secondary/50 p-3 rounded-lg">
             <p className="text-secondary-foreground whitespace-pre-wrap">{blueprint.caption}</p>
@@ -86,18 +121,31 @@ export const ExecutionBlueprint = ({ trendName, ideaTitle, blueprint, trendHasht
 
         {/* Hashtags */}
         <div className="post-card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Hash className="w-4 h-4 text-primary" />
-            <h4 className="font-semibold text-foreground text-sm uppercase tracking-wider">Hashtags</h4>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Hash className="w-4 h-4 text-primary" />
+              <h4 className="font-semibold text-foreground text-sm uppercase tracking-wider">Hashtags</h4>
+            </div>
+            {onOptimizeHashtags && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onOptimizeHashtags}
+                className="gap-1.5 text-xs h-7 border-primary/30 text-primary hover:bg-primary/10"
+              >
+                <Zap className="w-3 h-3" />
+                Optimize
+              </Button>
+            )}
           </div>
-          
+
           {trendHashtags && (
             <div className="mb-3">
               <p className="text-xs text-muted-foreground mb-2">From trend data:</p>
               <p className="text-sm text-accent">{trendHashtags}</p>
             </div>
           )}
-          
+
           <div>
             <p className="text-xs text-muted-foreground mb-2">AI suggested:</p>
             <div className="flex flex-wrap gap-2">

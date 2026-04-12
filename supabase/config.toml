@@ -1,4 +1,4 @@
-project_id = "xkwadhydveebpaqmgkei"
+project_id = "njnnpdrevbkhbhzwccuz"
 
 [functions.recommend-trends]
 verify_jwt = false
@@ -7,4 +7,35 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.generate-blueprint]
+verify_jwt = false
+
+[functions.update-brand-memory]
+verify_jwt = false
+
+[functions.amcue-chat]
+verify_jwt = false
+
+[functions.pr-scan]
+verify_jwt = false
+
+[functions.pr-scheduler]
+verify_jwt = false
+schedule = "0 6 * * *"
+
+[functions.fetch-trends]
+verify_jwt = false
+
+[functions.analyze-hashtags]
+verify_jwt = false
+
+[functions.instagram-auth]
+verify_jwt = false
+
+[functions.instagram-sync]
+verify_jwt = false
+
+[functions.check-watchlist-trends]
+verify_jwt = false
+
+[functions.analyze-hashtag-gaps]
 verify_jwt = false

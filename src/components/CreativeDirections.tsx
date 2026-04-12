@@ -1,15 +1,16 @@
 import { Button } from "@/components/ui/button";
 import { CreativeDirection } from "@/types/trends";
-import { Lightbulb, ArrowLeft, ArrowRight, Video, Image, Layers } from "lucide-react";
+import { Lightbulb, ArrowLeft, ArrowRight, Video, Heart, Meh, ThumbsDown } from "lucide-react";
 
 interface CreativeDirectionsProps {
   trendName: string;
   directions: CreativeDirection[];
   onViewBlueprint: (direction: CreativeDirection) => void;
   onBack: () => void;
+  onFeedback?: (params: { outputType: "hook"; newOutput: string; userFeedback: "love" | "ok" | "dislike" }) => void;
 }
 
-export const CreativeDirections = ({ trendName, directions, onViewBlueprint, onBack }: CreativeDirectionsProps) => {
+export const CreativeDirections = ({ trendName, directions, onViewBlueprint, onBack, onFeedback }: CreativeDirectionsProps) => {
   if (directions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center py-12">
@@ -25,7 +26,7 @@ export const CreativeDirections = ({ trendName, directions, onViewBlueprint, onB
   }
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="h-full flex flex-col animate-fade-in">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-3">
           <Button 
@@ -45,7 +46,7 @@ export const CreativeDirections = ({ trendName, directions, onViewBlueprint, onB
         <span className="text-xs text-muted-foreground">{directions.length} ideas</span>
       </div>
       
-      <div className="space-y-3 max-h-[calc(100vh-320px)] overflow-y-auto pr-2">
+      <div className="flex-1 space-y-3 overflow-y-auto pr-2">
         {directions.map((direction, index) => (
           <div key={direction.idea_id} className="post-card p-4 hover:shadow-glow transition-shadow">
             <div className="flex items-start gap-3">
@@ -59,9 +60,42 @@ export const CreativeDirections = ({ trendName, directions, onViewBlueprint, onB
             </div>
             
             <div className="hook-highlight mt-3">
-              <p className="text-sm italic text-foreground">
-                "{direction.hook}"
-              </p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm italic text-foreground flex-1">
+                  "{direction.hook}"
+                </p>
+                {onFeedback && (
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-muted-foreground hover:text-green-500 hover:bg-green-500/10"
+                      onClick={() => onFeedback({ outputType: "hook", newOutput: direction.hook, userFeedback: "love" })}
+                      title="Love this hook"
+                    >
+                      <Heart className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-muted-foreground hover:text-yellow-500 hover:bg-yellow-500/10"
+                      onClick={() => onFeedback({ outputType: "hook", newOutput: direction.hook, userFeedback: "ok" })}
+                      title="It's okay"
+                    >
+                      <Meh className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
+                      onClick={() => onFeedback({ outputType: "hook", newOutput: direction.hook, userFeedback: "dislike" })}
+                      title="Not a fan"
+                    >
+                      <ThumbsDown className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex items-start gap-2 mt-3">

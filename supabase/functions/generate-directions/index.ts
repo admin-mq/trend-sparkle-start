@@ -11,13 +11,59 @@ const corsHeaders = {
 const EXTERNAL_SUPABASE_URL = "https://njnnpdrevbkhbhzwccuz.supabase.co";
 const EXTERNAL_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qbm5wZHJldmJraGJoendjY3V6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQzOTg3ODQsImV4cCI6MjA3OTk3NDc4NH0.WKuei-3pR2TphEKjSOOhvNlECrX93Jt9NE5SK2TcD-M";
 
+type BrandMemory = {
+  user_id: string | null;
+  brand_name: string;
+  business_summary?: string | null;
+  voice_profile_text?: string | null;
+  do_list?: string[] | null;
+  dont_list?: string[] | null;
+  preferred_formats?: string[] | null;
+  tone_preferences?: any | null;
+};
+
+async function getBrandMemory(
+  supabase: any,
+  userId: string | null,
+  brandName: string
+): Promise<BrandMemory | null> {
+  if (userId) {
+    const { data: userMemory } = await supabase
+      .from("brand_memory")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("brand_name", brandName)
+      .maybeSingle();
+
+    if (userMemory) return userMemory;
+
+    const { data: sharedMemory } = await supabase
+      .from("brand_memory")
+      .select("*")
+      .is("user_id", null)
+      .eq("brand_name", brandName)
+      .maybeSingle();
+
+    return sharedMemory;
+  }
+
+  const { data } = await supabase
+    .from("brand_memory")
+    .select("*")
+    .is("user_id", null)
+    .eq("brand_name", brandName)
+    .maybeSingle();
+
+  return data;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { user_profile, trend_id, trend_name, user_id } = await req.json();
+    const { user_profile, trend_id, trend_name, why_good_fit, angle_summary, example_hook, timing, region, user_id } = await req.json();
     console.log('Received request for generate-directions:', { user_profile, trend_id, trend_name, user_id: user_id || 'anonymous' });
 
     if (!user_profile || !user_profile.brand_name) {
@@ -36,6 +82,12 @@ serve(async (req) => {
 
     // Initialize external Supabase client
     const externalSupabase = createClient(EXTERNAL_SUPABASE_URL, EXTERNAL_SUPABASE_ANON_KEY);
+
+    // Fetch brand memory
+    const userId = user_id || null;
+    const brandName = user_profile.brand_name || "Unknown Brand";
+    const brandMemory = await getBrandMemory(externalSupabase, userId, brandName);
+    console.log('Brand memory:', brandMemory ? 'found' : 'not found');
 
     // Fetch the full trend record including description
     const { data: trendData, error: trendError } = await externalSupabase
@@ -74,51 +126,103 @@ serve(async (req) => {
         throw new Error('OPENAI_API_KEY not configured');
       }
 
+      // ─── STEP 1: Live web search to find the REAL reason this trend is happening ───
+      let realTimeContext = '';
+      try {
+        console.log(`Web searching for real-time context on: ${trend.trend_name}`);
+        const searchResponse = await fetch('https://api.openai.com/v1/responses', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openaiApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini-search-preview',
+            tools: [{ type: 'web_search_preview' }],
+            input: `Why is "${trend.trend_name}" trending right now? Search for recent news (last 7 days). Give me 3-4 specific sentences covering: what happened, who is involved, why people are talking about it, and the emotional reaction online. Be factual and specific — no vague generalisations.`,
+          }),
+        });
+
+        if (searchResponse.ok) {
+          const searchData = await searchResponse.json();
+          // Extract text from the response output
+          const outputItem = searchData.output?.find((o: any) => o.type === 'message');
+          const textContent = outputItem?.content?.find((c: any) => c.type === 'output_text');
+          if (textContent?.text) {
+            realTimeContext = textContent.text;
+            console.log(`Got real-time context (${realTimeContext.length} chars)`);
+          }
+        } else {
+          console.warn('Web search response not OK:', searchResponse.status);
+        }
+      } catch (searchErr) {
+        console.warn('Web search step failed (non-fatal):', searchErr);
+      }
+
+      // ─── STEP 2: Build rich trend context for idea generation ───
+      const trendContextLines: string[] = [];
+      trendContextLines.push(`Trend name: ${trend.trend_name}`);
+      if (timing) trendContextLines.push(`Trend phase: ${timing} (${timing === 'early' ? 'just breaking — first-mover advantage' : timing === 'peaking' ? 'at peak virality now' : 'already widespread'})`);
+      if (region) trendContextLines.push(`Region: ${region}`);
+
+      // Real-time web search context is the MOST IMPORTANT signal
+      if (realTimeContext) {
+        trendContextLines.push(`\n🔴 REAL-TIME CONTEXT (from live web search — use this as the primary source of truth):\n${realTimeContext}`);
+      }
+      // DB description as secondary signal
+      if (trend.description) trendContextLines.push(`\nStored description:\n${trend.description}`);
+      // Brand-specific context from recommend-trends
+      if (why_good_fit) trendContextLines.push(`\nWhy this trend fits this brand:\n${why_good_fit}`);
+      if (angle_summary) trendContextLines.push(`\nSuggested angle:\n${angle_summary}`);
+      if (example_hook) trendContextLines.push(`\nExample hook already generated:\n"${example_hook}"`);
+
+      const trendContext = trendContextLines.join('\n');
+
       const systemPrompt = `You are a veteran social-first creative director who has shipped thousands of viral posts.
 
 You receive:
 - a brand profile,
-- ONE trend (with a detailed description explaining why it's viral now),
+- ONE trend with REAL-TIME CONTEXT explaining exactly why it's viral right now,
 - the brand's preferred content_format (e.g. video, carousel, short-form).
 
+Brand memory is provided as a style guide. Use it as the highest priority for voice and tone:
+- Match the rhythm and attitude described in voice_profile_text.
+- Follow do_list and avoid dont_list.
+- If tone_preferences exist, use primary_tones and intensity_preference as extra guidance.
+
 Tone handling:
-- The brand tone may include multiple styles (tones array). Use primary_tone as the main voice.
-- Use tone_intensity (1–5) to control how strongly the tone is expressed:
-  1–2 mild, 3 balanced, 4–5 strong, bold, creator-grade.
-- If primary_tone is 'Naughty', allow premium A-rated innuendo but keep it non-explicit and brand-safe.
+- Use primary_tone as the main voice.
+- Use tone_intensity (1–5): 1–2 mild, 3 balanced, 4–5 strong, bold, creator-grade.
+- If primary_tone is 'Naughty', allow premium A-rated innuendo but keep it brand-safe.
 
 Your job:
-Create EXACTLY 5 distinct creative directions (content concepts) for how this brand can use this trend.
+Create EXACTLY 5 distinct creative directions for how this brand can use this trend.
+
+⚠️ CRITICAL: The REAL-TIME CONTEXT tells you the specific story, controversy, ban, scandal, or event behind the trend. Every single idea MUST reference those specific details. If Wayne Player was banned — every idea is about the ban. If a show had a shocking finale — every idea references that moment. Generic ideas that just mention the trend name are WRONG.
 
 Each idea MUST:
-- Be obviously inspired by the trend description (specific scenes, rumours, emotions, memes – not generic references).
-- Match the brand's tone (for example 'witty but classy') in wording and attitude.
-- Fit the specified content_format (e.g. if 'video', think in shots / beats; if 'carousel', think in slides).
-- Support the primary_goal (e.g. saves, profile visits, app downloads) with a clear angle.
+- Directly reference the specific real-time event/story driving the trend.
+- Match the brand's tone in wording and attitude.
+- Fit the content_format (if 'video', think shots/beats; if 'carousel', think slides).
+- Support the primary_goal with a clear angle.
 
 Content rules:
-- Each idea must feel different from the others:
-  - use different formats (POV, challenge, skit, stitch, before/after, breakdown, etc.),
-  - use different emotional angles (humour, nostalgia, tension, education, call-out, etc.).
-- Hooks:
-  - MUST be specific, bold, and scroll-stopping.
-  - Avoid generic hooks like 'you need to see this' or 'here's how'.
-  - Max ~140 characters.
-- Avoid buzzwords like 'drive engagement', 'resonate', 'compelling content'.
-- Sound like a clever creator, not a marketing deck.
+- Use different formats per idea: POV, challenge, skit, stitch, before/after, breakdown, etc.
+- Use different emotional angles: humour, tension, education, call-out, nostalgia, etc.
+- Hooks must be specific and scroll-stopping. Max ~140 characters.
+- No buzzwords. Sound like a clever creator, not a marketing deck.
 
 Output JSON shape:
-
 {
   "trend_id": "...",
   "creative_directions": [
     {
       "idea_id": 1,
-      "title": "Short punchy name for the idea",
-      "summary": "2–3 sentences describing the idea in the brand's tone.",
+      "title": "Short punchy name",
+      "summary": "2–3 sentences in the brand's tone.",
       "hook": "One strong hook line, max ~140 characters.",
-      "visual_idea": "1–3 sentences describing what viewers SEE in this format.",
-      "suggested_cta": "One call-to-action line that matches the primary_goal."
+      "visual_idea": "1–3 sentences describing what viewers SEE.",
+      "suggested_cta": "One CTA matching the primary_goal."
     }
   ]
 }
@@ -129,16 +233,13 @@ Respond ONLY with JSON.`;
 Here is the brand profile:
 ${JSON.stringify(user_profile, null, 2)}
 
-Here is the trend (with a description of why it's currently viral):
-${JSON.stringify(trend, null, 2)}
+Here is the brand memory (style guide):
+${JSON.stringify(brandMemory, null, 2)}
 
-Please create exactly 5 distinct creative directions for how this brand can use this trend.
+⚡ TREND CONTEXT:
+${trendContext}
 
-Return a JSON object with "trend_id" and "creative_directions" array (5 items).
-Each idea needs: idea_id, title, summary, hook, visual_idea, suggested_cta.
-
-Make each idea feel different (different formats, different emotional angles).
-Use specific details from the trend description – no generic phrases or marketing buzzwords.
+Create exactly 5 distinct creative directions. Every idea must directly reference the specific real-time story/event/controversy (not just the trend name). Make each idea feel different in format and emotional angle. No generic marketing language.
 `;
 
       console.log('Calling OpenAI API for creative directions...');

@@ -7,10 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabaseClient";
 import { UserProfile, RecommendedTrend } from "@/types/trends";
 import { useAuth } from "@/hooks/useAuth";
-import { Sparkles, Zap, ChevronDown, Flame, Skull, Zap as ZapIcon, MessageCircle, PartyPopper, Rocket, Crown, GraduationCap, Briefcase, Minimize2, Coffee } from "lucide-react";
+import { Sparkles, Zap, ChevronDown, Flame, Skull, Zap as ZapIcon, MessageCircle, PartyPopper, Rocket, Crown, GraduationCap, Briefcase, Minimize2, Coffee, Globe, Loader2 } from "lucide-react";
 
 interface BrandProfileFormProps {
   onRecommendationsReceived: (recommendations: RecommendedTrend[]) => void;
@@ -21,26 +21,16 @@ interface BrandProfileFormProps {
 }
 
 const INDUSTRIES = [
-  "Agriculture & Forestry (farming, dairy, fisheries, timber)",
-  "Mining & Metals (coal, iron ore, precious metals)",
-  "Oil, Gas & Energy (exploration, refining, renewables, utilities)",
-  "Manufacturing (automotive, electronics, textiles, machinery)",
-  "Construction & Real Estate (infrastructure, residential, commercial)",
-  "Transportation & Logistics (shipping, airlines, warehousing, last-mile)",
-  "Retail & E-commerce (grocery, apparel, marketplaces)",
-  "FMCG / Consumer Goods (food, beverages, personal care)",
-  "Healthcare & Pharmaceuticals (hospitals, biotech, medical devices)",
-  "Finance & Insurance (banking, asset management, fintech, underwriting)",
-  "Technology & Software (SaaS, AI, cybersecurity, hardware)",
-  "Telecommunications (mobile networks, broadband, satellite)",
-  "Media, Entertainment & Gaming (streaming, music, esports)",
-  "Education & Training (schools, edtech, professional upskilling)",
-  "Hospitality & Tourism (hotels, travel services, events)",
-  "Food Services (restaurants, cloud kitchens, catering)",
-  "Professional Services (consulting, legal, accounting, HR)",
-  "Public Sector & Defense (government services, aerospace, security)",
-  "Chemicals & Materials (industrial chemicals, plastics, specialty materials)",
-  "Water & Waste Management (sanitation, recycling, circular economy)",
+  "Retail & E-commerce",
+  "FMCG / Consumer Goods",
+  "Technology & Software (SaaS/AI)",
+  "Media, Entertainment & Gaming",
+  "Healthcare & Pharmaceuticals",
+  "Finance & Insurance",
+  "Hospitality & Tourism",
+  "Food Services (restaurants/cloud kitchens)",
+  "Professional Services (consulting/legal/HR)",
+  "Education & Training (edtech/upskilling)",
   "Other"
 ];
 
@@ -182,6 +172,10 @@ export const BrandProfileForm = ({
     content_format: '',
     primary_goal: ''
   });
+  const [customIndustry, setCustomIndustry] = useState('');
+  const [websiteUrl, setWebsiteUrl] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
 
   const [selectedTones, setSelectedTones] = useState<string[]>([]);
   const [toneIntensity, setToneIntensity] = useState<number>(3);
@@ -226,14 +220,80 @@ export const BrandProfileForm = ({
       toneString = selectedTones.join(" + ");
     }
 
+    // Use custom industry text if "Other" is selected
+    const finalIndustry = userProfile.industry === "Other" && customIndustry.trim() 
+      ? customIndustry.trim() 
+      : userProfile.industry;
+
     return {
       ...userProfile,
+      industry: finalIndustry,
       tone: toneString,
       tones: selectedTones.length > 0 ? selectedTones : ["casual"],
       primary_tone: primaryTone || "casual",
       tone_intensity: toneIntensity,
       tone_meter_label: toneMeterLabel || "Vibe meter"
     };
+  };
+
+  const handleAnalyzeWebsite = async () => {
+    if (!websiteUrl.trim()) return;
+    setIsAnalyzing(true);
+    setAnalyzeError(null);
+
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('analyze-brand-website', {
+        body: { website_url: websiteUrl.trim() }
+      });
+
+      if (fnError || !data?.brand_profile) {
+        throw new Error(data?.error || 'Could not analyse the website. Try entering details manually.');
+      }
+
+      const p = data.brand_profile;
+
+      // Auto-populate fields
+      if (p.brand_name) {
+        setUserProfile(prev => ({ ...prev, brand_name: p.brand_name }));
+        onBrandNameChange(p.brand_name);
+      }
+      if (p.business_summary) setUserProfile(prev => ({ ...prev, business_summary: p.business_summary }));
+      if (p.niche) setUserProfile(prev => ({ ...prev, niche: p.niche }));
+
+      // Industry: match or fall back to "Other"
+      if (p.industry) {
+        const matched = INDUSTRIES.find(i => i === p.industry);
+        if (matched) {
+          setUserProfile(prev => ({ ...prev, industry: matched }));
+        } else {
+          setUserProfile(prev => ({ ...prev, industry: 'Other' }));
+          setCustomIndustry(p.industry);
+        }
+      }
+
+      // Audience
+      if (p.audience) {
+        const matched = AUDIENCES.find(a => a === p.audience);
+        if (matched) setUserProfile(prev => ({ ...prev, audience: matched }));
+      }
+
+      // Geography
+      if (p.geography) {
+        const matched = GEOGRAPHIES.find(g => g === p.geography);
+        if (matched) setUserProfile(prev => ({ ...prev, geography: matched }));
+      }
+
+      // Tones
+      if (Array.isArray(p.tones) && p.tones.length > 0) {
+        const validTones = p.tones.filter((t: string) => TONES.includes(t));
+        if (validTones.length > 0) setSelectedTones(validTones);
+      }
+
+    } catch (err) {
+      setAnalyzeError(err instanceof Error ? err.message : 'Analysis failed');
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -281,6 +341,39 @@ export const BrandProfileForm = ({
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto pr-1">
+        {/* Website URL auto-fill */}
+        <div className="space-y-2 p-3 rounded-lg border border-primary/20 bg-primary/5">
+          <Label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+            <Globe className="w-3 h-3" />
+            Auto-fill from your website
+          </Label>
+          <div className="flex gap-2">
+            <Input
+              value={websiteUrl}
+              onChange={(e) => setWebsiteUrl(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAnalyzeWebsite()}
+              placeholder="e.g. apple.com"
+              className="bg-background border-border/50 focus:border-primary flex-1"
+              disabled={isAnalyzing}
+            />
+            <Button
+              onClick={handleAnalyzeWebsite}
+              disabled={isAnalyzing || !websiteUrl.trim()}
+              size="sm"
+              variant="outline"
+              className="border-primary/40 text-primary hover:bg-primary/10 gap-1.5 whitespace-nowrap"
+            >
+              {isAnalyzing ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analysing…</>
+              ) : (
+                <><Sparkles className="w-3.5 h-3.5" /> Analyse</>
+              )}
+            </Button>
+          </div>
+          {analyzeError && <p className="text-xs text-destructive">{analyzeError}</p>}
+          <p className="text-xs text-muted-foreground">Paste your website URL and we'll auto-fill your brand profile.</p>
+        </div>
+
         <div className="space-y-2">
           <Label htmlFor="brand_name" className="text-xs text-muted-foreground uppercase tracking-wider">Brand name</Label>
           <Input
@@ -310,12 +403,20 @@ export const BrandProfileForm = ({
             <SelectTrigger className="bg-secondary/50 border-border/50">
               <SelectValue placeholder="Select industry" />
             </SelectTrigger>
-            <SelectContent className="max-h-[300px]">
+            <SelectContent>
               {INDUSTRIES.map((item) => (
                 <SelectItem key={item} value={item}>{item}</SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {userProfile.industry === "Other" && (
+            <Input
+              value={customIndustry}
+              onChange={(e) => setCustomIndustry(e.target.value)}
+              placeholder="Specify your industry"
+              className="bg-secondary/50 border-border/50 focus:border-primary mt-2"
+            />
+          )}
         </div>
 
         <div className="space-y-2">
