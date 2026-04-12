@@ -40,7 +40,7 @@ const navGroups = [
       { path: "/trend-quest", label: "Trend Quest", icon: TrendingUp },
       { path: "/hashtag-analysis", label: "Hashtag Analysis", icon: Hash },
       { path: "/hashtag-watchlist",     label: "Watchlist",     icon: Bookmark },
-      { path: "/hashtag-gap-analysis",  label: "Gap Analysis",  icon: Layers   },
+      { path: "/hashtag-gap-analysis",  label: "Tag Gap Finder", icon: Layers   },
       { path: "/trending-audios", label: "Trending Audios", icon: Music },
     ],
   },

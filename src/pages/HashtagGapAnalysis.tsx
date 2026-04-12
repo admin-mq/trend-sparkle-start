@@ -374,13 +374,45 @@ const HashtagGapAnalysis = () => {
               </button>
             </div>
 
-            {/* Summary stats */}
+            {/* ── Headline banner — the number leads ── */}
+            <div className={`post-card p-5 space-y-1 ${
+              result.gaps.length > 0
+                ? "border-amber-500/30 bg-amber-500/5"
+                : "border-emerald-500/30 bg-emerald-500/5"
+            }`}>
+              {result.gaps.length > 0 ? (
+                <>
+                  <p className="text-3xl font-bold text-foreground">
+                    You're missing{" "}
+                    <span className="text-amber-400">{result.gaps.length} high-performing tag{result.gaps.length !== 1 ? "s" : ""}</span>
+                    {" "}your competitors use.
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {adoptTags.length > 0
+                      ? `${adoptTags.length} ready to adopt now · ${testTags.length} worth testing · ${overlapCfg.label.toLowerCase()} with this niche's baseline.`
+                      : `${testTags.length} worth testing · ${overlapCfg.label.toLowerCase()} with this niche's baseline.`
+                    }
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-3xl font-bold text-foreground">
+                    <span className="text-emerald-400">No gaps found</span> — your portfolio already covers this niche.
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Strong overlap with the competitor's strategy. See Your Edges tab for what you do differently.
+                  </p>
+                </>
+              )}
+            </div>
+
+            {/* Sub-stats row */}
             <div className="grid grid-cols-3 gap-3">
               <div className="post-card p-3.5 text-center space-y-1">
                 <p className={`text-2xl font-bold tabular-nums ${
                   result.gaps.length > 0 ? "text-amber-400" : "text-emerald-400"
                 }`}>{result.gaps.length}</p>
-                <p className="text-xs text-muted-foreground">Gaps Found</p>
+                <p className="text-xs text-muted-foreground">Gaps</p>
               </div>
               <div className="post-card p-3.5 text-center space-y-1">
                 <p className="text-2xl font-bold text-blue-400 tabular-nums">{result.user_edge.length}</p>
@@ -388,7 +420,7 @@ const HashtagGapAnalysis = () => {
               </div>
               <div className="post-card p-3.5 text-center space-y-1">
                 <p className="text-2xl font-bold text-foreground tabular-nums">{result.common_ground.length}</p>
-                <p className="text-xs text-muted-foreground">Shared Tags</p>
+                <p className="text-xs text-muted-foreground">Shared</p>
               </div>
             </div>
 
@@ -396,7 +428,7 @@ const HashtagGapAnalysis = () => {
             <div className="post-card p-4 space-y-3 border-primary/15 bg-primary/3">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-primary flex-shrink-0" />
-                <p className="text-sm font-semibold text-foreground">Strategy Summary</p>
+                <p className="text-sm font-semibold text-foreground">What this means for you</p>
                 <span className={`text-xs font-medium ml-auto ${overlapCfg.color}`}>{overlapCfg.label}</span>
               </div>
               <p className="text-sm text-secondary-foreground leading-relaxed">{result.strategy_summary}</p>
@@ -591,9 +623,9 @@ const HashtagGapAnalysis = () => {
               <Layers className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-foreground">Gap Analysis</h1>
+              <h1 className="text-xl font-bold text-foreground">Find Your Missing Tags</h1>
               <p className="text-xs text-muted-foreground">
-                Paste hashtags working in your niche — we compare them against your portfolio.
+                Paste hashtags that are working in your niche — we'll show you exactly what you're missing.
               </p>
             </div>
           </div>
@@ -603,7 +635,7 @@ const HashtagGapAnalysis = () => {
             <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
               <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-amber-300">
-                No analysis history yet — gap analysis will score the competitor tags on their own merit without a personal comparison. Run a few post analyses first to unlock the full comparison.
+                No history yet — we'll still score every gap tag on its own merit. Run a few post analyses first to unlock the personal comparison layer.
               </p>
             </div>
           )}
@@ -611,11 +643,11 @@ const HashtagGapAnalysis = () => {
           {/* Competitor tags input */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">
-              Competitor / Niche Hashtags
-              <span className="text-muted-foreground font-normal ml-1.5">— paste from any post or research</span>
+              Paste hashtags you've seen working in your niche
+              <span className="text-muted-foreground font-normal ml-1.5">— from a competitor post, a top creator, anywhere</span>
             </label>
             <Textarea
-              placeholder={"#fitness #healthylifestyle #workout\nor paste one per line or comma-separated"}
+              placeholder={"#fitness #healthylifestyle #workout\n\nPaste from any post — one per line, comma-separated, or all at once."}
               value={competitorInput}
               onChange={(e) => setCompetitorInput(e.target.value)}
               className="min-h-[120px] resize-none font-mono text-sm"
@@ -670,7 +702,7 @@ const HashtagGapAnalysis = () => {
               ? <Loader2 className="w-4 h-4 animate-spin" />
               : <Zap className="w-4 h-4" />
             }
-            {!portfolioLoaded ? "Loading your portfolio…" : "Analyse Gaps"}
+            {!portfolioLoaded ? "Loading your portfolio…" : "Find My Missing Tags"}
           </Button>
 
           {/* How it works */}
@@ -678,9 +710,9 @@ const HashtagGapAnalysis = () => {
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">How it works</p>
             <div className="space-y-2.5">
               {[
-                { step: "1", text: "Paste hashtags you've seen performing well in your niche or on competitor posts." },
-                { step: "2", text: "The engine compares them against your own hashtag history to find what you're missing." },
-                { step: "3", text: "Each gap tag gets an opportunity score, risk rating, and a clear verdict: Adopt / Test / Skip." },
+                { step: "1", text: "Paste any hashtags working in your niche — from a competitor post, a top creator, or your own research." },
+                { step: "2", text: "We compare them against your full hashtag history to surface exactly what you're not using but should be." },
+                { step: "3", text: "Every gap tag is scored and labelled: Adopt it now, Test it first, or Skip — with a one-line reason why." },
               ].map(({ step, text }) => (
                 <div key={step} className="flex items-start gap-2.5">
                   <span className="w-5 h-5 rounded-full bg-primary/15 text-primary text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
