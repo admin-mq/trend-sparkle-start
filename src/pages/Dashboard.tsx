@@ -6,6 +6,7 @@ import {
   Search, TrendingUp, Zap, Globe, ArrowRight,
   Loader2, CheckCircle2, XCircle, AlertCircle,
   Megaphone, Users, BarChart3, Brain, Sparkles, Activity,
+  Hash, TrendingDown, Minus, Trophy, FlaskConical, Shield,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -250,6 +251,123 @@ function parseNotes(notes: string | null) {
   } catch { return { opportunity: 0, structural: 0, pagesCrawled: 0 }; }
 }
 
+// ── Hashtag Momentum ──────────────────────────────────────────────────────────
+
+interface HashtagMomentum {
+  totalAnalyses:    number;
+  thisWeekCount:    number;
+  thisWeekAvgScore: number | null;
+  lastWeekAvgScore: number | null;
+  scoreDelta:       number | null;       // positive = improved
+  safeWins:         number;
+  expWins:          number;
+  bestWin: {
+    caption:    string;
+    metric:     number;                  // views
+    metricType: "views" | "saves";
+    multiplier: number | null;           // vs user avg, e.g. 2.1
+    setChosen:  "safe" | "experimental";
+  } | null;
+}
+
+async function loadHashtagMomentum(userId: string): Promise<HashtagMomentum | null> {
+  try {
+    const now    = new Date();
+    // Monday 00:00 of current week
+    const day    = now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+    monday.setHours(0, 0, 0, 0);
+    const lastMonday = new Date(monday.getTime() - 7 * 86_400_000);
+
+    // Fetch last 60 days of requests + results + outcomes
+    const since = new Date(now.getTime() - 60 * 86_400_000).toISOString();
+    const { data, error } = await supabase
+      .from("hashtag_requests")
+      .select(`
+        id, created_at, caption,
+        hashtag_results ( set_score ),
+        hashtag_outcomes ( views, saves, shares, set_chosen )
+      `)
+      .eq("user_id", userId)
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(200);
+
+    if (error || !data) return null;
+    if (data.length === 0) return null;
+
+    type Row = {
+      id: string; created_at: string; caption: string;
+      hashtag_results: { set_score: number }[] | { set_score: number } | null;
+      hashtag_outcomes: { views: number|null; saves: number|null; shares: number|null; set_chosen: string|null }[] | { views: number|null; saves: number|null; shares: number|null; set_chosen: string|null } | null;
+    };
+
+    const getResult  = (r: Row) => Array.isArray(r.hashtag_results)  ? r.hashtag_results[0]  : r.hashtag_results;
+    const getOutcome = (r: Row) => Array.isArray(r.hashtag_outcomes) ? r.hashtag_outcomes[0] : r.hashtag_outcomes;
+
+    const thisWeekRows  = (data as Row[]).filter(r => new Date(r.created_at) >= monday);
+    const lastWeekRows  = (data as Row[]).filter(r => {
+      const d = new Date(r.created_at);
+      return d >= lastMonday && d < monday;
+    });
+
+    const avgScore = (rows: Row[]) => {
+      const scores = rows.map(r => getResult(r)?.set_score).filter((s): s is number => s != null);
+      return scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+    };
+
+    const thisWeekAvg = avgScore(thisWeekRows);
+    const lastWeekAvg = avgScore(lastWeekRows);
+    const delta = (thisWeekAvg != null && lastWeekAvg != null) ? thisWeekAvg - lastWeekAvg : null;
+
+    // Set win counts from outcomes
+    let safeWins = 0, expWins = 0;
+    for (const row of data as Row[]) {
+      const o = getOutcome(row);
+      if (o?.set_chosen === "safe")         safeWins++;
+      else if (o?.set_chosen === "experimental") expWins++;
+    }
+
+    // Best win: row with highest views that has outcome data
+    const withViews = (data as Row[])
+      .map(r => ({ r, o: getOutcome(r) }))
+      .filter(({ o }) => o?.views != null && o.views > 0)
+      .sort((a, b) => (b.o!.views! - a.o!.views!));
+
+    let bestWin: HashtagMomentum["bestWin"] = null;
+    if (withViews.length > 0) {
+      const { r, o } = withViews[0];
+      const allViews = withViews.map(x => x.o!.views!);
+      const avgViews = allViews.reduce((a, b) => a + b, 0) / allViews.length;
+      const multiplier = allViews.length >= 2
+        ? Math.round((o!.views! / avgViews) * 10) / 10
+        : null;
+      bestWin = {
+        caption:    r.caption,
+        metric:     o!.views!,
+        metricType: "views",
+        multiplier: multiplier && multiplier > 1.1 ? multiplier : null,
+        setChosen:  (o!.set_chosen as "safe" | "experimental") ?? "safe",
+      };
+    }
+
+    return {
+      totalAnalyses:    data.length,
+      thisWeekCount:    thisWeekRows.length,
+      thisWeekAvgScore: thisWeekAvg,
+      lastWeekAvgScore: lastWeekAvg,
+      scoreDelta:       delta,
+      safeWins,
+      expWins,
+      bestWin,
+    };
+  } catch (e) {
+    console.error("loadHashtagMomentum error:", e);
+    return null;
+  }
+}
+
 function ScoreBar({ value }: { value: number }) {
   const color = value >= 70 ? "bg-emerald-500" : value >= 45 ? "bg-amber-500" : "bg-red-500";
   return (
@@ -269,6 +387,7 @@ const Dashboard = () => {
   const { profile } = useAuthContext();
   const [data, setData] = useState<DashData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [momentum, setMomentum] = useState<HashtagMomentum | null>(null);
 
   const brandName = profile?.brand_name || profile?.full_name || "Your Brand";
   const greeting = getDailyGreeting(brandName);
@@ -337,6 +456,12 @@ const Dashboard = () => {
   }, []);
 
   useEffect(() => { void loadDashboard(); }, [loadDashboard]);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) loadHashtagMomentum(user.id).then(setMomentum);
+    });
+  }, []);
 
   const Skeleton = ({ className }: { className?: string }) => (
     <div className={cn("bg-secondary animate-pulse rounded-lg", className)} />
@@ -422,6 +547,184 @@ const Dashboard = () => {
             ))
           }
         </div>
+
+        {/* ── 3. Hashtag Intelligence Momentum ─────────────────────────── */}
+        {momentum && momentum.totalAnalyses > 0 && (
+          <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/8 via-primary/4 to-transparent p-5 space-y-4">
+
+            {/* Section header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center">
+                  <Hash className="w-3.5 h-3.5 text-primary" />
+                </div>
+                <span className="text-xs font-semibold uppercase tracking-wider text-primary/80">
+                  Hashtag Intelligence · This Week
+                </span>
+              </div>
+              <button
+                onClick={() => navigate("/hashtag-analysis")}
+                className="text-xs text-primary hover:underline flex items-center gap-1"
+              >
+                Analyse a post <ArrowRight className="w-3 h-3" />
+              </button>
+            </div>
+
+            {/* Stat strip */}
+            <div className="grid grid-cols-3 gap-3">
+
+              {/* Posts optimised this week */}
+              <div className="bg-background/60 rounded-lg p-3.5 space-y-1">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Optimised This Week
+                </p>
+                <div className="flex items-end gap-1.5">
+                  <span className="text-2xl font-bold text-foreground tabular-nums leading-none">
+                    {momentum.thisWeekCount}
+                  </span>
+                  <span className="text-xs text-muted-foreground pb-0.5">
+                    {momentum.thisWeekCount === 1 ? "post" : "posts"}
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {momentum.totalAnalyses} total all-time
+                </p>
+              </div>
+
+              {/* Score trend */}
+              <div className="bg-background/60 rounded-lg p-3.5 space-y-1">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Avg Readiness Score
+                </p>
+                <div className="flex items-end gap-1.5">
+                  {momentum.thisWeekAvgScore != null ? (
+                    <>
+                      <span className="text-2xl font-bold text-foreground tabular-nums leading-none">
+                        {momentum.thisWeekAvgScore}
+                      </span>
+                      {momentum.scoreDelta != null && momentum.scoreDelta !== 0 && (
+                        <div className={cn(
+                          "flex items-center gap-0.5 pb-0.5 text-xs font-semibold",
+                          momentum.scoreDelta > 0 ? "text-emerald-400" : "text-red-400"
+                        )}>
+                          {momentum.scoreDelta > 0
+                            ? <TrendingUp className="w-3 h-3" />
+                            : <TrendingDown className="w-3 h-3" />
+                          }
+                          {momentum.scoreDelta > 0 ? "+" : ""}{momentum.scoreDelta} pts
+                        </div>
+                      )}
+                      {momentum.scoreDelta === 0 && (
+                        <div className="flex items-center gap-0.5 pb-0.5 text-xs text-muted-foreground">
+                          <Minus className="w-3 h-3" /> same
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">—</span>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {momentum.scoreDelta != null
+                    ? momentum.scoreDelta > 0
+                      ? "Up vs. last week 🎯"
+                      : momentum.scoreDelta < 0
+                      ? "Down vs. last week"
+                      : "Same as last week"
+                    : momentum.lastWeekAvgScore == null
+                    ? "No data from last week yet"
+                    : "vs. last week"
+                  }
+                </p>
+              </div>
+
+              {/* Set win rate */}
+              <div className="bg-background/60 rounded-lg p-3.5 space-y-1">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Set Performance
+                </p>
+                {(momentum.safeWins + momentum.expWins) > 0 ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 text-xs font-semibold text-primary">
+                        <Shield className="w-3 h-3" />
+                        {momentum.safeWins}
+                      </div>
+                      <span className="text-muted-foreground text-xs">vs</span>
+                      <div className="flex items-center gap-1 text-xs font-semibold text-orange-400">
+                        <FlaskConical className="w-3 h-3" />
+                        {momentum.expWins}
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      {momentum.safeWins > momentum.expWins
+                        ? "Safe sets used more often"
+                        : momentum.expWins > momentum.safeWins
+                        ? "Experimental sets winning"
+                        : "Tied between sets"}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-sm text-muted-foreground leading-none">—</span>
+                    <p className="text-[11px] text-muted-foreground">Log a post to track</p>
+                  </>
+                )}
+              </div>
+
+            </div>
+
+            {/* Best win highlight */}
+            {momentum.bestWin && (
+              <div className="bg-background/60 rounded-lg px-4 py-3 flex items-start gap-3">
+                <div className="w-7 h-7 rounded-lg bg-amber-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-foreground">
+                    {momentum.bestWin.multiplier
+                      ? <>Your best post hit <span className="text-amber-400">{momentum.bestWin.metric.toLocaleString()} views</span> — {momentum.bestWin.multiplier}× your average.</>
+                      : <>Your best post hit <span className="text-amber-400">{momentum.bestWin.metric.toLocaleString()} views</span> using the {momentum.bestWin.setChosen === "safe" ? "Safe" : "Experimental"} set.</>
+                    }
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
+                    "{momentum.bestWin.caption}"
+                  </p>
+                </div>
+                <span className={cn(
+                  "text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 flex items-center gap-1 mt-0.5",
+                  momentum.bestWin.setChosen === "safe"
+                    ? "bg-primary/10 text-primary"
+                    : "bg-orange-500/10 text-orange-400"
+                )}>
+                  {momentum.bestWin.setChosen === "safe"
+                    ? <><Shield className="w-2.5 h-2.5" /> Safe</>
+                    : <><FlaskConical className="w-2.5 h-2.5" /> Exp.</>
+                  }
+                </span>
+              </div>
+            )}
+
+            {/* Zero-this-week nudge */}
+            {momentum.thisWeekCount === 0 && (
+              <div className="flex items-center justify-between gap-3 bg-background/40 rounded-lg px-4 py-3">
+                <p className="text-xs text-muted-foreground">
+                  No posts optimised yet this week — run an analysis to keep your momentum going.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => navigate("/hashtag-analysis")}
+                  className="gap-1.5 flex-shrink-0 text-xs border-primary/30 text-primary hover:bg-primary/10"
+                >
+                  <Zap className="w-3 h-3" />
+                  Analyse Now
+                </Button>
+              </div>
+            )}
+
+          </div>
+        )}
 
         {/* ── 3. Top Action Spotlight + Activity Feed ───────────────────── */}
         <div className="grid lg:grid-cols-5 gap-4">
