@@ -8,6 +8,7 @@ import {
   Hash, ArrowLeft, Shield, FlaskConical, BarChart2,
   Eye, Bookmark, Share2, Calendar, ChevronRight,
   Zap, Clock, AlertTriangle, CheckCircle2, Loader2,
+  Target,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -27,6 +28,8 @@ interface HistoryEntry {
       safe: Array<{ tag: string; score: number; role: string }>;
       experimental: Array<{ tag: string; score: number; role: string }>;
     };
+    positioning_score: number | null;
+    positioning_verdict: "aligned" | "minor_drift" | "significant_mismatch" | null;
   } | null;
   hashtag_outcomes: {
     set_chosen: "safe" | "experimental" | null;
@@ -54,6 +57,24 @@ const REGION_LABELS: Record<string, string> = {
 const GOAL_LABELS: Record<string, string> = {
   reach: "Reach", engagement: "Engagement", followers: "Followers",
   sales: "Sales", community: "Community",
+};
+
+const VERDICT_CONFIG = {
+  aligned: {
+    label: "Aligned",
+    pill: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30",
+    dot: "bg-emerald-400",
+  },
+  minor_drift: {
+    label: "Minor Drift",
+    pill: "bg-amber-500/15 text-amber-400 border border-amber-500/30",
+    dot: "bg-amber-400",
+  },
+  significant_mismatch: {
+    label: "Mismatch",
+    pill: "bg-red-500/15 text-red-400 border border-red-500/30",
+    dot: "bg-red-400",
+  },
 };
 
 function timeAgo(iso: string) {
@@ -98,7 +119,7 @@ const HashtagHistory = () => {
         .from("hashtag_requests")
         .select(`
           id, created_at, caption, platform, region, goal_type, brand_name,
-          hashtag_results ( set_score, confidence_level, hashtags ),
+          hashtag_results ( set_score, confidence_level, hashtags, positioning_score, positioning_verdict ),
           hashtag_outcomes ( set_chosen, views, saves, shares, follows_gained )
         `)
         .eq("user_id", user!.id)
@@ -178,12 +199,13 @@ const HashtagHistory = () => {
           {/* Entry list */}
           <div className="space-y-3">
             {entries.map((entry) => {
-              const result  = entry.hashtag_results;
-              const outcome = entry.hashtag_outcomes;
-              const isOpen  = expanded === entry.id;
-              const safeSet = result?.hashtags?.safe       ?? [];
-              const expSet  = result?.hashtags?.experimental ?? [];
+              const result   = entry.hashtag_results;
+              const outcome  = entry.hashtag_outcomes;
+              const isOpen   = expanded === entry.id;
+              const safeSet  = result?.hashtags?.safe         ?? [];
+              const expSet   = result?.hashtags?.experimental ?? [];
               const hasMetrics = outcome && (outcome.views || outcome.saves || outcome.shares || outcome.follows_gained);
+              const verdict  = result?.positioning_verdict ? VERDICT_CONFIG[result.positioning_verdict] : null;
 
               return (
                 <div
@@ -236,6 +258,12 @@ const HashtagHistory = () => {
                             {result.confidence_level && (
                               <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${CONFIDENCE_PILL[result.confidence_level]}`}>
                                 {result.confidence_level === "high" ? "High" : result.confidence_level === "moderate" ? "Mod." : "Exp."}
+                              </span>
+                            )}
+                            {verdict && (
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex items-center gap-1 ${verdict.pill}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${verdict.dot}`} />
+                                {verdict.label}
                               </span>
                             )}
                           </div>
@@ -300,6 +328,25 @@ const HashtagHistory = () => {
                                 </span>
                               ))}
                             </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Positioning score */}
+                      {result?.positioning_verdict && verdict && (
+                        <div className="px-4 pb-3 border-t border-border pt-3">
+                          <div className="flex items-center gap-2">
+                            <Target className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                            <span className="text-xs text-muted-foreground">Content Positioning</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex items-center gap-1 ml-1 ${verdict.pill}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${verdict.dot}`} />
+                              {verdict.label}
+                            </span>
+                            {result.positioning_score != null && (
+                              <span className="ml-auto text-xs font-semibold text-foreground tabular-nums">
+                                {result.positioning_score}<span className="text-muted-foreground font-normal">/100</span>
+                              </span>
+                            )}
                           </div>
                         </div>
                       )}

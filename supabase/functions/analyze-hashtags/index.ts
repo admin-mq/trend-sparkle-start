@@ -348,6 +348,9 @@ serve(async (req) => {
                 best_posting_time:      safeSet.best_posting_time,
                 caption_keywords:       safeSet.caption_keywords,
                 warnings:               safeSet.warnings,
+                positioning_score:      positioning?.positioning_score ?? null,
+                positioning_verdict:    positioning?.overall_verdict ?? null,
+                positioning_data:       positioning ?? null,
               });
           }
         }
