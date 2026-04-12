@@ -33,3 +33,6 @@ verify_jwt = false
 
 [functions.instagram-sync]
 verify_jwt = false
+
+[functions.check-watchlist-trends]
+verify_jwt = false

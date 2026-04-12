@@ -11,6 +11,7 @@ import Dashboard from "./pages/Dashboard";
 import TrendQuest from "./pages/TrendQuest";
 import HashtagAnalysis from "./pages/HashtagAnalysis";
 import HashtagHistory from "./pages/HashtagHistory";
+import HashtagWatchlist from "./pages/HashtagWatchlist";
 import CreatorIntelligence from "./pages/CreatorIntelligence";
 import InstagramCallback from "./pages/InstagramCallback";
 import TrendingAudios from "./pages/TrendingAudios";
@@ -63,6 +64,7 @@ const App = () => (
               <Route path="/trend-quest" element={<TrendQuest />} />
               <Route path="/hashtag-analysis" element={<HashtagAnalysis />} />
               <Route path="/hashtag-history" element={<HashtagHistory />} />
+              <Route path="/hashtag-watchlist" element={<HashtagWatchlist />} />
               <Route path="/creator-intelligence" element={<CreatorIntelligence />} />
               <Route path="/trending-audios" element={<TrendingAudios />} />
               <Route path="/seo" element={<SEO />} />

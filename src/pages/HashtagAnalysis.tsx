@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import {
   Hash, ArrowLeft, Copy, Check, Zap, BookOpen,
   ChevronDown, ChevronUp, AlertTriangle, Clock,
-  Sparkles, ArrowRight, Eye, Bookmark, Share2, UserPlus, BarChart2,
+  Sparkles, ArrowRight, Eye, Bookmark, BookmarkPlus, Share2, UserPlus, BarChart2,
   Shield, FlaskConical, History, Instagram, RefreshCw, Link2, Brain, Unlink,
   TrendingUp,
 } from "lucide-react";
@@ -604,6 +604,8 @@ const HashtagSetPanel = ({
   onChoose,
   onCopy,
   copiedSet,
+  pinned,
+  onPin,
 }: {
   set: HashtagSet;
   isChosen: boolean;
@@ -613,6 +615,8 @@ const HashtagSetPanel = ({
   onChoose: () => void;
   onCopy: () => void;
   copiedSet: boolean;
+  pinned: Set<string>;
+  onPin: (tag: string) => void;
 }) => {
   const borderClass = isChosen
     ? isSafe
@@ -683,8 +687,22 @@ const HashtagSetPanel = ({
                   </div>
                   <p className="text-xs text-muted-foreground leading-snug">{item.explanation}</p>
                 </div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
+                <div className="flex items-center gap-2 flex-shrink-0">
                   <span className="text-base font-bold text-foreground tabular-nums">{item.score}</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onPin(item.tag); }}
+                    className={`p-0.5 rounded transition-colors ${
+                      pinned.has(item.tag)
+                        ? "text-primary"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    title={pinned.has(item.tag) ? "Remove from watchlist" : "Add to watchlist"}
+                  >
+                    {pinned.has(item.tag)
+                      ? <Bookmark className="w-3.5 h-3.5 fill-current" />
+                      : <BookmarkPlus className="w-3.5 h-3.5" />
+                    }
+                  </button>
                   {expandedTag === `${set.set_type}-${item.tag}`
                     ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
                     : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
@@ -799,6 +817,9 @@ const HashtagAnalysis = () => {
   const [perfShares,  setPerfShares]  = useState("");
   const [perfFollows, setPerfFollows] = useState("");
 
+  // Watchlist — pinned tag names for this user
+  const [pinned, setPinned] = useState<Set<string>>(new Set());
+
   // Instagram connection
   const [igConnection, setIgConnection] = useState<{ username: string; last_synced_at: string | null } | null>(null);
   const [igConnecting, setIgConnecting] = useState(false);
@@ -833,6 +854,18 @@ const HashtagAnalysis = () => {
     if (typeof tqState.goal           === "string") setGoal(tqState.goal);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Load pinned tags from watchlist
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("hashtag_watchlist")
+      .select("tag")
+      .eq("user_id", user.id)
+      .then(({ data }) => {
+        if (data) setPinned(new Set(data.map((r: { tag: string }) => r.tag)));
+      });
+  }, [user]);
+
   // Check Instagram connection status
   useEffect(() => {
     if (!user) return;
@@ -844,6 +877,32 @@ const HashtagAnalysis = () => {
       }
     }).catch(console.warn);
   }, [user]);
+
+  const handlePin = async (tag: string, sourceSet: "safe" | "experimental") => {
+    if (!user) return;
+    const isPinned = pinned.has(tag);
+    // Optimistic update
+    setPinned((prev) => {
+      const next = new Set(prev);
+      if (isPinned) next.delete(tag); else next.add(tag);
+      return next;
+    });
+    if (isPinned) {
+      await supabase.from("hashtag_watchlist").delete().eq("user_id", user.id).eq("tag", tag);
+      toast.success(`${tag} removed from watchlist`);
+    } else {
+      await supabase.from("hashtag_watchlist").upsert(
+        {
+          user_id:           user.id,
+          tag,
+          source_request_id: result?.request_id ?? null,
+          source_set:        sourceSet,
+        },
+        { onConflict: "user_id,tag" }
+      );
+      toast.success(`${tag} added to watchlist`);
+    }
+  };
 
   const handleConnectInstagram = async () => {
     if (!user) { toast.error("Sign in to connect Instagram"); return; }
@@ -1251,6 +1310,8 @@ const HashtagAnalysis = () => {
               onChoose={() => handleChooseSet("safe")}
               onCopy={() => handleCopySet("safe")}
               copiedSet={copiedSafe}
+              pinned={pinned}
+              onPin={(tag) => handlePin(tag, "safe")}
             />
             <HashtagSetPanel
               set={result.experimental}
@@ -1261,6 +1322,8 @@ const HashtagAnalysis = () => {
               onChoose={() => handleChooseSet("experimental")}
               onCopy={() => handleCopySet("experimental")}
               copiedSet={copiedExp}
+              pinned={pinned}
+              onPin={(tag) => handlePin(tag, "experimental")}
             />
           </div>
 
