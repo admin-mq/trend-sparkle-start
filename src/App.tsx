@@ -34,6 +34,7 @@ import NotFound from "./pages/NotFound";
 import Amcue from "./pages/Amcue";
 import AmcueBrandProfile from "./pages/AmcueBrandProfile";
 import DataDeletion from "./pages/DataDeletion";
+import MasterAdmin from "./pages/MasterAdmin";
 
 const queryClient = new QueryClient();
 
@@ -89,6 +90,11 @@ const App = () => (
             } />
 
             {/* Catch-all */}
+            {/* Master Admin — protected, email-gated, no sidebar */}
+            <Route path="/master" element={
+              <ProtectedRoute><MasterAdmin /></ProtectedRoute>
+            } />
+
             {/* Instagram OAuth callback — public, no sidebar */}
             <Route path="/instagram-callback" element={<InstagramCallback />} />
 
