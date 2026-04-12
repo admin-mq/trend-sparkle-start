@@ -1400,7 +1400,7 @@ const HashtagAnalysis = () => {
                     ))}
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button onClick={submitFeedback} disabled={feedbackState === "submitting"} size="sm" className="gap-1.5 text-xs">
+                    <Button onClick={submitFeedback} disabled={feedbackState as string === "submitting"} size="sm" className="gap-1.5 text-xs">
                       <Check className="w-3.5 h-3.5" /> Save Results
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => setFeedbackState("idle")} className="text-xs text-muted-foreground">
