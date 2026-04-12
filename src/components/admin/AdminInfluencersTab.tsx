@@ -2,12 +2,28 @@ import { useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Upload, Loader2, CheckCircle2, XCircle, Clock,
-  Instagram, FileText, AlertCircle, RefreshCw,
+  Instagram, FileText, AlertCircle, RefreshCw, Search, UserPlus,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+
+// ── Instagram profile lookup types ────────────────────────────────────────────
+
+interface IGProfile {
+  username: string;
+  name: string;
+  biography: string;
+  followers_count: number;
+  media_count: number;
+  profile_picture_url: string;
+  website?: string;
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -96,6 +112,15 @@ export function AdminInfluencersTab() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ updated: number; errors: number } | null>(null);
 
+  // Lookup state
+  const [lookupUsername, setLookupUsername] = useState("");
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupProfile, setLookupProfile] = useState<IGProfile | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [lookupNiche, setLookupNiche] = useState("Fashion & Clothing");
+  const [lookupBarter, setLookupBarter] = useState(false);
+  const [saving, setSaving] = useState(false);
+
   // Connection requests
   const { data: requests = [], isLoading: reqLoading } = useQuery<ConnectionRequest[]>({
     queryKey: ["admin_connection_requests"],
@@ -156,6 +181,50 @@ export function AdminInfluencersTab() {
     if (fileRef.current) fileRef.current.value = "";
   };
 
+  // Lookup
+  const handleLookup = async () => {
+    const u = lookupUsername.trim().replace(/^@/, "");
+    if (!u) return;
+    setLookupLoading(true);
+    setLookupProfile(null);
+    setLookupError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("lookup-instagram-profile", {
+        body: { username: u },
+      });
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+      setLookupProfile(data.profile);
+    } catch (err) {
+      setLookupError(err instanceof Error ? err.message : "Profile not found");
+    }
+    setLookupLoading(false);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!lookupProfile) return;
+    setSaving(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("lookup-instagram-profile", {
+        body: {
+          username: lookupProfile.username,
+          save: true,
+          niche_audience: lookupNiche,
+          barter_open: lookupBarter,
+        },
+      });
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+      qc.invalidateQueries({ queryKey: ["influencers"] });
+      toast.success(`${lookupProfile.name} added to the influencer dashboard!`);
+      setLookupProfile(null);
+      setLookupUsername("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save");
+    }
+    setSaving(false);
+  };
+
   // Instagram sync
   const handleSync = async () => {
     setSyncing(true);
@@ -183,6 +252,131 @@ export function AdminInfluencersTab() {
 
   return (
     <div className="space-y-10">
+
+      {/* ── Instagram Username Lookup ── */}
+      <section>
+        <h3 className="text-base font-semibold text-foreground mb-1 flex items-center gap-2">
+          <Search className="w-4 h-4 text-primary" />
+          Creator Lookup
+        </h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Type any public Instagram username to pull their live profile data, then add them to the dashboard.
+        </p>
+
+        {/* Search input */}
+        <div className="flex gap-2 max-w-md">
+          <div className="relative flex-1">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">@</span>
+            <Input
+              className="pl-7"
+              placeholder="username"
+              value={lookupUsername}
+              onChange={(e) => setLookupUsername(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleLookup()}
+            />
+          </div>
+          <Button onClick={handleLookup} disabled={lookupLoading || !lookupUsername.trim()} className="gap-2">
+            {lookupLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            {lookupLoading ? "Looking up…" : "Lookup"}
+          </Button>
+        </div>
+
+        {/* Error */}
+        {lookupError && (
+          <div className="mt-4 flex items-start gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 max-w-lg">
+            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <span>{lookupError}</span>
+          </div>
+        )}
+
+        {/* Profile card */}
+        {lookupProfile && (
+          <div className="mt-4 rounded-xl border border-border bg-card p-5 max-w-lg space-y-4">
+            {/* Header */}
+            <div className="flex items-center gap-4">
+              <Avatar className="h-16 w-16">
+                {lookupProfile.profile_picture_url && (
+                  <AvatarImage src={lookupProfile.profile_picture_url} alt={lookupProfile.name} />
+                )}
+                <AvatarFallback className="bg-primary/10 text-primary text-xl font-semibold">
+                  {lookupProfile.name?.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <p className="font-semibold text-foreground text-base">{lookupProfile.name}</p>
+                <p className="text-sm text-muted-foreground flex items-center gap-1">
+                  <Instagram className="w-3.5 h-3.5 text-pink-400" />
+                  @{lookupProfile.username}
+                </p>
+              </div>
+            </div>
+
+            {/* Stats row */}
+            <div className="flex items-center gap-6">
+              <div className="text-center">
+                <p className="text-lg font-bold text-foreground tabular-nums">
+                  {lookupProfile.followers_count >= 1_000_000
+                    ? `${(lookupProfile.followers_count / 1_000_000).toFixed(1)}M`
+                    : lookupProfile.followers_count >= 1_000
+                    ? `${(lookupProfile.followers_count / 1_000).toFixed(1)}k`
+                    : lookupProfile.followers_count}
+                </p>
+                <p className="text-xs text-muted-foreground">Followers</p>
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-bold text-foreground tabular-nums">{lookupProfile.media_count}</p>
+                <p className="text-xs text-muted-foreground">Posts</p>
+              </div>
+            </div>
+
+            {/* Bio */}
+            {lookupProfile.biography && (
+              <p className="text-sm text-muted-foreground leading-relaxed">{lookupProfile.biography}</p>
+            )}
+
+            {/* Save controls */}
+            <div className="border-t border-border pt-4 space-y-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Before adding to dashboard</p>
+              <div className="flex flex-wrap gap-3 items-center">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-muted-foreground">Niche</label>
+                  <Select value={lookupNiche} onValueChange={setLookupNiche}>
+                    <SelectTrigger className="w-44 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["Fashion & Clothing","Health & Fitness","Beauty & Skincare","Food & Nutrition","Travel & Lifestyle","Tech & Gaming","Parenting & Family","Finance & Business","Home & Interior","Sports & Fitness"].map((n) => (
+                        <SelectItem key={n} value={n} className="text-xs">{n}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-muted-foreground">Open to barter?</label>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant={lookupBarter ? "default" : "outline"}
+                      className="h-8 text-xs px-3"
+                      onClick={() => setLookupBarter(true)}
+                    >Yes</Button>
+                    <Button
+                      size="sm"
+                      variant={!lookupBarter ? "default" : "outline"}
+                      className="h-8 text-xs px-3"
+                      onClick={() => setLookupBarter(false)}
+                    >No</Button>
+                  </div>
+                </div>
+              </div>
+              <Button onClick={handleSaveProfile} disabled={saving} className="gap-2">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                {saving ? "Adding…" : "Add to Dashboard"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </section>
 
       {/* ── CSV Import ── */}
       <section>
