@@ -281,7 +281,7 @@ const HashtagHistory = () => {
                           </span>
                         )}
                         {hasMetrics && (
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" title="Performance logged" />
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
                         )}
                         <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? "rotate-90" : ""}`} />
                       </div>
