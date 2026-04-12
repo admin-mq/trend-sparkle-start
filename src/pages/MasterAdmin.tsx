@@ -2,18 +2,15 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Search, Loader2, UserPlus, Instagram,
-  AlertCircle, CheckCircle2, ShieldCheck, Sparkles, LogOut,
+  AlertCircle, CheckCircle2, Sparkles, LogOut,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-
-const ADMIN_EMAIL = "admin@marketers.quest";
 
 const NICHES = [
   "Fashion & Clothing", "Health & Fitness", "Beauty & Skincare",
@@ -25,16 +22,7 @@ interface IGProfile {
   username: string;
   name: string;
   biography: string;
-  followers_count: number;
-  media_count: number;
-  profile_picture_url: string;
-  website?: string;
-}
-
-function formatN(n: number) {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
+  avatar_url: string;
 }
 
 export default function MasterAdmin() {
@@ -44,6 +32,7 @@ export default function MasterAdmin() {
   const [fetching, setFetching] = useState(false);
   const [profile, setProfile] = useState<IGProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [followers, setFollowers] = useState("");
   const [niche, setNiche] = useState("Fashion & Clothing");
   const [barter, setBarter] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -58,27 +47,13 @@ export default function MasterAdmin() {
     );
   }
 
-  // ── Access denied ──
-  if (!user || user.email !== ADMIN_EMAIL) {
+  // ── Not logged in ──
+  if (!user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <div className="max-w-sm w-full rounded-xl border border-border bg-card p-8 text-center space-y-4">
-          <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto">
-            <ShieldCheck className="w-6 h-6 text-red-400" />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-foreground">Access Denied</h2>
-            <p className="text-sm text-muted-foreground mt-1">This page is for the master admin only.</p>
-          </div>
-          {user && (
-            <p className="text-xs bg-muted/40 rounded-lg px-3 py-2 text-muted-foreground">
-              Signed in as: <span className="font-medium text-foreground">{user.email}</span>
-            </p>
-          )}
-          <p className="text-xs text-muted-foreground">
-            Please sign in as <span className="font-medium text-foreground">{ADMIN_EMAIL}</span>
-          </p>
-          <Link to="/dashboard" className="block text-xs text-primary hover:underline">← Back to dashboard</Link>
+          <h2 className="text-base font-semibold text-foreground">Sign in required</h2>
+          <Link to="/auth" className="block text-xs text-primary hover:underline">Go to sign in →</Link>
         </div>
       </div>
     );
@@ -101,7 +76,7 @@ export default function MasterAdmin() {
       if (data?.error) throw new Error(data.error);
       setProfile(data.profile);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not fetch profile. Make sure the account is public and is a Business or Creator account.");
+      setError(err instanceof Error ? err.message : "Could not fetch profile. Make sure the account is public.");
     }
     setFetching(false);
   };
@@ -110,8 +85,15 @@ export default function MasterAdmin() {
     if (!profile) return;
     setSaving(true);
     try {
+      const followerCount = parseInt(followers.replace(/[^0-9]/g, ""), 10) || 0;
       const { data, error: fnErr } = await supabase.functions.invoke("lookup-instagram-profile", {
-        body: { username: profile.username, save: true, niche_audience: niche, barter_open: barter },
+        body: {
+          username: profile.username,
+          save: true,
+          followers: followerCount,
+          niche_audience: niche,
+          barter_open: barter,
+        },
       });
       if (fnErr) throw fnErr;
       if (data?.error) throw new Error(data.error);
@@ -120,6 +102,7 @@ export default function MasterAdmin() {
       // Reset for next entry
       setUsername("");
       setProfile(null);
+      setFollowers("");
       setBarter(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save");
@@ -139,8 +122,8 @@ export default function MasterAdmin() {
         <div className="flex-1">
           <p className="text-sm font-bold text-foreground flex items-center gap-2">
             Marketers Quest
-            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 font-semibold flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3" /> Master Admin
+            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 font-semibold">
+              Master Admin
             </span>
           </p>
           <p className="text-xs text-muted-foreground">{user.email}</p>
@@ -163,7 +146,7 @@ export default function MasterAdmin() {
         <div>
           <h1 className="text-xl font-bold text-foreground">Add Creator by Instagram Username</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Enter any public Instagram Business or Creator account username — their profile data will be fetched automatically.
+            Enter any public Instagram account username — their profile data will be fetched automatically.
           </p>
         </div>
 
@@ -205,8 +188,8 @@ export default function MasterAdmin() {
             {/* Profile header */}
             <div className="p-5 flex items-center gap-4 border-b border-border">
               <Avatar className="h-16 w-16 flex-shrink-0">
-                {profile.profile_picture_url && (
-                  <AvatarImage src={profile.profile_picture_url} alt={profile.name} />
+                {profile.avatar_url && (
+                  <AvatarImage src={profile.avatar_url} alt={profile.name} />
                 )}
                 <AvatarFallback className="bg-primary/10 text-primary text-xl font-bold">
                   {profile.name?.charAt(0).toUpperCase()}
@@ -218,24 +201,6 @@ export default function MasterAdmin() {
                   <Instagram className="w-3.5 h-3.5 text-pink-400 flex-shrink-0" />
                   @{profile.username}
                 </p>
-                {profile.website && (
-                  <a href={profile.website} target="_blank" rel="noopener noreferrer"
-                    className="text-xs text-primary hover:underline truncate block mt-0.5">
-                    {profile.website}
-                  </a>
-                )}
-              </div>
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-2 divide-x divide-border border-b border-border">
-              <div className="py-4 text-center">
-                <p className="text-2xl font-bold text-foreground tabular-nums">{formatN(profile.followers_count)}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Followers</p>
-              </div>
-              <div className="py-4 text-center">
-                <p className="text-2xl font-bold text-foreground tabular-nums">{profile.media_count}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Posts</p>
               </div>
             </div>
 
@@ -250,6 +215,17 @@ export default function MasterAdmin() {
             <div className="px-5 py-4 space-y-4 bg-muted/20">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Before adding to dashboard</p>
               <div className="grid grid-cols-2 gap-4">
+                {/* Followers */}
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground">Followers count</label>
+                  <Input
+                    className="h-9 text-sm"
+                    placeholder="e.g. 45000"
+                    value={followers}
+                    onChange={(e) => setFollowers(e.target.value)}
+                  />
+                </div>
+                {/* Niche */}
                 <div className="space-y-1.5">
                   <label className="text-xs text-muted-foreground">Niche</label>
                   <Select value={niche} onValueChange={setNiche}>
@@ -259,12 +235,13 @@ export default function MasterAdmin() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs text-muted-foreground">Open to barter?</label>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant={barter ? "default" : "outline"} className="flex-1 h-9 text-sm" onClick={() => setBarter(true)}>Yes</Button>
-                    <Button size="sm" variant={!barter ? "default" : "outline"} className="flex-1 h-9 text-sm" onClick={() => setBarter(false)}>No</Button>
-                  </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Open to barter?</label>
+                <div className="flex gap-2">
+                  <Button size="sm" variant={barter ? "default" : "outline"} className="flex-1 h-9 text-sm" onClick={() => setBarter(true)}>Yes</Button>
+                  <Button size="sm" variant={!barter ? "default" : "outline"} className="flex-1 h-9 text-sm" onClick={() => setBarter(false)}>No</Button>
                 </div>
               </div>
 
