@@ -36,3 +36,6 @@ verify_jwt = false
 
 [functions.check-watchlist-trends]
 verify_jwt = false
+
+[functions.analyze-hashtag-gaps]
+verify_jwt = false
