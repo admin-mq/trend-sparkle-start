@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
   Upload, Sparkles, Users, Loader2, CheckCircle2, XCircle,
-  Clock, Instagram, ArrowLeft, FileText, AlertCircle,
+  Clock, Instagram, ArrowLeft, FileText, AlertCircle, RefreshCw,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -115,6 +115,8 @@ export default function Admin() {
   const [importResult, setImportResult] = useState<{ added: number; skipped: number } | null>(null);
   const [dragging, setDragging] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ updated: number; errors: number } | null>(null);
 
   // ── Connection requests query ──
   const { data: requests = [], isLoading: reqLoading } = useQuery<ConnectionRequest[]>({
@@ -199,6 +201,26 @@ export default function Admin() {
     setParsed([]);
     setFileName("");
     if (fileRef.current) fileRef.current.value = "";
+  };
+
+  // ── Instagram sync ──
+  const handleInstagramSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("sync-instagram-data");
+      if (error) throw error;
+      setSyncResult({ updated: data.updated ?? 0, errors: data.errors ?? 0 });
+      qc.invalidateQueries({ queryKey: ["influencers"] });
+      toast({
+        title: "Instagram sync complete",
+        description: `${data.updated} profiles updated${data.errors ? `, ${data.errors} errors` : ""}.`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast({ title: "Sync failed", description: msg, variant: "destructive" });
+    }
+    setSyncing(false);
   };
 
   // ── Update request status ──
@@ -380,6 +402,50 @@ export default function Admin() {
               Expected columns: <strong>Date, From, Email, Subject, Phone, Barter, IG Username, Industry</strong>.
               Geography defaults to <em>United Kingdom</em>.
             </span>
+          </div>
+        </section>
+
+        {/* ── Instagram Sync ── */}
+        <section>
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+              <Instagram className="w-5 h-5 text-pink-400" />
+              Instagram Data Sync
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Fetch live follower counts and profile pictures from Instagram for all imported creators.
+              Uses the Meta Business Discovery API.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-border bg-card p-5 flex items-center gap-5">
+            <div className="flex-1">
+              <p className="text-sm text-foreground font-medium">Sync all influencer profiles</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Updates <strong>followers</strong> and <strong>profile picture</strong> for each creator with an Instagram handle.
+                Rate-limited to ~200 profiles per run.
+              </p>
+              {syncResult && (
+                <p className="text-xs text-emerald-400 mt-2 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Last run: {syncResult.updated} updated
+                  {syncResult.errors > 0 && `, ${syncResult.errors} failed`}
+                </p>
+              )}
+            </div>
+            <Button
+              onClick={handleInstagramSync}
+              disabled={syncing}
+              className="gap-2 flex-shrink-0"
+              variant="outline"
+            >
+              {syncing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4 text-pink-400" />
+              )}
+              {syncing ? "Syncing…" : "Sync Now"}
+            </Button>
           </div>
         </section>
 
