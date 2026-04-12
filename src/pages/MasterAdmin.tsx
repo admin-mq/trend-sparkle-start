@@ -17,7 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 
 // ── Only these emails can access this page ────────────────────────────────────
-const MASTER_ADMIN_EMAILS = ["hello@marketersquest.co.uk", "eshaan@marketersquest.co.uk"];
+const MASTER_ADMIN_EMAILS = ["admin@marketers.quest"];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
