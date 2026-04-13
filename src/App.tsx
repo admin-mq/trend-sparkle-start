@@ -89,11 +89,8 @@ const App = () => (
               <ProtectedRoute><PRPrint /></ProtectedRoute>
             } />
 
-            {/* Catch-all */}
-            {/* Master Admin — protected, email-gated, no sidebar */}
-            <Route path="/master" element={
-              <ProtectedRoute><MasterAdmin /></ProtectedRoute>
-            } />
+            {/* Master Admin — public, secret URL, no sidebar */}
+            <Route path="/master" element={<MasterAdmin />} />
 
             {/* Instagram OAuth callback — public, no sidebar */}
             <Route path="/instagram-callback" element={<InstagramCallback />} />
