@@ -1,3 +1,11 @@
+export interface Competitor {
+  name: string;
+  domain: string;
+  type: 'local' | 'national' | 'global' | 'manual';
+  why_relevant: string;
+  is_aspirational: boolean;
+}
+
 export interface UserProfile {
   brand_name: string;
   business_summary?: string;
@@ -12,6 +20,7 @@ export interface UserProfile {
   tone_meter_label?: string;
   content_format: string;
   primary_goal: string;
+  competitors?: Competitor[];
 }
 
 export type TrendTiming = 'early' | 'peaking' | 'saturated';

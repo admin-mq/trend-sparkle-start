@@ -8,9 +8,9 @@ import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/lib/supabaseClient";
-import { UserProfile, RecommendedTrend } from "@/types/trends";
+import { UserProfile, RecommendedTrend, Competitor } from "@/types/trends";
 import { useAuth } from "@/hooks/useAuth";
-import { Sparkles, Zap, ChevronDown, Flame, Skull, Zap as ZapIcon, MessageCircle, PartyPopper, Rocket, Crown, GraduationCap, Briefcase, Minimize2, Coffee, Globe, Loader2 } from "lucide-react";
+import { Sparkles, Zap, ChevronDown, Flame, Skull, Zap as ZapIcon, MessageCircle, PartyPopper, Rocket, Crown, GraduationCap, Briefcase, Minimize2, Coffee, Globe, Loader2, Users, X, Plus, Star, MapPin, Building2 } from "lucide-react";
 
 interface BrandProfileFormProps {
   onRecommendationsReceived: (recommendations: RecommendedTrend[]) => void;
@@ -154,6 +154,13 @@ const PRIMARY_GOALS = [
   "Website traffic"
 ];
 
+const COMPETITOR_TYPE_CONFIG: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
+  local:    { label: 'Local',    icon: <MapPin className="w-3 h-3" />,    className: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
+  national: { label: 'National', icon: <Building2 className="w-3 h-3" />, className: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
+  global:   { label: 'Global',   icon: <Globe className="w-3 h-3" />,     className: 'bg-violet-500/15 text-violet-400 border-violet-500/30' },
+  manual:   { label: 'Custom',   icon: <Plus className="w-3 h-3" />,      className: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
+};
+
 export const BrandProfileForm = ({ 
   onRecommendationsReceived, 
   onBrandNameChange, 
@@ -181,6 +188,13 @@ export const BrandProfileForm = ({
   const [toneIntensity, setToneIntensity] = useState<number>(3);
   const [error, setError] = useState<string | null>(null);
 
+  // Competitor state
+  const [competitors, setCompetitors] = useState<Competitor[]>([]);
+  const [competitorsLoading, setCompetitorsLoading] = useState(false);
+  const [competitorsError, setCompetitorsError] = useState<string | null>(null);
+  const [manualInput, setManualInput] = useState('');
+  const [competitorsDiscovered, setCompetitorsDiscovered] = useState(false);
+
   // Derive primary tone based on priority
   const primaryTone = useMemo(() => {
     if (selectedTones.length === 0) return null;
@@ -195,11 +209,47 @@ export const BrandProfileForm = ({
   const toneMeterLabel = primaryTone ? TONE_METER_LABELS[primaryTone] : null;
   const toneMeterHelper = primaryTone ? TONE_METER_HELPER[primaryTone] : null;
 
-  const handleInputChange = (field: keyof typeof userProfile, value: string) => {
+  const handleInputChange = (field: string, value: string) => {
     setUserProfile(prev => ({ ...prev, [field]: value }));
-    if (field === 'brand_name') {
-      onBrandNameChange(value);
+    if (field === 'brand_name') onBrandNameChange(value);
+  };
+
+  const handleDiscoverCompetitors = async () => {
+    if (!userProfile.brand_name.trim()) return;
+    setCompetitorsLoading(true);
+    setCompetitorsError(null);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('find-competitors', {
+        body: {
+          brand_name: userProfile.brand_name,
+          brand_url: websiteUrl || '',
+          industry: userProfile.industry === 'Other' ? customIndustry : userProfile.industry,
+          geography: userProfile.geography || '',
+          country: userProfile.geography || '',
+        }
+      });
+      if (fnError) throw new Error(fnError.message);
+      setCompetitors(data?.competitors ?? []);
+      setCompetitorsDiscovered(true);
+    } catch (err) {
+      setCompetitorsError('Could not find competitors. Add them manually below.');
+    } finally {
+      setCompetitorsLoading(false);
     }
+  };
+
+  const handleRemoveCompetitor = (domain: string) => {
+    setCompetitors(prev => prev.filter(c => c.domain !== domain));
+  };
+
+  const handleAddManual = () => {
+    const val = manualInput.trim();
+    if (!val) return;
+    const domain = val.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+    const name = domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1);
+    if (competitors.some(c => c.domain === domain)) { setManualInput(''); return; }
+    setCompetitors(prev => [...prev, { name, domain, type: 'manual', why_relevant: 'Added manually', is_aspirational: false }]);
+    setManualInput('');
   };
 
   const handleToneToggle = (tone: string) => {
@@ -232,7 +282,8 @@ export const BrandProfileForm = ({
       tones: selectedTones.length > 0 ? selectedTones : ["casual"],
       primary_tone: primaryTone || "casual",
       tone_intensity: toneIntensity,
-      tone_meter_label: toneMeterLabel || "Vibe meter"
+      tone_meter_label: toneMeterLabel || "Vibe meter",
+      competitors: competitors.length > 0 ? competitors : undefined,
     };
   };
 
@@ -563,6 +614,81 @@ export const BrandProfileForm = ({
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        {/* ── Competitor Discovery ── */}
+        <div className="space-y-3 border-t border-border/40 pt-4">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Users className="w-3 h-3" /> Competitors
+            </Label>
+            {userProfile.brand_name.trim() && (
+              <button
+                type="button"
+                onClick={handleDiscoverCompetitors}
+                disabled={competitorsLoading}
+                className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
+              >
+                {competitorsLoading
+                  ? <><Loader2 className="w-3 h-3 animate-spin" /> Finding…</>
+                  : <><Sparkles className="w-3 h-3" /> {competitorsDiscovered ? 'Refresh' : 'Discover'}</>
+                }
+              </button>
+            )}
+          </div>
+
+          {competitorsError && <p className="text-xs text-destructive">{competitorsError}</p>}
+
+          {competitors.length > 0 && (
+            <div className="space-y-2">
+              {competitors.map((c) => {
+                const cfg = COMPETITOR_TYPE_CONFIG[c.type] ?? COMPETITOR_TYPE_CONFIG.manual;
+                return (
+                  <div key={c.domain} className="flex items-start gap-2 p-2.5 rounded-lg bg-secondary/40 border border-border/40 group">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-medium text-foreground truncate">{c.name}</span>
+                        {c.is_aspirational && <Star className="w-3 h-3 text-amber-400 fill-amber-400 flex-shrink-0" />}
+                        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${cfg.className}`}>
+                          {cfg.icon}{cfg.label}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{c.domain}</p>
+                      {c.why_relevant && c.why_relevant !== 'Added manually' && (
+                        <p className="text-[11px] text-muted-foreground/70 mt-0.5 line-clamp-2">{c.why_relevant}</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveCompetitor(c.domain)}
+                      className="flex-shrink-0 mt-0.5 p-0.5 rounded text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <Input
+              value={manualInput}
+              onChange={(e) => setManualInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddManual()}
+              placeholder="Add competitor domain…"
+              className="bg-secondary/50 border-border/50 focus:border-primary text-sm h-8"
+            />
+            <Button type="button" variant="outline" size="sm" onClick={handleAddManual} disabled={!manualInput.trim()} className="h-8 px-2 flex-shrink-0">
+              <Plus className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+
+          {!competitorsDiscovered && !competitorsLoading && competitors.length === 0 && userProfile.brand_name.trim() && (
+            <p className="text-[11px] text-muted-foreground/60 text-center">
+              Click <span className="text-primary">Discover</span> to auto-find competitors, or add manually above.
+            </p>
+          )}
         </div>
       </div>
 
