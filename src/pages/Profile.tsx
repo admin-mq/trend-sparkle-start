@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useBrandProfiles, BrandProfileInput } from "@/hooks/useBrandProfiles";
 import { toast } from "sonner";
-import { Building2, Globe, Upload, Save, Loader2, Plus, Pencil, Trash2, X, Briefcase, Sparkles } from "lucide-react";
+import { Building2, Globe, Upload, Save, Loader2, Plus, Pencil, Trash2, X, Briefcase, Sparkles, Users, Star, MapPin } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import {
   AlertDialog,
@@ -57,6 +57,21 @@ const Profile = () => {
   const [uploading, setUploading] = useState(false);
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // Competitor state
+  type Competitor = { name: string; domain: string; type: 'local' | 'national' | 'global' | 'manual'; why_relevant: string; is_aspirational: boolean };
+  const [competitors, setCompetitors] = useState<Competitor[]>([]);
+  const [competitorsLoading, setCompetitorsLoading] = useState(false);
+  const [competitorsError, setCompetitorsError] = useState<string | null>(null);
+  const [manualInput, setManualInput] = useState('');
+  const [competitorsDiscovered, setCompetitorsDiscovered] = useState(false);
+
+  const COMPETITOR_TYPE_CONFIG: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
+    local:    { label: 'Local',    className: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', icon: <MapPin className="w-3 h-3" /> },
+    national: { label: 'National', className: 'bg-amber-500/15 text-amber-400 border-amber-500/30',   icon: <Building2 className="w-3 h-3" /> },
+    global:   { label: 'Global',   className: 'bg-violet-500/15 text-violet-400 border-violet-500/30', icon: <Globe className="w-3 h-3" /> },
+    manual:   { label: 'Custom',   className: 'bg-blue-500/15 text-blue-400 border-blue-500/30',       icon: <Plus className="w-3 h-3" /> },
+  };
   
   const [formData, setFormData] = useState<BrandProfileInput>({
     brand_name: "",
@@ -106,6 +121,44 @@ const Profile = () => {
     }
   };
 
+  const handleDiscoverCompetitors = async () => {
+    if (!formData.brand_name.trim()) return;
+    setCompetitorsLoading(true);
+    setCompetitorsError(null);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('find-competitors', {
+        body: {
+          brand_name: formData.brand_name,
+          brand_url: websiteUrl || '',
+          industry: formData.industry === 'Other' ? (formData.industry_other || '') : (formData.industry || ''),
+          geography: formData.geography || '',
+          country: formData.geography || '',
+        }
+      });
+      if (fnError) throw new Error(fnError.message);
+      setCompetitors(data?.competitors ?? []);
+      setCompetitorsDiscovered(true);
+    } catch {
+      setCompetitorsError('Could not find competitors. Add them manually below.');
+    } finally {
+      setCompetitorsLoading(false);
+    }
+  };
+
+  const handleRemoveCompetitor = (domain: string) => {
+    setCompetitors(prev => prev.filter(c => c.domain !== domain));
+  };
+
+  const handleAddManual = () => {
+    const val = manualInput.trim();
+    if (!val) return;
+    const domain = val.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+    const name = domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1);
+    if (competitors.some(c => c.domain === domain)) { setManualInput(''); return; }
+    setCompetitors(prev => [...prev, { name, domain, type: 'manual', why_relevant: 'Added manually', is_aspirational: false }]);
+    setManualInput('');
+  };
+
   const resetForm = () => {
     setFormData({
       brand_name: "",
@@ -118,6 +171,10 @@ const Profile = () => {
     setEditingId(null);
     setIsCreating(false);
     setWebsiteUrl('');
+    setCompetitors([]);
+    setCompetitorsDiscovered(false);
+    setCompetitorsError(null);
+    setManualInput('');
   };
 
   const startEditing = (brand: typeof brands[0]) => {
@@ -131,6 +188,10 @@ const Profile = () => {
     });
     setEditingId(brand.id);
     setIsCreating(false);
+    setCompetitors([]);
+    setCompetitorsDiscovered(false);
+    setCompetitorsError(null);
+    setManualInput('');
   };
 
   const startCreating = () => {
@@ -391,6 +452,84 @@ const Profile = () => {
                 placeholder="Brief description of your brand (1-2 sentences)"
                 rows={2}
               />
+            </div>
+
+            {/* Competitor Discovery */}
+            <div className="space-y-3 border-t pt-4">
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-1.5">
+                  <Users className="w-4 h-4" /> Competitors
+                </Label>
+                {formData.brand_name.trim() && (
+                  <button
+                    type="button"
+                    onClick={handleDiscoverCompetitors}
+                    disabled={competitorsLoading}
+                    className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
+                  >
+                    {competitorsLoading
+                      ? <><Loader2 className="w-3 h-3 animate-spin" /> Finding…</>
+                      : <><Sparkles className="w-3 h-3" /> {competitorsDiscovered ? 'Refresh' : 'Discover'}</>
+                    }
+                  </button>
+                )}
+              </div>
+
+              {competitorsError && <p className="text-xs text-destructive">{competitorsError}</p>}
+
+              {competitors.length > 0 && (
+                <div className="space-y-2">
+                  {competitors.map((c) => {
+                    const cfg = COMPETITOR_TYPE_CONFIG[c.type] ?? COMPETITOR_TYPE_CONFIG.manual;
+                    return (
+                      <div key={c.domain} className="flex items-start gap-2 p-2.5 rounded-lg bg-secondary/40 border border-border/40 group">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-sm font-medium truncate">{c.name}</span>
+                            {c.is_aspirational && <Star className="w-3 h-3 text-amber-400 fill-amber-400 flex-shrink-0" />}
+                            <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${cfg.className}`}>
+                              {cfg.icon}{cfg.label}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{c.domain}</p>
+                          {c.why_relevant && c.why_relevant !== 'Added manually' && (
+                            <p className="text-[11px] text-muted-foreground/70 mt-0.5 line-clamp-2">{c.why_relevant}</p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCompetitor(c.domain)}
+                          className="flex-shrink-0 mt-0.5 p-0.5 rounded text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Input
+                  value={manualInput}
+                  onChange={(e) => setManualInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddManual()}
+                  placeholder="Add competitor domain…"
+                  className="text-sm h-9"
+                />
+                <Button type="button" variant="outline" size="sm" onClick={handleAddManual} disabled={!manualInput.trim()} className="h-9 px-3 flex-shrink-0">
+                  <Plus className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+
+              {!competitorsDiscovered && !competitorsLoading && competitors.length === 0 && formData.brand_name.trim() && (
+                <p className="text-xs text-muted-foreground text-center">
+                  Click <span className="text-primary font-medium">Discover</span> to auto-find competitors, or add manually above.
+                </p>
+              )}
+              {!formData.brand_name.trim() && (
+                <p className="text-xs text-muted-foreground">Enter a brand name above to discover competitors.</p>
+              )}
             </div>
 
             {/* Save Button */}
