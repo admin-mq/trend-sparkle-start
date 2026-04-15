@@ -375,8 +375,8 @@ function PromptsStep({
         <h2 className="text-2xl font-bold text-foreground">What are buyers searching for?</h2>
         <p className="text-sm text-muted-foreground max-w-xs mx-auto">
           {suggesting
-            ? "Generating the best prompts to track for your brand…"
-            : "We'll check if your brand appears in AI answers for these prompts."}
+            ? "Generating AI search queries for your brand…"
+            : "We'll check if your brand appears in AI answers for these queries."}
         </p>
       </div>
 
@@ -384,7 +384,7 @@ function PromptsStep({
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <Label className="flex items-center gap-1.5">
-              <Target className="w-4 h-4 text-muted-foreground" /> AI prompts to track
+              <Target className="w-4 h-4 text-muted-foreground" /> AI Search Queries
               <span className="text-muted-foreground font-normal text-xs">(one per line)</span>
             </Label>
             {!suggesting && (

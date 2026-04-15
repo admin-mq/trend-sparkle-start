@@ -581,7 +581,7 @@ function CreateProjectDialog({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="flex items-center gap-1.5">
-                  <Target className="w-4 h-4" /> AI prompts to track
+                  <Target className="w-4 h-4" /> AI Search Queries
                 </Label>
                 {!suggesting && (
                   <button
@@ -597,7 +597,7 @@ function CreateProjectDialog({
                 <div className="space-y-2 rounded-md border border-border p-3">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
-                    Generating prompts for your brand…
+                    Generating AI search queries for your brand…
                   </div>
                   {[1, 2, 3, 4, 5].map((i) => (
                     <div key={i} className="h-3.5 rounded bg-muted/50 animate-pulse" style={{ width: `${60 + (i % 3) * 15}%` }} />
