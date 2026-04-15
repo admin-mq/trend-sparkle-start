@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   Megaphone, Globe, Plus, Trash2, Target, Clock,
-  ChevronRight, ChevronLeft, AlertCircle, Loader2,
+  ChevronRight, ChevronLeft, AlertCircle, Loader2, Sparkles,
   BarChart2, Shield, Zap, ArrowRight, CheckCircle2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -238,6 +238,8 @@ function BrandStep({
 
 interface CompetitorsStepProps {
   competitors: Competitor[];
+  discovering: boolean;
+  discoverError: string | null;
   onAdd: () => void;
   onRemove: (i: number) => void;
   onUpdate: (i: number, field: "name" | "domain", value: string) => void;
@@ -245,70 +247,103 @@ interface CompetitorsStepProps {
   onBack: () => void;
 }
 
-function CompetitorsStep({ competitors, onAdd, onRemove, onUpdate, onNext, onBack }: CompetitorsStepProps) {
+function CompetitorsStep({ competitors, discovering, discoverError, onAdd, onRemove, onUpdate, onNext, onBack }: CompetitorsStepProps) {
+  const hasDiscovered = !discovering && !discoverError && competitors.some(c => c.domain);
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
       <div className="text-center space-y-1">
         <p className="text-xs font-semibold text-primary uppercase tracking-widest">Step 2 of 3</p>
         <h2 className="text-2xl font-bold text-foreground">Who are you up against?</h2>
         <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-          Optional but powerful — we'll run a head-to-head narrative comparison against each one.
+          {discovering
+            ? "Searching the web for your top competitors…"
+            : "Optional but powerful — we'll run a head-to-head narrative comparison against each one."}
         </p>
       </div>
 
-      <div className="space-y-3">
-        {competitors.map((c, i) => (
-          <div key={i} className="flex gap-2 items-start">
-            <div className="flex-1 space-y-1.5">
-              <Input
-                placeholder={`Competitor ${i + 1} name`}
-                value={c.name}
-                onChange={(e) => onUpdate(i, "name", e.target.value)}
-              />
-              <div className="relative">
-                <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                <Input
-                  className="pl-8 text-sm h-9"
-                  placeholder="competitor.com"
-                  value={c.domain}
-                  onChange={(e) => onUpdate(i, "domain", e.target.value)}
-                />
-              </div>
-            </div>
-            {competitors.length > 1 && (
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-9 w-9 mt-0.5 text-muted-foreground hover:text-destructive"
-                onClick={() => onRemove(i)}
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            )}
-          </div>
-        ))}
+      {/* Discovery status banner */}
+      {discovering && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground px-3 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
+          <Loader2 className="w-4 h-4 animate-spin text-primary shrink-0" />
+          <span>Finding your top competitors…</span>
+        </div>
+      )}
+      {hasDiscovered && (
+        <div className="flex items-center gap-1.5 text-xs text-emerald-400">
+          <Sparkles className="w-3 h-3" /> Auto-populated — edit or remove as needed
+        </div>
+      )}
+      {!discovering && discoverError && (
+        <p className="text-xs text-muted-foreground">{discoverError}</p>
+      )}
 
-        {competitors.length < 4 && (
-          <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 w-full border-dashed" onClick={onAdd}>
-            <Plus className="w-3.5 h-3.5" /> Add competitor
-          </Button>
-        )}
-      </div>
+      {/* Skeleton while discovering */}
+      {discovering ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="space-y-1.5">
+              <div className="h-9 rounded-md bg-muted/50 animate-pulse" />
+              <div className="h-9 rounded-md bg-muted/30 animate-pulse" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {competitors.map((c, i) => (
+            <div key={i} className="flex gap-2 items-start">
+              <div className="flex-1 space-y-1.5">
+                <Input
+                  placeholder={`Competitor ${i + 1} name`}
+                  value={c.name}
+                  onChange={(e) => onUpdate(i, "name", e.target.value)}
+                />
+                <div className="relative">
+                  <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                  <Input
+                    className="pl-8 text-sm h-9"
+                    placeholder="competitor.com"
+                    value={c.domain}
+                    onChange={(e) => onUpdate(i, "domain", e.target.value)}
+                  />
+                </div>
+              </div>
+              {competitors.length > 1 && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-9 w-9 mt-0.5 text-muted-foreground hover:text-destructive"
+                  onClick={() => onRemove(i)}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
+          ))}
+
+          {competitors.length < 4 && (
+            <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 w-full border-dashed" onClick={onAdd}>
+              <Plus className="w-3.5 h-3.5" /> Add competitor
+            </Button>
+          )}
+        </div>
+      )}
 
       <div className="flex gap-3">
         <Button variant="ghost" className="gap-1.5 h-11 w-24 shrink-0" onClick={onBack}>
           <ChevronLeft className="w-4 h-4" /> Back
         </Button>
-        <Button className="flex-1 gap-2 h-11" onClick={onNext}>
+        <Button className="flex-1 gap-2 h-11" disabled={discovering} onClick={onNext}>
           Continue <ChevronRight className="w-4 h-4" />
         </Button>
       </div>
-      <button
-        onClick={onNext}
-        className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors text-center -mt-2"
-      >
-        Skip for now →
-      </button>
+      {!discovering && (
+        <button
+          onClick={onNext}
+          className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors text-center -mt-2"
+        >
+          Skip for now →
+        </button>
+      )}
     </div>
   );
 }
@@ -423,6 +458,8 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
 
   // Competitors step state
   const [competitors, setCompetitors] = useState<Competitor[]>([{ name: "", domain: "" }]);
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverError, setDiscoverError] = useState<string | null>(null);
 
   // Prompts step state
   const [promptText, setPromptText] = useState("");
@@ -434,11 +471,39 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
     return null;
   }
 
+  async function discoverCompetitors(bName: string, bDomain: string, bIndustry: string, bGeo: string) {
+    setDiscovering(true);
+    setDiscoverError(null);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('find-competitors', {
+        body: {
+          brand_name: bName,
+          brand_url: bDomain || '',
+          industry: bIndustry || '',
+          geography: bGeo || 'Global',
+          country: bGeo || 'Global',
+        }
+      });
+      if (fnError) throw new Error(fnError.message);
+      const found: Competitor[] = (data?.competitors ?? [])
+        .slice(0, 4)
+        .map((c: any) => ({ name: c.name, domain: c.domain }));
+      if (found.length > 0) setCompetitors(found);
+      else setDiscoverError('No competitors found — add them manually below.');
+    } catch {
+      setDiscoverError('Could not auto-find competitors — add them manually below.');
+    } finally {
+      setDiscovering(false);
+    }
+  }
+
   function handleBrandNext() {
     const err = validateBrand();
     if (err) { setError(err); return; }
     setError(null);
+    setCompetitors([{ name: "", domain: "" }]);
     setStep(2);
+    void discoverCompetitors(brandName, domain, industry, geography);
   }
 
   function addCompetitor() {
@@ -520,6 +585,8 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
         {step === 2 && (
           <CompetitorsStep
             competitors={competitors}
+            discovering={discovering}
+            discoverError={discoverError}
             onAdd={addCompetitor}
             onRemove={removeCompetitor}
             onUpdate={updateCompetitor}

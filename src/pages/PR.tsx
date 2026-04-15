@@ -4,7 +4,7 @@ import { PROnboarding } from "@/components/PROnboarding";
 import {
   Megaphone, Plus, Globe, Loader2, CheckCircle2, XCircle, Clock,
   ChevronRight, AlertCircle, Building2, Target, Users, MapPin, Trash2, RefreshCw,
-  TrendingUp, TrendingDown, Minus,
+  TrendingUp, TrendingDown, Minus, Sparkles,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -296,6 +296,8 @@ function CreateProjectDialog({
 
   // Competitors step
   const [competitors, setCompetitors] = useState<Competitor[]>([{ name: "", domain: "" }]);
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverError, setDiscoverError] = useState<string | null>(null);
 
   // Prompts step
   const [promptText, setPromptText] = useState("");
@@ -306,8 +308,35 @@ function CreateProjectDialog({
     setBrandName(""); setDomain(""); setIndustry(""); setGeography("Global"); setAudience("");
     setCompetitors([{ name: "", domain: "" }]);
     setPromptText(""); setScanFrequency("weekly");
-    setPromptText("");
     setError(null);
+    setDiscovering(false);
+    setDiscoverError(null);
+  }
+
+  async function discoverCompetitors(bName: string, bDomain: string, bIndustry: string, bGeo: string) {
+    setDiscovering(true);
+    setDiscoverError(null);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('find-competitors', {
+        body: {
+          brand_name: bName,
+          brand_url: bDomain || '',
+          industry: bIndustry || '',
+          geography: bGeo || 'Global',
+          country: bGeo || 'Global',
+        }
+      });
+      if (fnError) throw new Error(fnError.message);
+      const found: Competitor[] = (data?.competitors ?? [])
+        .slice(0, 4)
+        .map((c: any) => ({ name: c.name, domain: c.domain }));
+      if (found.length > 0) setCompetitors(found);
+      else setDiscoverError('No competitors found — add them manually below.');
+    } catch {
+      setDiscoverError('Could not auto-find competitors — add them manually below.');
+    } finally {
+      setDiscovering(false);
+    }
   }
 
   function handleClose() {
@@ -342,7 +371,9 @@ function CreateProjectDialog({
     if (step === "Brand") {
       const err = validateBrand();
       if (err) { setError(err); return; }
+      setCompetitors([{ name: "", domain: "" }]);
       setStep("Competitors");
+      void discoverCompetitors(brandName, domain, industry, geography);
     } else if (step === "Competitors") {
       setStep("Prompts");
     }
@@ -465,27 +496,56 @@ function CreateProjectDialog({
 
           {step === "Competitors" && (
             <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">Add up to 4 competitors to benchmark your narrative against.</p>
-              {competitors.map((c, i) => (
-                <div key={i} className="flex gap-2 items-start">
-                  <div className="flex-1 space-y-1.5">
-                    <Input placeholder="Competitor name" value={c.name} onChange={(e) => updateCompetitor(i, "name", e.target.value)} />
-                    <div className="relative">
-                      <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                      <Input className="pl-8 text-sm h-8" placeholder="competitor.com" value={c.domain} onChange={(e) => updateCompetitor(i, "domain", e.target.value)} />
+              {/* Discovery status */}
+              {discovering ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground px-3 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
+                  <Loader2 className="w-4 h-4 animate-spin text-primary shrink-0" />
+                  <span>Finding your top competitors…</span>
+                </div>
+              ) : !discoverError && competitors.some(c => c.domain) ? (
+                <div className="flex items-center gap-1.5 text-xs text-emerald-400">
+                  <Sparkles className="w-3 h-3" /> Auto-populated — edit or remove as needed
+                </div>
+              ) : discoverError ? (
+                <p className="text-xs text-muted-foreground">{discoverError}</p>
+              ) : (
+                <p className="text-sm text-muted-foreground">Add up to 4 competitors to benchmark your narrative against.</p>
+              )}
+
+              {/* Skeleton while discovering */}
+              {discovering ? (
+                <>
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="space-y-1.5">
+                      <div className="h-8 rounded-md bg-muted/50 animate-pulse" />
+                      <div className="h-8 rounded-md bg-muted/30 animate-pulse" />
                     </div>
-                  </div>
-                  {competitors.length > 1 && (
-                    <Button size="icon" variant="ghost" className="h-8 w-8 mt-1 text-muted-foreground" onClick={() => removeCompetitor(i)}>
-                      <Trash2 className="w-3.5 h-3.5" />
+                  ))}
+                </>
+              ) : (
+                <>
+                  {competitors.map((c, i) => (
+                    <div key={i} className="flex gap-2 items-start">
+                      <div className="flex-1 space-y-1.5">
+                        <Input placeholder="Competitor name" value={c.name} onChange={(e) => updateCompetitor(i, "name", e.target.value)} />
+                        <div className="relative">
+                          <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                          <Input className="pl-8 text-sm h-8" placeholder="competitor.com" value={c.domain} onChange={(e) => updateCompetitor(i, "domain", e.target.value)} />
+                        </div>
+                      </div>
+                      {competitors.length > 1 && (
+                        <Button size="icon" variant="ghost" className="h-8 w-8 mt-1 text-muted-foreground" onClick={() => removeCompetitor(i)}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  {competitors.length < 4 && (
+                    <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground" onClick={addCompetitor}>
+                      <Plus className="w-3 h-3" /> Add another
                     </Button>
                   )}
-                </div>
-              ))}
-              {competitors.length < 4 && (
-                <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground" onClick={addCompetitor}>
-                  <Plus className="w-3 h-3" /> Add another
-                </Button>
+                </>
               )}
             </div>
           )}
@@ -550,7 +610,7 @@ function CreateProjectDialog({
           )}
           <div className="flex-1" />
           {step !== "Prompts" ? (
-            <Button size="sm" onClick={nextStep}>
+            <Button size="sm" onClick={nextStep} disabled={discovering}>
               Next <ChevronRight className="w-4 h-4" />
             </Button>
           ) : (
