@@ -302,6 +302,31 @@ function CreateProjectDialog({
   // Prompts step
   const [promptText, setPromptText] = useState("");
   const [scanFrequency, setScanFrequency] = useState<"weekly" | "monthly" | "manual">("weekly");
+  const [suggesting, setSuggesting] = useState(false);
+
+  async function suggestPrompts(useCompetitors?: Competitor[]) {
+    if (!brandName.trim()) return;
+    setSuggesting(true);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('suggest-pr-prompts', {
+        body: {
+          brand_name: brandName,
+          domain: domain || '',
+          industry: industry || '',
+          geography: geography || 'Global',
+          audience: audience || '',
+          competitors: useCompetitors ?? competitors,
+        }
+      });
+      if (fnError) throw new Error(fnError.message);
+      const lines: string[] = data?.prompts ?? [];
+      if (lines.length > 0) setPromptText(lines.join('\n'));
+    } catch {
+      // fail silently — user can type prompts manually
+    } finally {
+      setSuggesting(false);
+    }
+  }
 
   function resetForm() {
     setStep("Brand");
@@ -311,6 +336,7 @@ function CreateProjectDialog({
     setError(null);
     setDiscovering(false);
     setDiscoverError(null);
+    setSuggesting(false);
   }
 
   async function discoverCompetitors(bName: string, bDomain: string, bIndustry: string, bGeo: string) {
@@ -376,6 +402,7 @@ function CreateProjectDialog({
       void discoverCompetitors(brandName, domain, industry, geography);
     } else if (step === "Competitors") {
       setStep("Prompts");
+      void suggestPrompts();
     }
   }
 
@@ -552,20 +579,46 @@ function CreateProjectDialog({
 
           {step === "Prompts" && (
             <div className="space-y-2">
-              <Label className="flex items-center gap-1.5">
-                <Target className="w-4 h-4" /> AI prompts to track
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                Enter prompts buyers might ask AI tools, one per line. We'll check if your brand appears.
-              </p>
-              <Textarea
-                rows={5}
-                className="text-sm"
-                placeholder={"best influencer marketing agency UK\ntop carbon accounting software for SMEs\nleading PR tool for startups"}
-                value={promptText}
-                onChange={(e) => setPromptText(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">Optional — you can add prompts later.</p>
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-1.5">
+                  <Target className="w-4 h-4" /> AI prompts to track
+                </Label>
+                {!suggesting && (
+                  <button
+                    type="button"
+                    onClick={() => void suggestPrompts()}
+                    className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+                  >
+                    <Sparkles className="w-3 h-3" /> {promptText ? 'Regenerate' : 'Auto-suggest'}
+                  </button>
+                )}
+              </div>
+              {suggesting ? (
+                <div className="space-y-2 rounded-md border border-border p-3">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                    Generating prompts for your brand…
+                  </div>
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="h-3.5 rounded bg-muted/50 animate-pulse" style={{ width: `${60 + (i % 3) * 15}%` }} />
+                  ))}
+                </div>
+              ) : (
+                <Textarea
+                  rows={5}
+                  className="text-sm"
+                  placeholder={"best influencer marketing agency UK\ntop carbon accounting software for SMEs\nleading PR tool for startups"}
+                  value={promptText}
+                  onChange={(e) => setPromptText(e.target.value)}
+                />
+              )}
+              {!suggesting && promptText ? (
+                <p className="text-xs text-emerald-400 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" /> Auto-generated — edit freely or regenerate
+                </p>
+              ) : !suggesting && (
+                <p className="text-xs text-muted-foreground">Optional — you can add prompts later.</p>
+              )}
 
               {/* Scan frequency */}
               <div className="pt-2 space-y-2 border-t border-border">
@@ -614,8 +667,8 @@ function CreateProjectDialog({
               Next <ChevronRight className="w-4 h-4" />
             </Button>
           ) : (
-            <Button size="sm" onClick={handleCreate} disabled={saving}>
-              {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating…</> : "Create & Analyse"}
+            <Button size="sm" onClick={handleCreate} disabled={saving || suggesting}>
+              {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating…</> : suggesting ? <><Loader2 className="w-4 h-4 animate-spin" /> Preparing…</> : "Create & Analyse"}
             </Button>
           )}
         </DialogFooter>

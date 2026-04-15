@@ -354,6 +354,8 @@ interface PromptsStepProps {
   promptText: string; setPromptText: (v: string) => void;
   scanFrequency: "weekly" | "monthly" | "manual";
   setScanFrequency: (v: "weekly" | "monthly" | "manual") => void;
+  suggesting: boolean;
+  onRegenerate: () => void;
   saving: boolean;
   error: string | null;
   onBack: () => void;
@@ -363,6 +365,7 @@ interface PromptsStepProps {
 function PromptsStep({
   promptText, setPromptText,
   scanFrequency, setScanFrequency,
+  suggesting, onRegenerate,
   saving, error, onBack, onCreate,
 }: PromptsStepProps) {
   return (
@@ -371,25 +374,55 @@ function PromptsStep({
         <p className="text-xs font-semibold text-primary uppercase tracking-widest">Step 3 of 3</p>
         <h2 className="text-2xl font-bold text-foreground">What are buyers searching for?</h2>
         <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-          We'll check if your brand appears in AI answers for these prompts. Optional — you can add them later.
+          {suggesting
+            ? "Generating the best prompts to track for your brand…"
+            : "We'll check if your brand appears in AI answers for these prompts."}
         </p>
       </div>
 
       <div className="space-y-4">
         <div className="space-y-1.5">
-          <Label className="flex items-center gap-1.5">
-            <Target className="w-4 h-4 text-muted-foreground" /> AI prompts to track
-            <span className="text-muted-foreground font-normal text-xs">(one per line)</span>
-          </Label>
-          <Textarea
-            rows={5}
-            className="text-sm resize-none"
-            placeholder={
-              "best influencer marketing agency UK\ntop carbon accounting software for SMEs\nleading PR tool for startups"
-            }
-            value={promptText}
-            onChange={(e) => setPromptText(e.target.value)}
-          />
+          <div className="flex items-center justify-between">
+            <Label className="flex items-center gap-1.5">
+              <Target className="w-4 h-4 text-muted-foreground" /> AI prompts to track
+              <span className="text-muted-foreground font-normal text-xs">(one per line)</span>
+            </Label>
+            {!suggesting && (
+              <button
+                type="button"
+                onClick={onRegenerate}
+                className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+              >
+                <Sparkles className="w-3 h-3" /> Regenerate
+              </button>
+            )}
+          </div>
+          {suggesting ? (
+            <div className="space-y-2 rounded-md border border-border p-3">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div
+                  key={i}
+                  className="h-4 rounded bg-muted/50 animate-pulse"
+                  style={{ width: `${65 + (i % 3) * 12}%` }}
+                />
+              ))}
+            </div>
+          ) : (
+            <Textarea
+              rows={5}
+              className="text-sm resize-none"
+              placeholder={
+                "best influencer marketing agency UK\ntop carbon accounting software for SMEs\nleading PR tool for startups"
+              }
+              value={promptText}
+              onChange={(e) => setPromptText(e.target.value)}
+            />
+          )}
+          {!suggesting && promptText && (
+            <p className="text-xs text-emerald-400 flex items-center gap-1">
+              <Sparkles className="w-3 h-3" /> Auto-generated — edit freely or regenerate
+            </p>
+          )}
         </div>
 
         <div className="space-y-2 pt-1 border-t border-border">
@@ -426,9 +459,11 @@ function PromptsStep({
           <Button variant="ghost" className="gap-1.5 h-12 w-24 shrink-0" onClick={onBack} disabled={saving}>
             <ChevronLeft className="w-4 h-4" /> Back
           </Button>
-          <Button className="flex-1 gap-2 h-12 text-base" onClick={onCreate} disabled={saving}>
+          <Button className="flex-1 gap-2 h-12 text-base" onClick={onCreate} disabled={saving || suggesting}>
             {saving ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> Setting up…</>
+            ) : suggesting ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Preparing…</>
             ) : (
               <><CheckCircle2 className="w-4 h-4" /> Start my first analysis</>
             )}
@@ -464,6 +499,30 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
   // Prompts step state
   const [promptText, setPromptText] = useState("");
   const [scanFrequency, setScanFrequency] = useState<"weekly" | "monthly" | "manual">("weekly");
+  const [suggesting, setSuggesting] = useState(false);
+
+  async function suggestPrompts(opts?: { bName?: string; bDomain?: string; bIndustry?: string; bGeo?: string; bAudience?: string; bCompetitors?: Competitor[] }) {
+    const bName = opts?.bName ?? brandName;
+    const bDomain = opts?.bDomain ?? domain;
+    const bIndustry = opts?.bIndustry ?? industry;
+    const bGeo = opts?.bGeo ?? geography;
+    const bAudience = opts?.bAudience ?? audience;
+    const bCompetitors = opts?.bCompetitors ?? competitors;
+    if (!bName.trim()) return;
+    setSuggesting(true);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('suggest-pr-prompts', {
+        body: { brand_name: bName, domain: bDomain, industry: bIndustry, geography: bGeo, audience: bAudience, competitors: bCompetitors }
+      });
+      if (fnError) throw new Error(fnError.message);
+      const lines: string[] = data?.prompts ?? [];
+      if (lines.length > 0) setPromptText(lines.join('\n'));
+    } catch {
+      // fail silently — user can type prompts manually
+    } finally {
+      setSuggesting(false);
+    }
+  }
 
   function validateBrand(): string | null {
     if (!brandName.trim()) return "Brand name is required";
@@ -590,7 +649,7 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
             onAdd={addCompetitor}
             onRemove={removeCompetitor}
             onUpdate={updateCompetitor}
-            onNext={() => setStep(3)}
+            onNext={() => { setStep(3); void suggestPrompts(); }}
             onBack={() => setStep(1)}
           />
         )}
@@ -599,6 +658,8 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
           <PromptsStep
             promptText={promptText} setPromptText={setPromptText}
             scanFrequency={scanFrequency} setScanFrequency={setScanFrequency}
+            suggesting={suggesting}
+            onRegenerate={() => void suggestPrompts()}
             saving={saving}
             error={error}
             onBack={() => setStep(2)}
