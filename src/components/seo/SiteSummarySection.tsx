@@ -14,6 +14,9 @@ interface MoneyData {
   value_per_visitor?: number;
   executive_summary?: string;
   safe_browsing_threat?: boolean;
+  competitor_domains?: string[];
+  competitor_traffic_gap_min?: number;
+  competitor_traffic_gap_max?: number;
 }
 
 function formatMoney(min: number, max: number, sym: string): string {
@@ -122,10 +125,22 @@ export default function SiteSummarySection({ notes }: { notes: unknown }) {
           <Card className={`border-l-4 border-l-destructive border-border bg-card ${money?.safe_browsing_threat ? "rounded-t-none" : ""}`}>
             <CardContent className="p-5 space-y-3">
               <div>
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Estimated Monthly Loss</span>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Estimated Monthly Loss from SEO Issues</span>
                 <p className="text-2xl font-black text-destructive tabular-nums mt-0.5">
                   {formatMoney(lossMin, lossMax, sym)} <span className="text-base font-medium text-muted-foreground">/ month</span>
                 </p>
+                {/* Competitor attribution line */}
+                {money?.competitor_domains && money.competitor_domains.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Revenue going to{" "}
+                    <span className="font-semibold text-foreground">
+                      {money.competitor_domains.slice(0, 3).join(", ")}
+                    </span>
+                    {money.competitor_traffic_gap_min != null && money.competitor_traffic_gap_max != null && (
+                      <> — approx. <span className="font-semibold text-amber-400">{formatMoney(money.competitor_traffic_gap_min, money.competitor_traffic_gap_max, sym)}/mo traffic gap</span></>
+                    )}
+                  </p>
+                )}
               </div>
               {money?.executive_summary && (
                 <p className="text-sm text-muted-foreground leading-relaxed">{money.executive_summary}</p>
