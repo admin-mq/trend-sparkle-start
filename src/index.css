@@ -228,3 +228,47 @@
   20%, 95%   { opacity: 0; transform: translateY(-8px); }
   100%        { opacity: 1; transform: translateY(0); }
 }
+
+/* Word-split text reveal — each word lifts from below */
+@keyframes word-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(110%) skewY(4deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) skewY(0deg);
+  }
+}
+
+/* Diagonal scan beam sweeping across hero */
+@keyframes scan-beam {
+  0%   { transform: translateX(-100%) skewX(-12deg); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateX(250%) skewX(-12deg); opacity: 0; }
+}
+
+/* Gentle float for hero mock-UI cards */
+@keyframes float-card {
+  0%, 100% { transform: translateY(0px) rotate(var(--float-rotate, 0deg)); }
+  50%       { transform: translateY(-10px) rotate(var(--float-rotate, 0deg)); }
+}
+
+/* Clip-path wipe reveal for section cards */
+@keyframes clip-reveal {
+  from { clip-path: inset(0 100% 0 0); opacity: 0; }
+  to   { clip-path: inset(0 0% 0 0); opacity: 1; }
+}
+
+/* Subtle shimmer on stat numbers */
+@keyframes shimmer-text {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+/* Pulse ring for live indicator dot */
+@keyframes ping-ring {
+  0%   { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
