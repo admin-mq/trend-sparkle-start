@@ -35,6 +35,7 @@ import Amcue from "./pages/Amcue";
 import AmcueBrandProfile from "./pages/AmcueBrandProfile";
 import DataDeletion from "./pages/DataDeletion";
 import MasterAdmin from "./pages/MasterAdmin";
+import TrendTest from "./pages/TrendTest";
 
 const queryClient = new QueryClient();
 
@@ -91,6 +92,9 @@ const App = () => (
 
             {/* Master Admin — public, secret URL, no sidebar */}
             <Route path="/master" element={<MasterAdmin />} />
+
+            {/* Trend Test — public, no sidebar, unlinked */}
+            <Route path="/trend-test" element={<TrendTest />} />
 
             {/* Instagram OAuth callback — public, no sidebar */}
             <Route path="/instagram-callback" element={<InstagramCallback />} />
