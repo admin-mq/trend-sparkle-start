@@ -28,6 +28,7 @@ import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import Profile from "./pages/Profile";
 import Auth from "./pages/Auth";
+import Home from "./pages/Home";
 import Debug from "./pages/Debug";
 import FreeScan from "./pages/FreeScan";
 import NotFound from "./pages/NotFound";
@@ -54,8 +55,8 @@ const App = () => (
             <Route path="/debug" element={<Debug />} />
             <Route path="/data-deletion" element={<DataDeletion />} />
             
-            {/* Redirect root to dashboard */}
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            {/* Public homepage */}
+            <Route path="/" element={<Home />} />
             
             {/* Protected dashboard layout with nested routes */}
             <Route element={
