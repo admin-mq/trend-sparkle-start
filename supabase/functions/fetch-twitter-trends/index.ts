@@ -25,12 +25,13 @@ const ALL_CATEGORIES = [
   'Gaming','Culture','Finance','News','Religion','Fashion','Entrepreneurship',
 ];
 
+const BATCH_SIZE = 5;
+const PERPLEXITY_MODEL = 'sonar';
+
 // ── Robust JSON extractor ────────────────────────────────────────────────────
 function extractJson(text: string): any | null {
   const cleaned = text.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
-  // Try full parse first
   try { return JSON.parse(cleaned); } catch {}
-  // Try extracting first {...} or [...] block
   const objMatch = cleaned.match(/\{[\s\S]*\}/);
   if (objMatch) { try { return JSON.parse(objMatch[0]); } catch {} }
   const arrMatch = cleaned.match(/\[[\s\S]*\]/);
@@ -65,11 +66,9 @@ async function scrapeTrends24(regionSlug: string, count: number): Promise<string
   if (!res.ok) throw new Error(`trends24.in HTTP ${res.status}`);
   const html = await res.text();
 
-  // Grab the FIRST <ol class=trend-card__list>...</ol> block (most recent snapshot)
   const olMatch = html.match(/<ol[^>]*class=["']?trend-card__list["']?[^>]*>([\s\S]*?)<\/ol>/);
   if (!olMatch) throw new Error('trends24.in structure changed — no trend-card__list found');
 
-  // Extract all trend-link inner text
   const linkRegex = /class=["']?trend-link["']?[^>]*>([^<]+)<\/a>/g;
   const trends: string[] = [];
   let m: RegExpExecArray | null;
@@ -84,25 +83,182 @@ async function scrapeTrends24(regionSlug: string, count: number): Promise<string
   return trends;
 }
 
-// ── Fallback: minimal response using raw trends only ─────────────────────────
-function buildFallback(rawTrends: string[], region: string): any {
-  return {
-    fetched_at: new Date().toISOString(),
-    region,
-    platform: 'Twitter',
-    top_insight: 'Verification unavailable — showing raw trending topics. Click any trend for live context.',
-    accuracy_notes: 'Verification step failed. Context will be fetched when you generate tweets.',
-    trends: rawTrends.map((name, i) => ({
-      rank: i + 1,
-      name,
-      category: 'News',
-      velocity: 'stable',
-      freshness_hours: 0,
-      why_trending: 'Reason unverified — click "Generate tweets" for live context',
-      confidence: 'low',
-      marketer_signal: null,
-    })),
-  };
+// ── Fetch category-specific trending topics via Perplexity ───────────────────
+// trends24.in only surfaces Twitter's native trending list (mostly sports +
+// entertainment). Niche categories like Tech/AI/Entrepreneurship rarely crack
+// that list. This fills the gap by asking Perplexity what's *actually* being
+// discussed on X within the user's selected categories right now.
+async function fetchCategoryTrends(
+  apiKey: string,
+  categories: string[],
+  region: string,
+  today: string
+): Promise<string[]> {
+  const prompt = `Find the MOST discussed topics on X/Twitter in ${region} today (${today}) within these categories: ${categories.join(', ')}.
+
+Rules:
+1. Search X/Twitter and recent news from the last 6 hours
+2. Topics must be SPECIFIC — product names, people, events, hashtags, launches, controversies
+3. Do NOT return generic terms like "AI", "Technology", "Business" — these are useless
+4. Prioritize what is actively buzzing with tweets right now
+
+Good examples: "Claude Opus 4.7", "#WWDC", "Sam Altman interview", "Vision Pro 2", "OpenAI outage"
+Bad examples: "AI", "Tech", "Programming", "Entrepreneurship"
+
+Return 3-5 topics per category, max 15 total. JSON array of strings only (no markdown):
+["topic1", "topic2", ...]`;
+
+  console.log(`[fetch-twitter-trends] Fetching category-specific trends for: ${categories.join(', ')}`);
+
+  try {
+    const res = await fetch('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: PERPLEXITY_MODEL,
+        messages: [
+          { role: 'system', content: 'You have live X/Twitter web search. Return only JSON arrays of specific topics currently active and buzzing today.' },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.3,
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn(`[fetch-twitter-trends] Category trends HTTP ${res.status}`);
+      return [];
+    }
+
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content ?? '';
+    const json = extractJson(text);
+    const arr = Array.isArray(json) ? json : (Array.isArray(json?.topics) ? json.topics : []);
+    const filtered = arr
+      .filter((x: any) => typeof x === 'string' && x.length > 0 && x.length < 80)
+      .slice(0, 15);
+    console.log(`[fetch-twitter-trends] Got ${filtered.length} category-specific trends:`, filtered.slice(0, 3).join(', '));
+    return filtered;
+  } catch (err) {
+    console.warn('[fetch-twitter-trends] Category trends fetch failed:', err);
+    return [];
+  }
+}
+
+// ── Verify a small batch of trends with focused Perplexity search ────────────
+async function verifyBatch(
+  apiKey: string,
+  batch: string[],
+  startIdx: number,
+  region: string,
+  todayShort: string
+): Promise<any[]> {
+  const fallback = (reason: string) => batch.map((name, i) => ({
+    rank: startIdx + i + 1,
+    name,
+    category: 'News',
+    velocity: 'stable',
+    freshness_hours: 0,
+    why_trending: reason,
+    confidence: 'low',
+    marketer_signal: null,
+  }));
+
+  const prompt = `Today is ${todayShort}. These topics are trending on X/Twitter in ${region}. For EACH one, search the web (try "{topic} news ${todayShort}" and "{topic} twitter today") to find WHY it's trending.
+
+TRENDS TO VERIFY:
+${batch.map((t, i) => `${i + 1}. ${t}`).join('\n')}
+
+CONFIDENCE CALIBRATION (important — don't default to "low"):
+- "high"   = you found a specific news article from today/yesterday naming the exact reason
+- "medium" = you found context (older article, wiki entry, known person/product, recent social activity) but no dated article — USE THIS AS DEFAULT if ANY relevant context exists
+- "low"    = ONLY when you found absolutely NO information about this topic at all
+
+Target: 80%+ of trends should be medium or high. These topics ARE actively trending so reasons exist — find them.
+
+Categories: ${ALL_CATEGORIES.join(' | ')}
+Velocity: rising (< 2h) | stable (2-6h) | fading (> 6h)
+
+Return ALL ${batch.length} trends. JSON only (no markdown fences):
+{
+  "trends": [
+    {
+      "name": "<exact trend name>",
+      "category": "<one from list>",
+      "velocity": "rising|stable|fading",
+      "freshness_hours": 3,
+      "why_trending": "Specific reason, max 15 words",
+      "confidence": "high|medium|low",
+      "marketer_signal": "Brand angle, max 12 words, or null if confidence=low"
+    }
+  ]
+}`;
+
+  try {
+    const res = await fetch('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: PERPLEXITY_MODEL,
+        messages: [
+          { role: 'system', content: 'You verify trending topics using live web search. Search per-topic. Be decisive: if a topic is trending on X, a reason exists — find it. Avoid over-using "low" confidence.' },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.2,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.warn(`[fetch-twitter-trends] Batch ${startIdx} HTTP ${res.status}: ${errText.slice(0, 200)}`);
+      return fallback('Verification unavailable');
+    }
+
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content ?? '';
+    const parsed = extractJson(text);
+
+    if (!parsed || !Array.isArray(parsed.trends)) {
+      console.warn(`[fetch-twitter-trends] Batch ${startIdx} JSON parse failed. Raw: ${text.slice(0, 200)}`);
+      return fallback('Parse failed');
+    }
+
+    // Map parsed trends back to input names (case-insensitive), fill gaps
+    const byName = new Map<string, any>();
+    for (const t of parsed.trends) {
+      if (t?.name && typeof t.name === 'string') {
+        byName.set(t.name.toLowerCase().trim(), t);
+      }
+    }
+
+    return batch.map((name, i) => {
+      const matched = byName.get(name.toLowerCase().trim());
+      if (matched) {
+        return {
+          rank: startIdx + i + 1,
+          name,
+          category: matched.category || 'News',
+          velocity: matched.velocity || 'stable',
+          freshness_hours: typeof matched.freshness_hours === 'number' ? matched.freshness_hours : 0,
+          why_trending: matched.why_trending || 'Reason unverified',
+          confidence: matched.confidence || 'low',
+          marketer_signal: matched.marketer_signal ?? null,
+        };
+      }
+      return {
+        rank: startIdx + i + 1,
+        name,
+        category: 'News',
+        velocity: 'stable',
+        freshness_hours: 0,
+        why_trending: 'Reason unverified',
+        confidence: 'low',
+        marketer_signal: null,
+      };
+    });
+  } catch (err) {
+    console.warn(`[fetch-twitter-trends] Batch ${startIdx} error:`, err);
+    return fallback('Verification failed');
+  }
 }
 
 serve(async (req) => {
@@ -119,7 +275,7 @@ serve(async (req) => {
     });
     const todayShort = new Date().toISOString().split('T')[0];
 
-    // ── PASS 1: Direct HTML scrape of trends24.in ─────────────────────────────
+    // ── PASS 1a: Scrape trends24.in ───────────────────────────────────────────
     let rawTrends: string[];
     try {
       rawTrends = await scrapeTrends24(regionSlug, count);
@@ -128,123 +284,74 @@ serve(async (req) => {
       throw new Error(`Failed to fetch trends from trends24.in: ${scrapeErr instanceof Error ? scrapeErr.message : 'unknown'}`);
     }
 
-    // ── PASS 2: Perplexity sonar verifies each trend ──────────────────────────
-    console.log(`[fetch-twitter-trends] Pass 2 — verifying ${rawTrends.length} trends via Perplexity sonar`);
-
-    const priorityLine = categories.length > 0
-      ? `\nSORT ORDER: Put trends in these categories FIRST (in the returned array): ${(categories as string[]).join(', ')}. Other trends follow after. Do NOT drop any trends — classify them all.`
-      : '';
-
-    const p2Prompt = `Today is ${today}. You are verifying why topics are trending on X/Twitter in ${region}.
-
-STRICT ANTI-HALLUCINATION RULES:
-1. For each trend below, search "[trend] news ${todayShort}" to find why it is trending TODAY
-2. NEVER assume a trend is about a holiday/date without a news article from TODAY confirming it
-3. NEVER infer why a celebrity/person is trending without finding a specific article from TODAY
-4. If no confirmed reason found: set confidence="low" and why_trending="Reason unverified after search"
-5. Be honest — confidence="high" means you found a direct news article from today or yesterday
-
-TRENDS TO VERIFY (from trends24.in/${regionSlug}):
-${rawTrends.map((t, i) => `${i + 1}. ${t}`).join('\n')}
-${priorityLine}
-
-Classify velocity based on how long you estimate it has been trending:
-- "rising"  = appeared in last 2 hours (breaking news, just posted)
-- "stable"  = trending 2–6 hours
-- "fading"  = trending more than 6 hours
-
-Available categories: ${ALL_CATEGORIES.join(' | ')}
-
-Return ALL ${rawTrends.length} trends. Return ONLY valid JSON (no markdown, no explanation):
-{
-  "fetched_at": "${new Date().toISOString()}",
-  "region": "${region}",
-  "platform": "Twitter",
-  "top_insight": "One actionable marketer insight based only on verified high-confidence trends (1 sentence)",
-  "accuracy_notes": "Brief note on scan quality",
-  "trends": [
-    {
-      "rank": 1,
-      "name": "exact trend name from the list above",
-      "category": "one category from the list",
-      "velocity": "rising | stable | fading",
-      "freshness_hours": 2,
-      "why_trending": "Verified reason, max 15 words. Or: Reason unverified after search",
-      "confidence": "high | medium | low",
-      "marketer_signal": "Actionable brand opportunity, max 12 words. null if confidence=low"
-    }
-  ]
-}`;
-
-    let verified: any = null;
-    try {
-      const p2Res = await fetch('https://api.perplexity.ai/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'sonar',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a trend verification agent with live web search. Your job is to find out WHY topics are trending right now using real news sources. Return only valid JSON.',
-            },
-            { role: 'user', content: p2Prompt },
-          ],
-          temperature: 0.2,
-        }),
-      });
-
-      if (!p2Res.ok) {
-        const errText = await p2Res.text();
-        console.error(`[fetch-twitter-trends] Pass 2 HTTP ${p2Res.status}: ${errText.slice(0, 300)}`);
-      } else {
-        const p2Data = await p2Res.json();
-        const p2Text = p2Data.choices?.[0]?.message?.content ?? '';
-        console.log(`[fetch-twitter-trends] Pass 2 returned ${p2Text.length} chars`);
-        verified = extractJson(p2Text);
-        if (!verified) console.warn(`[fetch-twitter-trends] Pass 2 JSON parse failed. Raw: ${p2Text.slice(0, 300)}`);
-      }
-    } catch (p2Err) {
-      console.error('[fetch-twitter-trends] Pass 2 fetch error:', p2Err);
+    // ── PASS 1b: Supplementary category trends (if categories selected) ──────
+    let combinedTrends = rawTrends;
+    let supplementaryCount = 0;
+    if (categories.length > 0) {
+      const catTrends = await fetchCategoryTrends(PERPLEXITY_API_KEY, categories, region, today);
+      const seen = new Set(rawTrends.map(t => t.toLowerCase()));
+      const unique = catTrends.filter(t => !seen.has(t.toLowerCase()));
+      supplementaryCount = unique.length;
+      // Category-specific trends lead the list so they're visible; cap at 30 total
+      combinedTrends = [...unique, ...rawTrends].slice(0, Math.max(rawTrends.length, 30));
     }
 
-    // ── If Pass 2 failed, return fallback with raw trends ─────────────────────
-    if (!verified || !Array.isArray(verified.trends) || verified.trends.length === 0) {
-      console.warn('[fetch-twitter-trends] Pass 2 produced no usable trends — using fallback');
-      const fallback = buildFallback(rawTrends, region);
-      return new Response(
-        JSON.stringify({ ...fallback, raw_count: rawTrends.length, verified_count: 0 }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // ── PASS 2: Parallel batched verification ────────────────────────────────
+    console.log(`[fetch-twitter-trends] Verifying ${combinedTrends.length} trends (${supplementaryCount} supplementary) in parallel batches of ${BATCH_SIZE}`);
+
+    const batches: string[][] = [];
+    for (let i = 0; i < combinedTrends.length; i += BATCH_SIZE) {
+      batches.push(combinedTrends.slice(i, i + BATCH_SIZE));
     }
 
-    let finalTrends = verified.trends;
+    const batchResults = await Promise.all(
+      batches.map((batch, i) =>
+        verifyBatch(PERPLEXITY_API_KEY, batch, i * BATCH_SIZE, region, todayShort)
+      )
+    );
 
-    // If selected categories, SORT by category match (don't filter) so priority
-    // categories appear first but all trends are still visible.
+    let finalTrends: any[] = batchResults.flat();
+
+    // Sort: category matches first, then by original rank within each bucket
     if (categories.length > 0) {
       const prioritySet = new Set((categories as string[]).map(c => c.toLowerCase()));
-      finalTrends = [...finalTrends].sort((a: any, b: any) => {
-        const aMatch = prioritySet.has((a.category || '').toLowerCase()) ? 0 : 1;
-        const bMatch = prioritySet.has((b.category || '').toLowerCase()) ? 0 : 1;
-        if (aMatch !== bMatch) return aMatch - bMatch;
-        return (a.rank || 99) - (b.rank || 99);
-      });
-      // Re-rank so displayed numbers match new order
-      finalTrends = finalTrends.map((t: any, i: number) => ({ ...t, rank: i + 1 }));
+      finalTrends = finalTrends
+        .sort((a: any, b: any) => {
+          const aMatch = prioritySet.has((a.category || '').toLowerCase()) ? 0 : 1;
+          const bMatch = prioritySet.has((b.category || '').toLowerCase()) ? 0 : 1;
+          if (aMatch !== bMatch) return aMatch - bMatch;
+          return (a.rank || 99) - (b.rank || 99);
+        })
+        .map((t: any, i: number) => ({ ...t, rank: i + 1 }));
     }
 
-    console.log(`[fetch-twitter-trends] Done — ${finalTrends.length} verified trends returned`);
+    const verifiedCount = finalTrends.filter((t: any) => t.confidence !== 'low').length;
+    const highConfCount = finalTrends.filter((t: any) => t.confidence === 'high').length;
+
+    // Top insight: first high-confidence trend with a marketer_signal
+    const featured = finalTrends.find((t: any) => t.confidence === 'high' && t.marketer_signal)
+                  || finalTrends.find((t: any) => t.confidence !== 'low' && t.marketer_signal);
+    const topInsight = featured
+      ? `"${featured.name}" is a live opportunity — ${featured.marketer_signal}`
+      : 'Scan complete. Pick a trend to generate on-brand tweet drafts.';
+
+    const accuracyNotes = verifiedCount === 0
+      ? 'Verification returned low confidence for all trends — live context will be fetched per trend when you generate tweets.'
+      : `${verifiedCount}/${finalTrends.length} trends verified (${highConfCount} with direct article confirmation).`;
+
+    console.log(`[fetch-twitter-trends] Done — ${finalTrends.length} trends, ${verifiedCount} verified (${highConfCount} high-confidence)`);
 
     return new Response(
       JSON.stringify({
-        ...verified,
+        fetched_at: new Date().toISOString(),
+        region,
+        platform: 'Twitter',
+        top_insight: topInsight,
+        accuracy_notes: accuracyNotes,
         trends: finalTrends,
         raw_count: rawTrends.length,
-        verified_count: finalTrends.length,
+        supplementary_count: supplementaryCount,
+        verified_count: verifiedCount,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
