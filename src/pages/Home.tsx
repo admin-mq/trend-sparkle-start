@@ -932,26 +932,7 @@ export default function Home() {
 
   // ── CMO scroll-driven zoom ─────────────────────────────────────
   const heroSectionRef = useRef<HTMLElement>(null);
-  const cmoSpanRef = useRef<HTMLSpanElement>(null);
   const [heroProgress, setHeroProgress] = useState(0);
-  // Measured offset of CMO span centre from viewport centre (px)
-  const [cmoOffset, setCmoOffset] = useState({ x: 0, y: 0 });
-
-  // Measure CMO position once mounted + on resize
-  useEffect(() => {
-    const measure = () => {
-      const el = cmoSpanRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      setCmoOffset({
-        x: r.left + r.width / 2 - window.innerWidth / 2,
-        y: r.top + r.height / 2 - window.innerHeight / 2,
-      });
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, [mounted]);
 
   useEffect(() => {
     let ticking = false;
@@ -976,12 +957,9 @@ export default function Home() {
   const p = heroProgress;
   const uiFade = mounted ? Math.max(0, 1 - p / 0.13) : 0; // badge, subtitle, CTAs
   const cardOp = Math.max(0, 1 - p * 5); // floating cards
-  // eased progress for CMO travel (0→1 over first 60% of scroll)
-  const eased = Math.min(1, p / 0.60);
-  // CMO overlay: starts at measured h1 position, travels to viewport center
-  const cmoTx = cmoOffset.x * (1 - eased);          // px offset from center → 0
-  const cmoTy = cmoOffset.y * (1 - eased);          // px offset from center → 0
-  const cmoSc = 1 + eased * 16;                     // scale 1→17 as it travels
+  // CMO overlay — always perfectly centred via left:50% top:50% translate(-50%,-50%)
+  // Scale grows 1→18 across full scroll range
+  const cmoSc = 1 + p * 17;
   const cmoOp = p > 0.52 ? Math.max(0, 1 - (p - 0.52) / 0.18) : 1; // fades at end
   const cmoBl = p > 0.42 ? ((p - 0.42) / 0.58) * 28 : 0; // motion blur near end
   // Marquee bar — two phases so no blank screen:
@@ -1214,7 +1192,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Headline — fades out at scroll start; inline CMO hidden once overlay takes over */}
+            {/* Headline — fades out immediately on first scroll pixel */}
             <h1
               className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight leading-[1.05] mb-6"
               style={{
@@ -1224,10 +1202,7 @@ export default function Home() {
                 color: "hsl(210 20% 88%)",
               }}
             >
-              <ScrambleText text="The " scrambleDelay={700} charDelay={46} />
-              {/* ref so we can measure CMO's exact screen position */}
-              <span ref={cmoSpanRef} style={{ opacity: p > 0.01 ? 0 : 1, transition: 'none' }}>CMO</span>
-              <ScrambleText text=" Your Brand" scrambleDelay={820} charDelay={46} />
+              <ScrambleText text="The CMO Your Brand" scrambleDelay={700} charDelay={46} />
               <br />
               <ScrambleText text="Has Been Waiting For" scrambleDelay={1200} charDelay={40} />
             </h1>
@@ -1307,34 +1282,36 @@ export default function Home() {
             <ChevronDown size={22} />
           </div>
 
-          {/* ── CMO overlay — starts at h1 CMO position, zooms to viewport centre ── */}
-          {/* Sits at absolute centre of sticky viewport; translate offsets pull it to
-              the measured h1 position at p=0, then lerp to 0 as scroll progresses */}
-          <div
-            className="absolute inset-0 flex items-center justify-center z-[10] pointer-events-none"
+          {/* ── CMO overlay — pixel-perfect centre, always ── */}
+          {/* position:absolute left:50% top:50% + translate(-50%,-50%) is the only
+              CSS approach that guarantees the element centre == viewport centre at
+              every scale. We then additionally scale from that centre point. */}
+          <span
             aria-hidden="true"
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              zIndex: 10,
+              pointerEvents: "none",
+              display: "block",
+              fontSize: "clamp(3rem, 9.5vw, 7.5rem)",
+              fontWeight: 700,
+              letterSpacing: "-0.02em",
+              lineHeight: 1,
+              color: "white",
+              whiteSpace: "nowrap",
+              /* translate(-50%,-50%) centres the element, then scale grows it from that centre */
+              transform: `translate(-50%, -50%) scale(${cmoSc})`,
+              transformOrigin: "center center",
+              opacity: p > 0.01 ? cmoOp : 0,
+              filter: cmoBl > 0 ? `blur(${cmoBl}px)` : "none",
+              transition: "none",
+              willChange: "transform",
+            }}
           >
-            <span
-              style={{
-                display: "inline-block",
-                /* Match h1 font exactly so swap is seamless */
-                fontSize: "clamp(3rem, 9.5vw, 7.5rem)",
-                fontWeight: 700,
-                letterSpacing: "-0.02em",
-                lineHeight: 1,
-                color: "white",
-                /* Travel from h1 position → viewport centre, then scale up */
-                transform: `translate(${cmoTx}px, ${cmoTy}px) scale(${cmoSc})`,
-                transformOrigin: "center center",
-                opacity: p > 0.01 ? cmoOp : 0,   // hidden until scroll starts
-                filter: cmoBl > 0 ? `blur(${cmoBl}px)` : "none",
-                transition: "none",
-                willChange: "transform",
-              }}
-            >
-              CMO
-            </span>
-          </div>
+            CMO
+          </span>
 
           {/* ── Marquee bar — rises from below, reaches center as CMO merges ── */}
           {/* Positioned at top:50% so it centres in the viewport at marqVh=0 */}
