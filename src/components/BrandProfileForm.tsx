@@ -8,12 +8,13 @@ import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/lib/supabaseClient";
-import { UserProfile, RecommendedTrend, Competitor } from "@/types/trends";
+import { UserProfile, RecommendedTrend, Competitor, Platform, TwitterUserType, TwitterTrendsResponse } from "@/types/trends";
 import { useAuth } from "@/hooks/useAuth";
-import { Sparkles, Zap, ChevronDown, Flame, Skull, Zap as ZapIcon, MessageCircle, PartyPopper, Rocket, Crown, GraduationCap, Briefcase, Minimize2, Coffee, Globe, Loader2, Users, X, Plus, Star, MapPin, Building2 } from "lucide-react";
+import { Sparkles, Zap, ChevronDown, Flame, Skull, Zap as ZapIcon, MessageCircle, PartyPopper, Rocket, Crown, GraduationCap, Briefcase, Minimize2, Coffee, Globe, Loader2, Users, X, Plus, Star, MapPin, Building2, Twitter } from "lucide-react";
 
 interface BrandProfileFormProps {
   onRecommendationsReceived: (recommendations: RecommendedTrend[]) => void;
+  onTwitterTrendsReceived?: (data: TwitterTrendsResponse) => void;
   onBrandNameChange: (brandName: string) => void;
   onUserProfileChange: (profile: UserProfile) => void;
   loading: boolean;
@@ -154,6 +155,29 @@ const PRIMARY_GOALS = [
   "Website traffic"
 ];
 
+const PLATFORMS: { value: Platform; label: string; icon?: string }[] = [
+  { value: 'Instagram',  label: 'Instagram',  icon: '📸' },
+  { value: 'Twitter',    label: 'X / Twitter', icon: '𝕏' },
+  { value: 'TikTok',     label: 'TikTok',      icon: '🎵' },
+  { value: 'LinkedIn',   label: 'LinkedIn',    icon: '💼' },
+  { value: 'YouTube',    label: 'YouTube',     icon: '▶️' },
+];
+
+const TWITTER_REGIONS = [
+  'UK', 'USA', 'India', 'Canada', 'Australia', 'Global',
+  'Nigeria', 'South Africa', 'Pakistan', 'Brazil',
+];
+
+const CONTENT_CATEGORIES = [
+  'Entertainment', 'News', 'Tech', 'Entrepreneurship',
+  'Sports', 'Fashion', 'Finance', 'Music', 'Gaming', 'Lifestyle',
+];
+
+const TWITTER_FORMATS = [
+  'Single tweet',
+  'Twitter thread',
+];
+
 const COMPETITOR_TYPE_CONFIG: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
   local:    { label: 'Local',    icon: <MapPin className="w-3 h-3" />,    className: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
   national: { label: 'National', icon: <Building2 className="w-3 h-3" />, className: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
@@ -161,9 +185,10 @@ const COMPETITOR_TYPE_CONFIG: Record<string, { label: string; icon: React.ReactN
   manual:   { label: 'Custom',   icon: <Plus className="w-3 h-3" />,      className: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
 };
 
-export const BrandProfileForm = ({ 
-  onRecommendationsReceived, 
-  onBrandNameChange, 
+export const BrandProfileForm = ({
+  onRecommendationsReceived,
+  onTwitterTrendsReceived,
+  onBrandNameChange,
   onUserProfileChange,
   loading,
   setLoading
@@ -187,6 +212,13 @@ export const BrandProfileForm = ({
   const [selectedTones, setSelectedTones] = useState<string[]>([]);
   const [toneIntensity, setToneIntensity] = useState<number>(3);
   const [error, setError] = useState<string | null>(null);
+
+  // Platform & Twitter state
+  const [selectedPlatform, setSelectedPlatform] = useState<Platform>('Instagram');
+  const [topicAngle, setTopicAngle] = useState('');
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [twitterRegion, setTwitterRegion] = useState('UK');
+  const [twitterUserType, setTwitterUserType] = useState<TwitterUserType>('standard');
 
   // Competitor state
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
@@ -284,6 +316,12 @@ export const BrandProfileForm = ({
       tone_intensity: toneIntensity,
       tone_meter_label: toneMeterLabel || "Vibe meter",
       competitors: competitors.length > 0 ? competitors : undefined,
+      // New fields
+      platform: selectedPlatform,
+      topic_angle: topicAngle.trim() || undefined,
+      content_categories: selectedCategories.length > 0 ? selectedCategories : undefined,
+      twitter_geography: selectedPlatform === 'Twitter' ? twitterRegion : undefined,
+      twitter_user_type: selectedPlatform === 'Twitter' ? twitterUserType : undefined,
     };
   };
 
@@ -355,13 +393,35 @@ export const BrandProfileForm = ({
 
     setLoading(true);
     setError(null);
-    
+
     const fullProfile = buildUserProfile();
     onUserProfileChange(fullProfile);
 
     try {
+      // ── Twitter path: Social Pulse two-pass pipeline ──────────────────────
+      if (selectedPlatform === 'Twitter' && onTwitterTrendsReceived) {
+        const { data, error: fnError } = await supabase.functions.invoke('fetch-twitter-trends', {
+          body: {
+            region: twitterRegion,
+            categories: selectedCategories,
+            count: 20,
+          },
+        });
+
+        if (fnError) throw new Error(fnError.message || 'Failed to fetch Twitter trends');
+        if (!data || !data.trends) throw new Error('Invalid response from Twitter trends service');
+
+        onTwitterTrendsReceived(data);
+        return;
+      }
+
+      // ── All other platforms: existing recommend-trends pipeline ───────────
       const { data, error: functionError } = await supabase.functions.invoke('recommend-trends', {
-        body: { user_profile: fullProfile, user_id: user?.id || null }
+        body: {
+          user_profile: fullProfile,
+          user_id: user?.id || null,
+          selected_categories: selectedCategories.length > 0 ? selectedCategories : undefined,
+        }
       });
 
       if (functionError) {
@@ -376,7 +436,7 @@ export const BrandProfileForm = ({
       onRecommendationsReceived(data.recommended_trends);
     } catch (err) {
       console.error('Error fetching recommendations:', err);
-      setError('Failed to load recommendations');
+      setError(err instanceof Error ? err.message : 'Failed to load recommendations');
     } finally {
       setLoading(false);
     }
@@ -588,6 +648,140 @@ export const BrandProfileForm = ({
           </div>
         )}
 
+        {/* ── Platform selector ── */}
+        <div className="space-y-2 border-t border-border/40 pt-4">
+          <Label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+            Platform
+          </Label>
+          <div className="grid grid-cols-5 gap-1.5">
+            {PLATFORMS.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => setSelectedPlatform(p.value)}
+                className={`flex flex-col items-center gap-1 py-2 px-1 rounded-lg border text-[10px] font-medium transition-colors ${
+                  selectedPlatform === p.value
+                    ? 'bg-primary/15 border-primary text-primary'
+                    : 'bg-secondary/50 border-border/50 text-muted-foreground hover:border-primary/40'
+                }`}
+              >
+                <span className="text-base leading-none">{p.icon}</span>
+                <span className="leading-tight text-center">{p.value === 'Twitter' ? 'X' : p.value}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Topic angle (all platforms) ── */}
+        <div className="space-y-2">
+          <Label htmlFor="topic_angle" className="text-xs text-muted-foreground uppercase tracking-wider">
+            Topic angle <span className="normal-case font-normal">(optional)</span>
+          </Label>
+          <Input
+            id="topic_angle"
+            value={topicAngle}
+            onChange={(e) => setTopicAngle(e.target.value)}
+            placeholder="e.g. fat loss tips, morning routine, product launch"
+            className="bg-secondary/50 border-border/50 focus:border-primary"
+          />
+          <p className="text-[11px] text-muted-foreground/70">
+            Leave blank to let AI find the best angle. Or specify a topic to create content around.
+          </p>
+        </div>
+
+        {/* ── Content categories (multi-select, all platforms) ── */}
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+            Trend categories <span className="normal-case font-normal">(optional)</span>
+          </Label>
+          <div className="flex flex-wrap gap-1.5">
+            {CONTENT_CATEGORIES.map((cat) => {
+              const active = selectedCategories.includes(cat);
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedCategories(prev =>
+                    active ? prev.filter(c => c !== cat) : [...prev, cat]
+                  )}
+                  className={`text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                    active
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-secondary/50 text-muted-foreground border-border/50 hover:border-primary/40'
+                  }`}
+                >
+                  {cat}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-muted-foreground/70">
+            Filter trends to specific categories. Leave blank for all.
+          </p>
+        </div>
+
+        {/* ── Twitter-specific fields ── */}
+        {selectedPlatform === 'Twitter' && (
+          <div className="space-y-3 p-3 rounded-lg border border-[#1DA1F2]/30 bg-[#1DA1F2]/5">
+            <div className="flex items-center gap-2">
+              <Twitter className="w-3.5 h-3.5 text-[#1DA1F2]" />
+              <Label className="text-xs font-semibold text-[#1DA1F2]">X / Twitter settings</Label>
+            </div>
+
+            {/* Twitter geography */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Trend region</Label>
+              <Select value={twitterRegion} onValueChange={setTwitterRegion}>
+                <SelectTrigger className="bg-background border-border/50 h-8 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TWITTER_REGIONS.map((r) => (
+                    <SelectItem key={r} value={r}>{r}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Account type radio */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Account type</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTwitterUserType('standard')}
+                  className={`flex flex-col items-start px-3 py-2 rounded-lg border text-left transition-colors ${
+                    twitterUserType === 'standard'
+                      ? 'bg-primary/15 border-primary'
+                      : 'bg-background border-border/50 hover:border-primary/40'
+                  }`}
+                >
+                  <span className={`text-xs font-semibold ${twitterUserType === 'standard' ? 'text-primary' : 'text-foreground'}`}>
+                    Standard
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">280 chars</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTwitterUserType('premium')}
+                  className={`flex flex-col items-start px-3 py-2 rounded-lg border text-left transition-colors ${
+                    twitterUserType === 'premium'
+                      ? 'bg-primary/15 border-primary'
+                      : 'bg-background border-border/50 hover:border-primary/40'
+                  }`}
+                >
+                  <span className={`text-xs font-semibold ${twitterUserType === 'premium' ? 'text-primary' : 'text-foreground'}`}>
+                    Premium ✓
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">25,000 chars</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Content format — hidden for Twitter (tweets are the format) */}
+        {selectedPlatform !== 'Twitter' && (
         <div className="space-y-2">
           <Label className="text-xs text-muted-foreground uppercase tracking-wider">Content format</Label>
           <Select value={userProfile.content_format} onValueChange={(v) => handleInputChange('content_format', v)}>
@@ -601,6 +795,22 @@ export const BrandProfileForm = ({
             </SelectContent>
           </Select>
         </div>
+        )}
+        {selectedPlatform === 'Twitter' && (
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground uppercase tracking-wider">Format</Label>
+          <Select value={userProfile.content_format || 'Single tweet'} onValueChange={(v) => handleInputChange('content_format', v)}>
+            <SelectTrigger className="bg-secondary/50 border-border/50">
+              <SelectValue placeholder="Select format" />
+            </SelectTrigger>
+            <SelectContent>
+              {TWITTER_FORMATS.map((item) => (
+                <SelectItem key={item} value={item}>{item}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        )}
 
         <div className="space-y-2">
           <Label className="text-xs text-muted-foreground uppercase tracking-wider">Primary goal</Label>
