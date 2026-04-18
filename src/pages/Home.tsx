@@ -932,7 +932,27 @@ export default function Home() {
 
   // ── CMO scroll-driven zoom ─────────────────────────────────────
   const heroSectionRef = useRef<HTMLElement>(null);
+  const cmoSpanRef = useRef<HTMLSpanElement>(null);
   const [heroProgress, setHeroProgress] = useState(0);
+  // Measured offset of CMO span centre from viewport centre (px)
+  const [cmoOffset, setCmoOffset] = useState({ x: 0, y: 0 });
+
+  // Measure CMO position once mounted + on resize
+  useEffect(() => {
+    const measure = () => {
+      const el = cmoSpanRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setCmoOffset({
+        x: r.left + r.width / 2 - window.innerWidth / 2,
+        y: r.top + r.height / 2 - window.innerHeight / 2,
+      });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [mounted]);
+
   useEffect(() => {
     let ticking = false;
     const onScroll = () => {
@@ -956,10 +976,14 @@ export default function Home() {
   const p = heroProgress;
   const uiFade = mounted ? Math.max(0, 1 - p / 0.13) : 0; // badge, subtitle, CTAs
   const cardOp = Math.max(0, 1 - p * 5); // floating cards
-  const wordOp = Math.max(0, 1 - p / 0.2); // surrounding headline words
-  const cmoSc = 1 + p * 18; // CMO: 1x → 19x (crisp range)
-  const cmoOp = p > 0.52 ? Math.max(0, 1 - (p - 0.52) / 0.18) : 1; // fades out by p=0.70
-  const cmoBl = p > 0.42 ? ((p - 0.42) / 0.58) * 28 : 0; // motion blur
+  // eased progress for CMO travel (0→1 over first 60% of scroll)
+  const eased = Math.min(1, p / 0.60);
+  // CMO overlay: starts at measured h1 position, travels to viewport center
+  const cmoTx = cmoOffset.x * (1 - eased);          // px offset from center → 0
+  const cmoTy = cmoOffset.y * (1 - eased);          // px offset from center → 0
+  const cmoSc = 1 + eased * 16;                     // scale 1→17 as it travels
+  const cmoOp = p > 0.52 ? Math.max(0, 1 - (p - 0.52) / 0.18) : 1; // fades at end
+  const cmoBl = p > 0.42 ? ((p - 0.42) / 0.58) * 28 : 0; // motion blur near end
   // Marquee bar — two phases so no blank screen:
   //   Phase 1 (p 0→0.70): rises from 82vh below centre → centre
   //   Phase 2 (p 0.70→1.0): slides centre → 48vh below (bottom of frame)
@@ -1190,17 +1214,20 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Headline — full h1 fades out quickly on scroll; CMO overlay takes over */}
+            {/* Headline — fades out at scroll start; inline CMO hidden once overlay takes over */}
             <h1
               className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight leading-[1.05] mb-6"
               style={{
-                opacity: mounted ? Math.max(0, 1 - p * 12) : 0,
+                opacity: mounted ? Math.max(0, 1 - p * 10) : 0,
                 transform: mounted ? "translateY(0)" : "translateY(22px)",
                 transition: p > 0 ? "none" : "opacity 0.8s ease 0.65s, transform 0.8s cubic-bezier(.16,1,.3,1) 0.65s",
                 color: "hsl(210 20% 88%)",
               }}
             >
-              <ScrambleText text="The CMO Your Brand" scrambleDelay={700} charDelay={46} />
+              <ScrambleText text="The " scrambleDelay={700} charDelay={46} />
+              {/* ref so we can measure CMO's exact screen position */}
+              <span ref={cmoSpanRef} style={{ opacity: p > 0.01 ? 0 : 1, transition: 'none' }}>CMO</span>
+              <ScrambleText text=" Your Brand" scrambleDelay={820} charDelay={46} />
               <br />
               <ScrambleText text="Has Been Waiting For" scrambleDelay={1200} charDelay={40} />
             </h1>
@@ -1280,25 +1307,29 @@ export default function Home() {
             <ChevronDown size={22} />
           </div>
 
-          {/* ── CMO — absolutely centered overlay, zooms from viewport center ── */}
+          {/* ── CMO overlay — starts at h1 CMO position, zooms to viewport centre ── */}
+          {/* Sits at absolute centre of sticky viewport; translate offsets pull it to
+              the measured h1 position at p=0, then lerp to 0 as scroll progresses */}
           <div
             className="absolute inset-0 flex items-center justify-center z-[10] pointer-events-none"
-            style={{ overflow: "hidden" }}
+            aria-hidden="true"
           >
             <span
               style={{
                 display: "inline-block",
-                fontSize: "clamp(3rem, 10vw, 8rem)",
+                /* Match h1 font exactly so swap is seamless */
+                fontSize: "clamp(3rem, 9.5vw, 7.5rem)",
                 fontWeight: 700,
                 letterSpacing: "-0.02em",
+                lineHeight: 1,
                 color: "white",
-                transform: `scale(${cmoSc})`,
+                /* Travel from h1 position → viewport centre, then scale up */
+                transform: `translate(${cmoTx}px, ${cmoTy}px) scale(${cmoSc})`,
                 transformOrigin: "center center",
-                opacity: Math.min(1, p * 12) * cmoOp,
+                opacity: p > 0.01 ? cmoOp : 0,   // hidden until scroll starts
                 filter: cmoBl > 0 ? `blur(${cmoBl}px)` : "none",
                 transition: "none",
                 willChange: "transform",
-                lineHeight: 1,
               }}
             >
               CMO
