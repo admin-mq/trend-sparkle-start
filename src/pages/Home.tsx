@@ -582,6 +582,42 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { const t = requestAnimationFrame(() => setMounted(true)); return () => cancelAnimationFrame(t); }, []);
 
+  // ── CMO scroll-driven zoom ─────────────────────────────────────
+  const heroSectionRef = useRef<HTMLElement>(null);
+  const [heroProgress, setHeroProgress] = useState(0);
+  useEffect(() => {
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        const section = heroSectionRef.current;
+        if (section) {
+          const rect  = section.getBoundingClientRect();
+          const total = section.offsetHeight - window.innerHeight;
+          setHeroProgress(Math.max(0, Math.min(1, -rect.top / total)));
+        }
+        ticking = false;
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Derived animation values — all driven by heroProgress (p)
+  const p       = heroProgress;
+  const uiFade  = mounted ? Math.max(0, 1 - p / 0.13) : 0; // badge, h1, subtitle, CTAs
+  const cardOp  = Math.max(0, 1 - p * 5);                   // floating cards
+  const cmoIn   = Math.min(1, p / 0.13);                    // CMO fades in as UI fades out
+  const cmoOut  = p > 0.80 ? Math.max(0, 1 - (p - 0.80) / 0.20) : 1; // CMO fades at end
+  const cmoOp   = cmoIn * cmoOut;
+  const cmoSc   = 1 + p * 30;                               // 1x → 31x scale
+  const cmoLS   = `${p * 0.28}em`;                          // letters spread apart
+  const cmoBl   = p > 0.70 ? (p - 0.70) / 0.30 * 20 : 0;  // motion blur near end
+  const flash   = p > 0.74 && p < 0.93                      // blue-white flash at burst
+    ? Math.sin((p - 0.74) / 0.19 * Math.PI) * 0.55 : 0;
+  const bgOp    = Math.max(0, 1 - p * 1.35);               // hero bg fades out
+
   const problemReveal  = useReveal();
   const featuresReveal = useReveal();
   const productReveal  = useReveal();
@@ -621,102 +657,145 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* ── HERO ─────────────────────────────────────────────────────── */}
-      <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden">
-        <FilmGrain />
-        <AnimatedGrid />
-        <ParticleField />
-        <FloatingCards />
+      {/* ── HERO — 240vh pinned for scroll-driven CMO zoom ────────── */}
+      <section ref={heroSectionRef} style={{ height:'240vh', position:'relative' }}>
+        {/* Sticky viewport — stays fixed while user scrolls through 240vh */}
+        <div style={{ position:'sticky', top:0, height:'100vh', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column' }}>
 
-        {/* Animated gradient mesh blobs */}
-        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-          <div className="absolute rounded-full" style={{ width:'65vw', height:'65vw', top:'-20%', left:'15%', background:'hsl(217 91% 55%)', opacity:0.09, filter:'blur(110px)', animation:'blob-drift-a 16s ease-in-out infinite' }} />
-          <div className="absolute rounded-full" style={{ width:'50vw', height:'50vw', top:'35%', left:'-10%', background:'hsl(199 89% 48%)', opacity:0.07, filter:'blur(100px)', animation:'blob-drift-b 20s ease-in-out infinite 6s' }} />
-          <div className="absolute rounded-full" style={{ width:'44vw', height:'44vw', top:'5%', left:'58%', background:'hsl(260 70% 60%)', opacity:0.06, filter:'blur(90px)', animation:'blob-drift-c 14s ease-in-out infinite 10s' }} />
-        </div>
+          {/* Dark bg — fades as CMO fills the screen */}
+          <div className="absolute inset-0 z-0 pointer-events-none" aria-hidden="true"
+            style={{ background:'hsl(222 24% 7%)', opacity: bgOp }} />
 
-        {/* Edge vignette */}
-        <div className="pointer-events-none absolute inset-0 z-[1]" aria-hidden="true"
-          style={{ background:'radial-gradient(ellipse 90% 90% at 50% 50%, transparent 40%, hsl(222 24% 5% / 0.7) 100%)' }} />
+          <FilmGrain />
+          <AnimatedGrid />
+          <ParticleField />
 
-        {/* Scan beam */}
-        <div className="pointer-events-none absolute inset-y-0 w-[80px] z-[2]" aria-hidden="true"
-          style={{ background:'linear-gradient(90deg,transparent,hsl(217 91% 80% / 0.05),transparent)', animation:'scan-beam 9s ease-in-out infinite', animationDelay:'2s' }} />
-
-        {/* Viewfinder corner brackets */}
-        {(['tl','tr','bl','br'] as const).map(c => (
-          <div key={c} className={cn('absolute z-[3] w-8 h-8 pointer-events-none', { 'top-8 left-8':c==='tl', 'top-8 right-8':c==='tr', 'bottom-12 left-8':c==='bl', 'bottom-12 right-8':c==='br' })}
-            style={{ opacity: mounted ? 0.35 : 0, transition:'opacity 1s ease 1.4s' }}>
-            <div className={cn('absolute w-full h-full', { 'border-t-2 border-l-2':c==='tl', 'border-t-2 border-r-2':c==='tr', 'border-b-2 border-l-2':c==='bl', 'border-b-2 border-r-2':c==='br' })}
-              style={{ borderColor:'hsl(217 91% 60%)' }} />
-          </div>
-        ))}
-
-        {/* Hero content — parallax layer */}
-        <div className="relative z-10 max-w-5xl mx-auto px-6 text-center pt-24 pb-16"
-          style={{ transform:`translateY(${scrollY*0.32}px)`, willChange:'transform' }}>
-
-          {/* Badge */}
-          <div className="inline-flex items-center gap-2 mb-8 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.04] text-xs font-medium tracking-widest uppercase text-white/50"
-            style={{ opacity:mounted?1:0, transform:mounted?'translateY(0)':'translateY(14px)', transition:'opacity 0.6s ease 0.5s, transform 0.6s ease 0.5s' }}>
-            <span className="relative flex w-2 h-2">
-              <span className="absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background:'hsl(217 91% 60%)', animation:'ping-ring 1.5s ease-in-out infinite' }} />
-              <span className="relative inline-flex rounded-full w-2 h-2" style={{ background:'hsl(217 91% 60%)' }} />
-            </span>
-            AI-Powered Marketing Platform
+          {/* Gradient mesh blobs */}
+          <div className="pointer-events-none absolute inset-0 overflow-hidden z-[1]" aria-hidden="true">
+            <div className="absolute rounded-full" style={{ width:'65vw', height:'65vw', top:'-20%', left:'15%', background:'hsl(217 91% 55%)', opacity:0.09, filter:'blur(110px)', animation:'blob-drift-a 16s ease-in-out infinite' }} />
+            <div className="absolute rounded-full" style={{ width:'50vw', height:'50vw', top:'35%', left:'-10%', background:'hsl(199 89% 48%)', opacity:0.07, filter:'blur(100px)', animation:'blob-drift-b 20s ease-in-out infinite 6s' }} />
+            <div className="absolute rounded-full" style={{ width:'44vw', height:'44vw', top:'5%', left:'58%', background:'hsl(260 70% 60%)', opacity:0.06, filter:'blur(90px)', animation:'blob-drift-c 14s ease-in-out infinite 10s' }} />
           </div>
 
-          {/* Headline — gradient shimmer + scramble */}
-          <h1
-            className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight leading-[1.05] mb-6"
-            style={{
-              opacity: mounted ? 1 : 0,
-              transform: mounted ? 'translateY(0)' : 'translateY(22px)',
-              transition: 'opacity 0.8s ease 0.65s, transform 0.8s cubic-bezier(.16,1,.3,1) 0.65s',
-              background: 'linear-gradient(90deg, hsl(210 20% 88%) 0%, hsl(217 91% 80%) 25%, hsl(0 0% 100%) 50%, hsl(217 91% 80%) 75%, hsl(210 20% 88%) 100%)',
-              backgroundSize: '300% auto',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-              animation: mounted ? 'gradient-shimmer 6s linear infinite' : 'none',
-            }}
-          >
-            <ScrambleText text="The CMO Your Brand" scrambleDelay={700} charDelay={46} />
-            <br />
-            <ScrambleText text="Has Been Waiting For" scrambleDelay={1200} charDelay={40} />
-          </h1>
+          {/* Edge vignette */}
+          <div className="pointer-events-none absolute inset-0 z-[2]" aria-hidden="true"
+            style={{ background:'radial-gradient(ellipse 90% 90% at 50% 50%, transparent 40%, hsl(222 24% 5% / 0.7) 100%)' }} />
 
-          {/* Subtitle */}
-          <p className="text-lg sm:text-xl md:text-2xl text-white/50 mb-4 font-light tracking-tight"
-            style={{ opacity:mounted?1:0, transform:mounted?'translateY(0)':'translateY(16px)', transition:'opacity 0.7s ease 0.9s, transform 0.7s ease 0.9s' }}>
-            Built for{' '}
-            <span className="font-semibold inline-block min-w-[180px] text-left"
-              style={{ color:'hsl(217 91% 65%)', transition:'opacity 0.32s ease, transform 0.32s ease', opacity:wordVisible?1:0, transform:wordVisible?'translateY(0)':'translateY(-8px)' }}>
-              {ROTATING_WORDS[wordIdx]}
-            </span>
-          </p>
+          {/* Scan beam */}
+          <div className="pointer-events-none absolute inset-y-0 w-[80px] z-[3]" aria-hidden="true"
+            style={{ opacity: uiFade, background:'linear-gradient(90deg,transparent,hsl(217 91% 80% / 0.05),transparent)', animation:'scan-beam 9s ease-in-out infinite', animationDelay:'2s' }} />
 
-          <p className="max-w-2xl mx-auto text-base sm:text-lg text-white/38 leading-relaxed mb-10"
-            style={{ opacity:mounted?1:0, transform:mounted?'translateY(0)':'translateY(14px)', transition:'opacity 0.7s ease 1.05s, transform 0.7s ease 1.05s' }}>
-            Marketers Quest gives your brand the intelligence, tools, and strategic guidance of a senior marketing team — at a fraction of the cost.
-          </p>
-
-          {/* CTAs */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3"
-            style={{ opacity:mounted?1:0, transform:mounted?'translateY(0)':'translateY(14px)', transition:'opacity 0.7s ease 1.2s, transform 0.7s ease 1.2s' }}>
-            <AuroraButton to="/auth">
-              Start for Free <ArrowRight size={15} />
-            </AuroraButton>
-            <a href="#platform" onClick={scrollToPlatform}
-              className="relative overflow-hidden flex items-center gap-2 px-7 py-3.5 rounded-xl font-semibold text-white/60 text-base border border-white/10 hover:border-white/25 hover:text-white transition-colors duration-200 group">
-              <span className="absolute inset-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out pointer-events-none" style={{ background:'hsl(222 22% 14%)' }} />
-              <span className="relative z-10 flex items-center gap-2">See the platform <ChevronDown size={15} /></span>
-            </a>
+          {/* Floating cards — vanish as CMO takes over */}
+          <div className="absolute inset-0 z-[4] pointer-events-none" style={{ opacity: cardOp }}>
+            <FloatingCards />
           </div>
-        </div>
 
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/20 z-10" style={{ animation:'bounce-y 2s ease-in-out infinite' }} aria-hidden="true">
-          <ChevronDown size={22} />
+          {/* Viewfinder corner brackets — fade with UI */}
+          {(['tl','tr','bl','br'] as const).map(c => (
+            <div key={c} className={cn('absolute z-[5] w-8 h-8 pointer-events-none', { 'top-8 left-8':c==='tl', 'top-8 right-8':c==='tr', 'bottom-12 left-8':c==='bl', 'bottom-12 right-8':c==='br' })}
+              style={{ opacity: mounted ? 0.35 * uiFade : 0, transition: p > 0 ? 'none' : 'opacity 1s ease 1.4s' }}>
+              <div className={cn('absolute w-full h-full', { 'border-t-2 border-l-2':c==='tl', 'border-t-2 border-r-2':c==='tr', 'border-b-2 border-l-2':c==='bl', 'border-b-2 border-r-2':c==='br' })}
+                style={{ borderColor:'hsl(217 91% 60%)' }} />
+            </div>
+          ))}
+
+          {/* ── Hero text content — fades out as CMO takes over ── */}
+          <div className="relative z-[6] max-w-5xl mx-auto px-6 text-center" style={{ opacity: uiFade, pointerEvents: uiFade < 0.05 ? 'none' : 'auto' }}>
+
+            {/* Badge */}
+            <div className="inline-flex items-center gap-2 mb-8 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.04] text-xs font-medium tracking-widest uppercase text-white/50"
+              style={{ opacity:mounted?1:0, transform:mounted?'translateY(0)':'translateY(14px)', transition:'opacity 0.6s ease 0.5s, transform 0.6s ease 0.5s' }}>
+              <span className="relative flex w-2 h-2">
+                <span className="absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background:'hsl(217 91% 60%)', animation:'ping-ring 1.5s ease-in-out infinite' }} />
+                <span className="relative inline-flex rounded-full w-2 h-2" style={{ background:'hsl(217 91% 60%)' }} />
+              </span>
+              AI-Powered Marketing Platform
+            </div>
+
+            {/* Headline — "CMO" will be replicated by the zoom overlay */}
+            <h1
+              className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight leading-[1.05] mb-6"
+              style={{
+                opacity: mounted ? 1 : 0,
+                transform: mounted ? 'translateY(0)' : 'translateY(22px)',
+                transition: 'opacity 0.8s ease 0.65s, transform 0.8s cubic-bezier(.16,1,.3,1) 0.65s',
+                background: 'linear-gradient(90deg, hsl(210 20% 88%) 0%, hsl(217 91% 80%) 25%, hsl(0 0% 100%) 50%, hsl(217 91% 80%) 75%, hsl(210 20% 88%) 100%)',
+                backgroundSize: '300% auto',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+                animation: mounted ? 'gradient-shimmer 6s linear infinite' : 'none',
+              }}
+            >
+              <ScrambleText text="The CMO Your Brand" scrambleDelay={700} charDelay={46} />
+              <br />
+              <ScrambleText text="Has Been Waiting For" scrambleDelay={1200} charDelay={40} />
+            </h1>
+
+            {/* Subtitle */}
+            <p className="text-lg sm:text-xl md:text-2xl text-white/50 mb-4 font-light tracking-tight"
+              style={{ opacity:mounted?1:0, transform:mounted?'translateY(0)':'translateY(16px)', transition:'opacity 0.7s ease 0.9s, transform 0.7s ease 0.9s' }}>
+              Built for{' '}
+              <span className="font-semibold inline-block min-w-[180px] text-left"
+                style={{ color:'hsl(217 91% 65%)', transition:'opacity 0.32s ease, transform 0.32s ease', opacity:wordVisible?1:0, transform:wordVisible?'translateY(0)':'translateY(-8px)' }}>
+                {ROTATING_WORDS[wordIdx]}
+              </span>
+            </p>
+
+            <p className="max-w-2xl mx-auto text-base sm:text-lg text-white/38 leading-relaxed mb-10"
+              style={{ opacity:mounted?1:0, transform:mounted?'translateY(0)':'translateY(14px)', transition:'opacity 0.7s ease 1.05s, transform 0.7s ease 1.05s' }}>
+              Marketers Quest gives your brand the intelligence, tools, and strategic guidance of a senior marketing team — at a fraction of the cost.
+            </p>
+
+            {/* CTAs */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3"
+              style={{ opacity:mounted?1:0, transform:mounted?'translateY(0)':'translateY(14px)', transition:'opacity 0.7s ease 1.2s, transform 0.7s ease 1.2s' }}>
+              <AuroraButton to="/auth">Start for Free <ArrowRight size={15} /></AuroraButton>
+              <a href="#platform" onClick={scrollToPlatform}
+                className="relative overflow-hidden flex items-center gap-2 px-7 py-3.5 rounded-xl font-semibold text-white/60 text-base border border-white/10 hover:border-white/25 hover:text-white transition-colors duration-200 group">
+                <span className="absolute inset-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out pointer-events-none" style={{ background:'hsl(222 22% 14%)' }} />
+                <span className="relative z-10 flex items-center gap-2">See the platform <ChevronDown size={15} /></span>
+              </a>
+            </div>
+          </div>
+
+          {/* ── CMO ZOOM OVERLAY — the scroll-driven star ── */}
+          <div className="absolute inset-0 flex items-center justify-center z-[15] pointer-events-none overflow-hidden">
+            <div style={{
+              transform:       `scale(${cmoSc})`,
+              opacity:          cmoOp,
+              filter:          `blur(${cmoBl}px)`,
+              transformOrigin: 'center center',
+              letterSpacing:    cmoLS,
+              willChange:      'transform, opacity, filter',
+            }}>
+              {/* Match exact font size of the h1 so crossover is seamless */}
+              <span
+                className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight"
+                style={{
+                  display: 'inline-block',
+                  background: 'linear-gradient(135deg, hsl(0 0% 100%) 0%, hsl(217 91% 82%) 35%, hsl(199 89% 78%) 55%, hsl(0 0% 100%) 100%)',
+                  backgroundSize: '200% auto',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                  animation: 'gradient-shimmer 3s linear infinite',
+                }}
+              >
+                CMO
+              </span>
+            </div>
+          </div>
+
+          {/* Blue-white flash at the burst-through moment */}
+          <div className="absolute inset-0 z-[20] pointer-events-none" aria-hidden="true"
+            style={{ background:'radial-gradient(ellipse at 50% 50%, hsl(217 91% 90%), hsl(199 89% 85%))', opacity: flash }} />
+
+          {/* Scroll indicator */}
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/20 z-[6]"
+            style={{ animation:'bounce-y 2s ease-in-out infinite', opacity: uiFade }} aria-hidden="true">
+            <ChevronDown size={22} />
+          </div>
         </div>
       </section>
 
