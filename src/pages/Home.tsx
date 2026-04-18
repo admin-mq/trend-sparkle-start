@@ -953,21 +953,21 @@ export default function Home() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Derived animation values — all driven by heroProgress (p)
+  // ── Animation values (simple & reliable) ──────────────────────
   const p = heroProgress;
-  const uiFade = mounted ? Math.max(0, 1 - p / 0.13) : 0; // badge, subtitle, CTAs
-  const cardOp = Math.max(0, 1 - p * 5); // floating cards
-  // CMO overlay — always perfectly centred via left:50% top:50% translate(-50%,-50%)
-  // Scale grows 1→18 across full scroll range
-  const cmoSc = 1 + p * 17;
-  const cmoOp = p > 0.52 ? Math.max(0, 1 - (p - 0.52) / 0.18) : 1; // fades at end
-  const cmoBl = p > 0.42 ? ((p - 0.42) / 0.58) * 28 : 0; // motion blur near end
-  // Marquee bar — two phases so no blank screen:
-  //   Phase 1 (p 0→0.70): rises from 82vh below centre → centre
-  //   Phase 2 (p 0.70→1.0): slides centre → 48vh below (bottom of frame)
-  const marqPhase1 = p < 0.70 ? (1 - p / 0.70) * 82 : 0;
-  const marqPhase2 = p >= 0.70 ? ((p - 0.70) / 0.30) * 48 : 0;
-  const marqVhOffset = marqPhase1 + marqPhase2;
+  // Hero UI (badge, subtitle, CTAs) fades out in first 15% of scroll
+  const uiFade = mounted ? Math.max(0, 1 - p / 0.15) : 0;
+  // Floating cards disappear fast
+  const cardOp = Math.max(0, 1 - p * 6);
+  // h1 headline fades out in first 20% of scroll
+  const h1Op   = mounted ? Math.max(0, 1 - p / 0.20) : 0;
+  // CMO overlay: visible from p=0.05 to p=0.75, scale 1→6x max (no huge blob)
+  const cmoVisible = p >= 0.05 && p <= 0.75;
+  const cmoProgress = Math.max(0, Math.min(1, (p - 0.05) / 0.70)); // 0→1 over that range
+  const cmoSc  = 1 + cmoProgress * 5;            // 1x → 6x (controlled, crisp)
+  const cmoOp  = p > 0.55 ? Math.max(0, 1 - (p - 0.55) / 0.20) : 1; // fade out 0.55→0.75
+  // Marquee rises from bottom into view at p=0.60 and sits at bottom of frame
+  const marqY  = Math.max(0, (1 - (p - 0.55) / 0.25)) * 100; // 100vh → 0vh offset
 
   const problemReveal = useReveal();
   const featuresReveal = useReveal();
@@ -1196,7 +1196,7 @@ export default function Home() {
             <h1
               className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight leading-[1.05] mb-6"
               style={{
-                opacity: mounted ? Math.max(0, 1 - p * 10) : 0,
+                opacity: h1Op,
                 transform: mounted ? "translateY(0)" : "translateY(22px)",
                 transition: p > 0 ? "none" : "opacity 0.8s ease 0.65s, transform 0.8s cubic-bezier(.16,1,.3,1) 0.65s",
                 color: "hsl(210 20% 88%)",
@@ -1282,45 +1282,39 @@ export default function Home() {
             <ChevronDown size={22} />
           </div>
 
-          {/* ── CMO overlay — pixel-perfect centre, always ── */}
-          {/* position:absolute left:50% top:50% + translate(-50%,-50%) is the only
-              CSS approach that guarantees the element centre == viewport centre at
-              every scale. We then additionally scale from that centre point. */}
-          <span
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              left: "50%",
-              top: "50%",
-              zIndex: 10,
-              pointerEvents: "none",
-              display: "block",
-              fontSize: "clamp(3rem, 9.5vw, 7.5rem)",
-              fontWeight: 700,
-              letterSpacing: "-0.02em",
-              lineHeight: 1,
-              color: "white",
-              whiteSpace: "nowrap",
-              /* translate(-50%,-50%) centres the element, then scale grows it from that centre */
-              transform: `translate(-50%, -50%) scale(${cmoSc})`,
-              transformOrigin: "center center",
-              opacity: p > 0.01 ? cmoOp : 0,
-              filter: cmoBl > 0 ? `blur(${cmoBl}px)` : "none",
-              transition: "none",
-              willChange: "transform",
-            }}
-          >
-            CMO
-          </span>
+          {/* ── CMO zoom overlay — centred via left/top 50% + translate(-50%,-50%) ── */}
+          {cmoVisible && (
+            <span
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: "50%",
+                zIndex: 10,
+                pointerEvents: "none",
+                display: "block",
+                fontSize: "clamp(3rem, 9.5vw, 7.5rem)",
+                fontWeight: 700,
+                letterSpacing: "-0.02em",
+                lineHeight: 1,
+                color: "white",
+                whiteSpace: "nowrap",
+                transform: `translate(-50%, -50%) scale(${cmoSc})`,
+                opacity: cmoOp,
+                transition: "none",
+              }}
+            >
+              CMO
+            </span>
+          )}
 
-          {/* ── Marquee bar — rises from below, reaches center as CMO merges ── */}
-          {/* Positioned at top:50% so it centres in the viewport at marqVh=0 */}
+          {/* ── Marquee bar — slides up from bottom when CMO fades ── */}
           <div
             className="absolute left-0 right-0 z-[12] pointer-events-none"
             style={{
-              top: "50%",
-              transform: `translateY(calc(-50% + ${marqVhOffset}vh))`,
-              willChange: "transform",
+              bottom: 0,
+              transform: `translateY(${marqY}%)`,
+              transition: "none",
             }}
           >
             <div
@@ -1328,26 +1322,16 @@ export default function Home() {
               style={{
                 background: "hsl(222 22% 8%)",
                 borderTop: "1px solid hsl(222 14% 14%)",
-                borderBottom: "1px solid hsl(222 14% 14%)",
               }}
             >
-              <div
-                className="absolute left-0 inset-y-0 w-28 z-10 pointer-events-none"
-                style={{ background: "linear-gradient(to right, hsl(222 22% 8%), transparent)" }}
-              />
-              <div
-                className="absolute right-0 inset-y-0 w-28 z-10 pointer-events-none"
-                style={{ background: "linear-gradient(to left, hsl(222 22% 8%), transparent)" }}
-              />
+              <div className="absolute left-0 inset-y-0 w-28 z-10 pointer-events-none"
+                style={{ background: "linear-gradient(to right, hsl(222 22% 8%), transparent)" }} />
+              <div className="absolute right-0 inset-y-0 w-28 z-10 pointer-events-none"
+                style={{ background: "linear-gradient(to left, hsl(222 22% 8%), transparent)" }} />
               <div className="flex whitespace-nowrap" style={{ animation: "marquee 28s linear infinite" }}>
                 {[MARQUEE, MARQUEE].map((t, i) => (
-                  <span
-                    key={i}
-                    className="text-xs font-semibold tracking-[0.18em] uppercase"
-                    style={{ color: "hsl(217 60% 48%)" }}
-                  >
-                    {t}
-                  </span>
+                  <span key={i} className="text-xs font-semibold tracking-[0.18em] uppercase"
+                    style={{ color: "hsl(217 60% 48%)" }}>{t}</span>
                 ))}
               </div>
             </div>
