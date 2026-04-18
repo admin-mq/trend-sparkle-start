@@ -715,21 +715,16 @@ export default function Home() {
                 opacity: mounted ? 1 : 0,
                 transform: mounted ? 'translateY(0)' : 'translateY(22px)',
                 transition: 'opacity 0.8s ease 0.65s, transform 0.8s cubic-bezier(.16,1,.3,1) 0.65s',
-                background: 'linear-gradient(90deg, hsl(210 20% 88%) 0%, hsl(217 91% 80%) 25%, hsl(0 0% 100%) 50%, hsl(217 91% 80%) 75%, hsl(210 20% 88%) 100%)',
-                backgroundSize: '300% auto',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-                animation: mounted ? 'gradient-shimmer 6s linear infinite' : 'none',
                 overflow: 'visible',
                 position: 'relative',
+                color: 'hsl(210 20% 88%)',
               }}
             >
-              {/* Words around CMO fade out as scroll increases */}
+              {/* Words around CMO — plain light color, fade on scroll */}
               <span style={{ opacity: wordOp, transition: 'none' }}>
                 <ScrambleText text="The " scrambleDelay={700} charDelay={46} />
               </span>
-              {/* CMO scales from its actual position in the headline */}
+              {/* CMO — own self-contained gradient text + scales from its position */}
               <span style={{
                 display: 'inline-block',
                 transform: `scale(${cmoSc})`,
@@ -737,6 +732,12 @@ export default function Home() {
                 filter: cmoBl > 0 ? `blur(${cmoBl}px)` : 'none',
                 willChange: 'transform',
                 transition: 'none',
+                background: 'linear-gradient(90deg, hsl(210 20% 92%) 0%, hsl(217 91% 82%) 30%, hsl(199 89% 78%) 55%, hsl(217 91% 82%) 75%, hsl(210 20% 92%) 100%)',
+                backgroundSize: '300% auto',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+                animation: 'gradient-shimmer 4s linear infinite',
               }}>CMO</span>
               <span style={{ opacity: wordOp, transition: 'none' }}>
                 <ScrambleText text=" Your Brand" scrambleDelay={900} charDelay={46} />
