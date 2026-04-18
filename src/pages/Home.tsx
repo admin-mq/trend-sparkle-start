@@ -609,8 +609,12 @@ export default function Home() {
   const uiFade  = mounted ? Math.max(0, 1 - p / 0.13) : 0; // badge, subtitle, CTAs
   const cardOp  = Math.max(0, 1 - p * 5);                   // floating cards
   const wordOp  = Math.max(0, 1 - p / 0.2);                 // surrounding headline words
-  const cmoSc   = 1 + p * 30;                               // CMO: 1x → 31x scale
-  const cmoBl   = p > 0.70 ? (p - 0.70) / 0.30 * 20 : 0;  // motion blur near end
+  const cmoSc   = 1 + p * 18;                               // CMO: 1x → 19x (crisp range)
+  const cmoOp   = p > 0.60 ? Math.max(0, 1 - (p - 0.60) / 0.22) : 1; // fade as bar rises
+  const cmoBl   = p > 0.55 ? (p - 0.55) / 0.45 * 28 : 0;  // motion blur near end
+  // Marquee bar: rises from below, centers at p=0.75 ("CMO merged" moment)
+  // translateY goes from 80vh (hidden below) → 0 (centered at 50%) over p 0→0.75
+  const marqVh  = (1 - Math.min(p / 0.75, 1)) * 80;
 
   const problemReveal  = useReveal();
   const featuresReveal = useReveal();
@@ -724,20 +728,16 @@ export default function Home() {
               <span style={{ opacity: wordOp, transition: 'none' }}>
                 <ScrambleText text="The " scrambleDelay={700} charDelay={46} />
               </span>
-              {/* CMO — own self-contained gradient text + scales from its position */}
+              {/* CMO — plain color so browser uses vector renderer at every scale step.
+                  background-clip:text forces rasterisation → pixelation. Avoid it here. */}
               <span style={{
                 display: 'inline-block',
                 transform: `scale(${cmoSc})`,
                 transformOrigin: 'center center',
+                opacity: cmoOp,
                 filter: cmoBl > 0 ? `blur(${cmoBl}px)` : 'none',
-                willChange: 'transform',
                 transition: 'none',
-                background: 'linear-gradient(90deg, hsl(210 20% 92%) 0%, hsl(217 91% 82%) 30%, hsl(199 89% 78%) 55%, hsl(217 91% 82%) 75%, hsl(210 20% 92%) 100%)',
-                backgroundSize: '300% auto',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-                animation: 'gradient-shimmer 4s linear infinite',
+                color: 'white',
               }}>CMO</span>
               <span style={{ opacity: wordOp, transition: 'none' }}>
                 <ScrambleText text=" Your Brand" scrambleDelay={900} charDelay={46} />
@@ -779,23 +779,35 @@ export default function Home() {
           </div>
 
           {/* Scroll indicator */}
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/20 z-[6]"
+          <div className="absolute bottom-20 left-1/2 -translate-x-1/2 text-white/20 z-[6]"
             style={{ animation:'bounce-y 2s ease-in-out infinite', opacity: uiFade }} aria-hidden="true">
             <ChevronDown size={22} />
           </div>
+
+          {/* ── Marquee bar — rises from below, reaches center as CMO merges ── */}
+          {/* Positioned at top:50% so it centres in the viewport at marqVh=0 */}
+          <div className="absolute left-0 right-0 z-[12] pointer-events-none"
+            style={{
+              top: '50%',
+              transform: `translateY(calc(-50% + ${marqVh}vh))`,
+              willChange: 'transform',
+            }}>
+            <div className="relative overflow-hidden py-4"
+              style={{ background:'hsl(222 22% 8%)', borderTop:'1px solid hsl(222 14% 14%)', borderBottom:'1px solid hsl(222 14% 14%)' }}>
+              <div className="absolute left-0 inset-y-0 w-28 z-10 pointer-events-none"
+                style={{ background:'linear-gradient(to right, hsl(222 22% 8%), transparent)' }} />
+              <div className="absolute right-0 inset-y-0 w-28 z-10 pointer-events-none"
+                style={{ background:'linear-gradient(to left, hsl(222 22% 8%), transparent)' }} />
+              <div className="flex whitespace-nowrap" style={{ animation:'marquee 28s linear infinite' }}>
+                {[MARQUEE, MARQUEE].map((t, i) => (
+                  <span key={i} className="text-xs font-semibold tracking-[0.18em] uppercase"
+                    style={{ color:'hsl(217 60% 48%)' }}>{t}</span>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </section>
-
-      {/* ── MARQUEE ─────────────────────────────────────────────────── */}
-      <div className="relative border-b overflow-hidden py-4" style={{ borderColor:'hsl(222 14% 14%)', background:'hsl(222 22% 8%)' }}>
-        <div className="absolute left-0 inset-y-0 w-28 z-10 pointer-events-none" style={{ background:'linear-gradient(to right, hsl(222 22% 8%), transparent)' }} />
-        <div className="absolute right-0 inset-y-0 w-28 z-10 pointer-events-none" style={{ background:'linear-gradient(to left, hsl(222 22% 8%), transparent)' }} />
-        <div className="flex whitespace-nowrap" style={{ animation:'marquee 28s linear infinite' }}>
-          {[MARQUEE, MARQUEE].map((t,i) => (
-            <span key={i} className="text-xs font-semibold tracking-[0.18em] uppercase" style={{ color:'hsl(217 60% 48%)' }}>{t}</span>
-          ))}
-        </div>
-      </div>
 
       {/* ── PROBLEM ─────────────────────────────────────────────────── */}
       <section className="py-36 px-6">
