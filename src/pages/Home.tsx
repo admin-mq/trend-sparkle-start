@@ -1207,8 +1207,7 @@ export default function Home() {
             >
               <ScrambleText text="Your Brand's CMO is finally here" scrambleDelay={700} charDelay={46} />
               <br />
-              <ScrambleText text="Has Been Waiting For" scrambleDelay={1200} charDelay={40} />
-            </h1>
+              
 
             {/* Subtitle + body + CTAs — fade with uiFade */}
             <div style={{ opacity: uiFade, pointerEvents: uiFade < 0.05 ? "none" : "auto" }}>
