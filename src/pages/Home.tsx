@@ -958,11 +958,14 @@ export default function Home() {
   const cardOp = Math.max(0, 1 - p * 5); // floating cards
   const wordOp = Math.max(0, 1 - p / 0.2); // surrounding headline words
   const cmoSc = 1 + p * 18; // CMO: 1x → 19x (crisp range)
-  const cmoOp = p > 0.6 ? Math.max(0, 1 - (p - 0.6) / 0.22) : 1; // fade as bar rises
-  const cmoBl = p > 0.55 ? ((p - 0.55) / 0.45) * 28 : 0; // motion blur near end
-  // Marquee bar: rises from below, centers at p=0.75 ("CMO merged" moment)
-  // translateY goes from 80vh (hidden below) → 0 (centered at 50%) over p 0→0.75
-  const marqVh = (1 - Math.min(p / 0.75, 1)) * 80;
+  const cmoOp = p > 0.52 ? Math.max(0, 1 - (p - 0.52) / 0.18) : 1; // fades out by p=0.70
+  const cmoBl = p > 0.42 ? ((p - 0.42) / 0.58) * 28 : 0; // motion blur
+  // Marquee bar — two phases so no blank screen:
+  //   Phase 1 (p 0→0.70): rises from 82vh below centre → centre
+  //   Phase 2 (p 0.70→1.0): slides centre → 48vh below (bottom of frame)
+  const marqPhase1 = p < 0.70 ? (1 - p / 0.70) * 82 : 0;
+  const marqPhase2 = p >= 0.70 ? ((p - 0.70) / 0.30) * 48 : 0;
+  const marqVhOffset = marqPhase1 + marqPhase2;
 
   const problemReveal = useReveal();
   const featuresReveal = useReveal();
@@ -1043,7 +1046,7 @@ export default function Home() {
       </nav>
 
       {/* ── HERO — 160vh pinned for scroll-driven CMO zoom ────────── */}
-      <section ref={heroSectionRef} style={{ height: "160vh", position: "relative" }}>
+      <section ref={heroSectionRef} style={{ height: "140vh", position: "relative" }}>
         {/* Sticky viewport — stays fixed while user scrolls through 240vh */}
         <div
           style={{
@@ -1308,7 +1311,7 @@ export default function Home() {
             className="absolute left-0 right-0 z-[12] pointer-events-none"
             style={{
               top: "50%",
-              transform: `translateY(calc(-50% + ${marqVh}vh))`,
+              transform: `translateY(calc(-50% + ${marqVhOffset}vh))`,
               willChange: "transform",
             }}
           >
