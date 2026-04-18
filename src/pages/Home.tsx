@@ -606,17 +606,11 @@ export default function Home() {
 
   // Derived animation values — all driven by heroProgress (p)
   const p       = heroProgress;
-  const uiFade  = mounted ? Math.max(0, 1 - p / 0.13) : 0; // badge, h1, subtitle, CTAs
+  const uiFade  = mounted ? Math.max(0, 1 - p / 0.13) : 0; // badge, subtitle, CTAs
   const cardOp  = Math.max(0, 1 - p * 5);                   // floating cards
-  const cmoIn   = Math.min(1, p / 0.13);                    // CMO fades in as UI fades out
-  const cmoOut  = p > 0.80 ? Math.max(0, 1 - (p - 0.80) / 0.20) : 1; // CMO fades at end
-  const cmoOp   = cmoIn * cmoOut;
-  const cmoSc   = 1 + p * 30;                               // 1x → 31x scale
-  const cmoLS   = `${p * 0.28}em`;                          // letters spread apart
+  const wordOp  = Math.max(0, 1 - p / 0.2);                 // surrounding headline words
+  const cmoSc   = 1 + p * 30;                               // CMO: 1x → 31x scale
   const cmoBl   = p > 0.70 ? (p - 0.70) / 0.30 * 20 : 0;  // motion blur near end
-  const flash   = p > 0.74 && p < 0.93                      // blue-white flash at burst
-    ? Math.sin((p - 0.74) / 0.19 * Math.PI) * 0.55 : 0;
-  const bgOp    = Math.max(0, 1 - p * 1.35);               // hero bg fades out
 
   const problemReveal  = useReveal();
   const featuresReveal = useReveal();
@@ -657,14 +651,14 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* ── HERO — 240vh pinned for scroll-driven CMO zoom ────────── */}
-      <section ref={heroSectionRef} style={{ height:'240vh', position:'relative' }}>
+      {/* ── HERO — 160vh pinned for scroll-driven CMO zoom ────────── */}
+      <section ref={heroSectionRef} style={{ height:'160vh', position:'relative' }}>
         {/* Sticky viewport — stays fixed while user scrolls through 240vh */}
         <div style={{ position:'sticky', top:0, height:'100vh', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column' }}>
 
-          {/* Dark bg — fades as CMO fills the screen */}
+          {/* Dark bg — solid throughout animation */}
           <div className="absolute inset-0 z-0 pointer-events-none" aria-hidden="true"
-            style={{ background:'hsl(222 24% 7%)', opacity: bgOp }} />
+            style={{ background:'hsl(222 24% 7%)' }} />
 
           <FilmGrain />
           <AnimatedGrid />
@@ -699,20 +693,22 @@ export default function Home() {
             </div>
           ))}
 
-          {/* ── Hero text content — fades out as CMO takes over ── */}
-          <div className="relative z-[6] max-w-5xl mx-auto px-6 text-center" style={{ opacity: uiFade, pointerEvents: uiFade < 0.05 ? 'none' : 'auto' }}>
+          {/* ── Hero text content ── */}
+          <div className="relative z-[6] max-w-5xl mx-auto px-6 text-center">
 
-            {/* Badge */}
-            <div className="inline-flex items-center gap-2 mb-8 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.04] text-xs font-medium tracking-widest uppercase text-white/50"
-              style={{ opacity:mounted?1:0, transform:mounted?'translateY(0)':'translateY(14px)', transition:'opacity 0.6s ease 0.5s, transform 0.6s ease 0.5s' }}>
-              <span className="relative flex w-2 h-2">
-                <span className="absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background:'hsl(217 91% 60%)', animation:'ping-ring 1.5s ease-in-out infinite' }} />
-                <span className="relative inline-flex rounded-full w-2 h-2" style={{ background:'hsl(217 91% 60%)' }} />
-              </span>
-              AI-Powered Marketing Platform
+            {/* Badge — fades with UI */}
+            <div style={{ opacity: uiFade, pointerEvents: uiFade < 0.05 ? 'none' : 'auto' }}>
+              <div className="inline-flex items-center gap-2 mb-8 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.04] text-xs font-medium tracking-widest uppercase text-white/50"
+                style={{ opacity:mounted?1:0, transform:mounted?'translateY(0)':'translateY(14px)', transition:'opacity 0.6s ease 0.5s, transform 0.6s ease 0.5s' }}>
+                <span className="relative flex w-2 h-2">
+                  <span className="absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background:'hsl(217 91% 60%)', animation:'ping-ring 1.5s ease-in-out infinite' }} />
+                  <span className="relative inline-flex rounded-full w-2 h-2" style={{ background:'hsl(217 91% 60%)' }} />
+                </span>
+                AI-Powered Marketing Platform
+              </div>
             </div>
 
-            {/* Headline — "CMO" will be replicated by the zoom overlay */}
+            {/* Headline — CMO scales from its real position; surrounding words fade */}
             <h1
               className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight leading-[1.05] mb-6"
               style={{
@@ -725,71 +721,61 @@ export default function Home() {
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
                 animation: mounted ? 'gradient-shimmer 6s linear infinite' : 'none',
+                overflow: 'visible',
+                position: 'relative',
               }}
             >
-              <ScrambleText text="The CMO Your Brand" scrambleDelay={700} charDelay={46} />
+              {/* Words around CMO fade out as scroll increases */}
+              <span style={{ opacity: wordOp, transition: 'none' }}>
+                <ScrambleText text="The " scrambleDelay={700} charDelay={46} />
+              </span>
+              {/* CMO scales from its actual position in the headline */}
+              <span style={{
+                display: 'inline-block',
+                transform: `scale(${cmoSc})`,
+                transformOrigin: 'center center',
+                filter: cmoBl > 0 ? `blur(${cmoBl}px)` : 'none',
+                willChange: 'transform',
+                transition: 'none',
+              }}>CMO</span>
+              <span style={{ opacity: wordOp, transition: 'none' }}>
+                <ScrambleText text=" Your Brand" scrambleDelay={900} charDelay={46} />
+              </span>
               <br />
-              <ScrambleText text="Has Been Waiting For" scrambleDelay={1200} charDelay={40} />
+              <span style={{ opacity: wordOp, transition: 'none' }}>
+                <ScrambleText text="Has Been Waiting For" scrambleDelay={1200} charDelay={40} />
+              </span>
             </h1>
 
-            {/* Subtitle */}
-            <p className="text-lg sm:text-xl md:text-2xl text-white/50 mb-4 font-light tracking-tight"
-              style={{ opacity:mounted?1:0, transform:mounted?'translateY(0)':'translateY(16px)', transition:'opacity 0.7s ease 0.9s, transform 0.7s ease 0.9s' }}>
-              Built for{' '}
-              <span className="font-semibold inline-block min-w-[180px] text-left"
-                style={{ color:'hsl(217 91% 65%)', transition:'opacity 0.32s ease, transform 0.32s ease', opacity:wordVisible?1:0, transform:wordVisible?'translateY(0)':'translateY(-8px)' }}>
-                {ROTATING_WORDS[wordIdx]}
-              </span>
-            </p>
+            {/* Subtitle + body + CTAs — fade with uiFade */}
+            <div style={{ opacity: uiFade, pointerEvents: uiFade < 0.05 ? 'none' : 'auto' }}>
+              {/* Subtitle */}
+              <p className="text-lg sm:text-xl md:text-2xl text-white/50 mb-4 font-light tracking-tight"
+                style={{ opacity:mounted?1:0, transform:mounted?'translateY(0)':'translateY(16px)', transition:'opacity 0.7s ease 0.9s, transform 0.7s ease 0.9s' }}>
+                Built for{' '}
+                <span className="font-semibold inline-block min-w-[180px] text-left"
+                  style={{ color:'hsl(217 91% 65%)', transition:'opacity 0.32s ease, transform 0.32s ease', opacity:wordVisible?1:0, transform:wordVisible?'translateY(0)':'translateY(-8px)' }}>
+                  {ROTATING_WORDS[wordIdx]}
+                </span>
+              </p>
 
-            <p className="max-w-2xl mx-auto text-base sm:text-lg text-white/38 leading-relaxed mb-10"
-              style={{ opacity:mounted?1:0, transform:mounted?'translateY(0)':'translateY(14px)', transition:'opacity 0.7s ease 1.05s, transform 0.7s ease 1.05s' }}>
-              Marketers Quest gives your brand the intelligence, tools, and strategic guidance of a senior marketing team — at a fraction of the cost.
-            </p>
+              <p className="max-w-2xl mx-auto text-base sm:text-lg text-white/38 leading-relaxed mb-10"
+                style={{ opacity:mounted?1:0, transform:mounted?'translateY(0)':'translateY(14px)', transition:'opacity 0.7s ease 1.05s, transform 0.7s ease 1.05s' }}>
+                Marketers Quest gives your brand the intelligence, tools, and strategic guidance of a senior marketing team — at a fraction of the cost.
+              </p>
 
-            {/* CTAs */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3"
-              style={{ opacity:mounted?1:0, transform:mounted?'translateY(0)':'translateY(14px)', transition:'opacity 0.7s ease 1.2s, transform 0.7s ease 1.2s' }}>
-              <AuroraButton to="/auth">Start for Free <ArrowRight size={15} /></AuroraButton>
-              <a href="#platform" onClick={scrollToPlatform}
-                className="relative overflow-hidden flex items-center gap-2 px-7 py-3.5 rounded-xl font-semibold text-white/60 text-base border border-white/10 hover:border-white/25 hover:text-white transition-colors duration-200 group">
-                <span className="absolute inset-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out pointer-events-none" style={{ background:'hsl(222 22% 14%)' }} />
-                <span className="relative z-10 flex items-center gap-2">See the platform <ChevronDown size={15} /></span>
-              </a>
+              {/* CTAs */}
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3"
+                style={{ opacity:mounted?1:0, transform:mounted?'translateY(0)':'translateY(14px)', transition:'opacity 0.7s ease 1.2s, transform 0.7s ease 1.2s' }}>
+                <AuroraButton to="/auth">Start for Free <ArrowRight size={15} /></AuroraButton>
+                <a href="#platform" onClick={scrollToPlatform}
+                  className="relative overflow-hidden flex items-center gap-2 px-7 py-3.5 rounded-xl font-semibold text-white/60 text-base border border-white/10 hover:border-white/25 hover:text-white transition-colors duration-200 group">
+                  <span className="absolute inset-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out pointer-events-none" style={{ background:'hsl(222 22% 14%)' }} />
+                  <span className="relative z-10 flex items-center gap-2">See the platform <ChevronDown size={15} /></span>
+                </a>
+              </div>
             </div>
           </div>
-
-          {/* ── CMO ZOOM OVERLAY — the scroll-driven star ── */}
-          <div className="absolute inset-0 flex items-center justify-center z-[15] pointer-events-none overflow-hidden">
-            <div style={{
-              transform:       `scale(${cmoSc})`,
-              opacity:          cmoOp,
-              filter:          `blur(${cmoBl}px)`,
-              transformOrigin: 'center center',
-              letterSpacing:    cmoLS,
-              willChange:      'transform, opacity, filter',
-            }}>
-              {/* Match exact font size of the h1 so crossover is seamless */}
-              <span
-                className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight"
-                style={{
-                  display: 'inline-block',
-                  background: 'linear-gradient(135deg, hsl(0 0% 100%) 0%, hsl(217 91% 82%) 35%, hsl(199 89% 78%) 55%, hsl(0 0% 100%) 100%)',
-                  backgroundSize: '200% auto',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                  animation: 'gradient-shimmer 3s linear infinite',
-                }}
-              >
-                CMO
-              </span>
-            </div>
-          </div>
-
-          {/* Blue-white flash at the burst-through moment */}
-          <div className="absolute inset-0 z-[20] pointer-events-none" aria-hidden="true"
-            style={{ background:'radial-gradient(ellipse at 50% 50%, hsl(217 91% 90%), hsl(199 89% 85%))', opacity: flash }} />
 
           {/* Scroll indicator */}
           <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/20 z-[6]"
@@ -800,7 +786,7 @@ export default function Home() {
       </section>
 
       {/* ── MARQUEE ─────────────────────────────────────────────────── */}
-      <div className="relative border-y overflow-hidden py-4" style={{ borderColor:'hsl(222 14% 14%)', background:'hsl(222 22% 8%)' }}>
+      <div className="relative border-b overflow-hidden py-4" style={{ borderColor:'hsl(222 14% 14%)', background:'hsl(222 22% 8%)' }}>
         <div className="absolute left-0 inset-y-0 w-28 z-10 pointer-events-none" style={{ background:'linear-gradient(to right, hsl(222 22% 8%), transparent)' }} />
         <div className="absolute right-0 inset-y-0 w-28 z-10 pointer-events-none" style={{ background:'linear-gradient(to left, hsl(222 22% 8%), transparent)' }} />
         <div className="flex whitespace-nowrap" style={{ animation:'marquee 28s linear infinite' }}>
