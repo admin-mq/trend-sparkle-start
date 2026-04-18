@@ -541,10 +541,10 @@ function ProductPreview({ visible }: { visible: boolean }) {
       {/* Dashboard interior */}
       <div
         className="grid"
-        style={{ gridTemplateColumns: "180px 1fr", minHeight: "400px", background: "hsl(222 24% 7%)" }}
+        style={{ gridTemplateColumns: "180px 1fr", minHeight: "400px", background: "hsl(222 22% 10%)" }}
       >
         {/* Sidebar */}
-        <div className="border-r p-3 space-y-0.5" style={{ borderColor: "hsl(222 14% 12%)" }}>
+        <div className="border-r p-3 space-y-0.5" style={{ background: "hsl(222 20% 8%)", borderColor: "hsl(222 14% 15%)" }}>
           <div className="px-2 py-1.5 mb-2">
             <div className="flex items-center gap-2">
               <MQLogo size={18} />
@@ -563,8 +563,8 @@ function ProductPreview({ visible }: { visible: boolean }) {
               key={item.label}
               className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium"
               style={{
-                background: item.active ? "hsl(217 91% 60% / 0.12)" : "transparent",
-                color: item.active ? "hsl(217 91% 65%)" : "hsl(215 15% 50%)",
+                background: item.active ? "hsl(217 91% 60% / 0.15)" : "transparent",
+                color: item.active ? "hsl(217 91% 68%)" : "hsl(215 12% 55%)",
               }}
             >
               {item.label}
@@ -592,7 +592,7 @@ function ProductPreview({ visible }: { visible: boolean }) {
               <div
                 key={m.label}
                 className="rounded-xl p-3"
-                style={{ background: "hsl(222 22% 11%)", border: "1px solid hsl(222 14% 17%)" }}
+                style={{ background: "hsl(222 22% 15%)", border: "1px solid hsl(222 14% 22%)" }}
               >
                 <p className="text-[10px] text-white/35 mb-1">{m.label}</p>
                 <p className="text-xl font-black text-white tabular-nums">
@@ -1190,44 +1190,19 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Headline — CMO scales from its real position; surrounding words fade */}
+            {/* Headline — full h1 fades out quickly on scroll; CMO overlay takes over */}
             <h1
               className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight leading-[1.05] mb-6"
               style={{
-                opacity: mounted ? 1 : 0,
+                opacity: mounted ? Math.max(0, 1 - p * 12) : 0,
                 transform: mounted ? "translateY(0)" : "translateY(22px)",
-                transition: "opacity 0.8s ease 0.65s, transform 0.8s cubic-bezier(.16,1,.3,1) 0.65s",
-                overflow: "visible",
-                position: "relative",
+                transition: p > 0 ? "none" : "opacity 0.8s ease 0.65s, transform 0.8s cubic-bezier(.16,1,.3,1) 0.65s",
                 color: "hsl(210 20% 88%)",
               }}
             >
-              {/* Words around CMO — plain light color, fade on scroll */}
-              <span style={{ opacity: wordOp, transition: "none" }}>
-                <ScrambleText text="The " scrambleDelay={700} charDelay={46} />
-              </span>
-              {/* CMO — plain color so browser uses vector renderer at every scale step.
-                  background-clip:text forces rasterisation → pixelation. Avoid it here. */}
-              <span
-                style={{
-                  display: "inline-block",
-                  transform: `scale(${cmoSc})`,
-                  transformOrigin: "center center",
-                  opacity: cmoOp,
-                  filter: cmoBl > 0 ? `blur(${cmoBl}px)` : "none",
-                  transition: "none",
-                  color: "white",
-                }}
-              >
-                CMO
-              </span>
-              <span style={{ opacity: wordOp, transition: "none" }}>
-                <ScrambleText text=" Your Brand" scrambleDelay={900} charDelay={46} />
-              </span>
+              <ScrambleText text="The CMO Your Brand" scrambleDelay={700} charDelay={46} />
               <br />
-              <span style={{ opacity: wordOp, transition: "none" }}>
-                <ScrambleText text="Has Been Waiting For" scrambleDelay={1200} charDelay={40} />
-              </span>
+              <ScrambleText text="Has Been Waiting For" scrambleDelay={1200} charDelay={40} />
             </h1>
 
             {/* Subtitle + body + CTAs — fade with uiFade */}
@@ -1303,6 +1278,31 @@ export default function Home() {
             aria-hidden="true"
           >
             <ChevronDown size={22} />
+          </div>
+
+          {/* ── CMO — absolutely centered overlay, zooms from viewport center ── */}
+          <div
+            className="absolute inset-0 flex items-center justify-center z-[10] pointer-events-none"
+            style={{ overflow: "hidden" }}
+          >
+            <span
+              style={{
+                display: "inline-block",
+                fontSize: "clamp(3rem, 10vw, 8rem)",
+                fontWeight: 700,
+                letterSpacing: "-0.02em",
+                color: "white",
+                transform: `scale(${cmoSc})`,
+                transformOrigin: "center center",
+                opacity: Math.min(1, p * 12) * cmoOp,
+                filter: cmoBl > 0 ? `blur(${cmoBl}px)` : "none",
+                transition: "none",
+                willChange: "transform",
+                lineHeight: 1,
+              }}
+            >
+              CMO
+            </span>
           </div>
 
           {/* ── Marquee bar — rises from below, reaches center as CMO merges ── */}
@@ -1398,10 +1398,7 @@ export default function Home() {
                       background: "radial-gradient(ellipse at 50% 0%, hsl(217 91% 60% / 0.07) 0%, transparent 60%)",
                     }}
                   />
-                  <div
-                    className="text-7xl font-black mb-6 leading-none select-none"
-                    style={{ color: "hsl(222 14% 16%)" }}
-                  >
+                  <div className="text-7xl font-black mb-6 leading-none select-none transition-colors duration-300 text-[hsl(222,14%,18%)] group-hover:text-[hsl(217,91%,60%)]">
                     {pt.num}
                   </div>
                   <h3 className="text-lg font-semibold text-white mb-2">{pt.title}</h3>
@@ -1507,8 +1504,8 @@ export default function Home() {
             <div
               style={{
                 opacity: productReveal.visible ? 1 : 0,
-                clipPath: productReveal.visible ? "inset(0 0 0 0 round 16px)" : "inset(0 0 100% 0 round 16px)",
-                transition: "clip-path 1s cubic-bezier(.16,1,.3,1) 0.2s, opacity 0.6s ease 0.2s",
+                transform: productReveal.visible ? "translateY(0)" : "translateY(32px)",
+                transition: "opacity 0.9s ease 0.2s, transform 0.9s cubic-bezier(.16,1,.3,1) 0.2s",
               }}
             >
               <ProductPreview visible={productReveal.visible} />
