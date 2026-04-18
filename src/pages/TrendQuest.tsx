@@ -4,15 +4,17 @@ import { BrandSelector } from "@/components/BrandSelector";
 import { RecommendedTrends } from "@/components/RecommendedTrends";
 import { CreativeDirections } from "@/components/CreativeDirections";
 import { ExecutionBlueprint } from "@/components/ExecutionBlueprint";
+import { TwitterTrends } from "@/components/TwitterTrends";
+import { TwitterContent } from "@/components/TwitterContent";
 import { WorkspaceStepper, WorkspaceStep } from "@/components/WorkspaceStepper";
 import { WorkspaceLoading } from "@/components/WorkspaceLoading";
-import { 
-  TrendQuestInputValues, 
-  deriveToneString, 
-  getPrimaryTone, 
-  getToneMeterLabel 
+import {
+  TrendQuestInputValues,
+  deriveToneString,
+  getPrimaryTone,
+  getToneMeterLabel
 } from "@/components/TrendQuestInputs";
-import { RecommendedTrend, CreativeDirection, UserProfile, DetailedDirection } from "@/types/trends";
+import { RecommendedTrend, CreativeDirection, UserProfile, DetailedDirection, TwitterTrendsResponse, TwitterTrend, GeneratedTweet } from "@/types/trends";
 import { useAuth } from "@/hooks/useAuth";
 import { useBrandProfiles, BrandProfile } from "@/hooks/useBrandProfiles";
 import { BrandMemory, updateBrandMemory } from "@/lib/brandMemory";
@@ -26,7 +28,12 @@ const DEFAULT_INPUT_VALUES: TrendQuestInputValues = {
   content_format_other: "",
   primary_goal: "",
   tones: ["casual"],
-  tone_intensity: 3
+  tone_intensity: 3,
+  platform: "Instagram",
+  topic_angle: "",
+  content_categories: [],
+  twitter_geography: "UK",
+  twitter_user_type: "standard",
 };
 
 const TrendQuest = () => {
@@ -64,6 +71,14 @@ const TrendQuest = () => {
   const [blueprintError, setBlueprintError] = useState<string | null>(null);
   const [trendHashtags, setTrendHashtags] = useState<string>('');
   
+  // Twitter / Social Pulse state
+  const [twitterData, setTwitterData] = useState<TwitterTrendsResponse | null>(null);
+  const [generatedTweets, setGeneratedTweets] = useState<GeneratedTweet[]>([]);
+  const [selectedTwitterTrend, setSelectedTwitterTrend] = useState<TwitterTrend | null>(null);
+  const [tweetsLoading, setTweetsLoading] = useState(false);
+  const [tweetsError, setTweetsError] = useState<string | null>(null);
+  const [isRefreshingTwitter, setIsRefreshingTwitter] = useState(false);
+
   // Brand memory for learning from feedback
   const [brandMemory, setBrandMemory] = useState<BrandMemory | null>(null);
 
@@ -103,7 +118,13 @@ const TrendQuest = () => {
       tones: inputs.tones,
       primary_tone: primaryTone,
       tone_intensity: inputs.tone_intensity,
-      tone_meter_label: getToneMeterLabel(primaryTone)
+      tone_meter_label: getToneMeterLabel(primaryTone),
+      // New platform fields
+      platform: inputs.platform as any,
+      topic_angle: inputs.topic_angle || undefined,
+      content_categories: inputs.content_categories.length > 0 ? inputs.content_categories : undefined,
+      twitter_geography: inputs.platform === 'Twitter' ? inputs.twitter_geography : undefined,
+      twitter_user_type: inputs.platform === 'Twitter' ? inputs.twitter_user_type : undefined,
     };
   };
 
@@ -170,15 +191,57 @@ const TrendQuest = () => {
     setDetailedDirection(null);
   };
 
-  // Get trends using selected brand
+  // Get trends — branches on platform
   const handleGetTrends = async () => {
     if (!selectedBrandId || !userProfile) return;
 
+    const isTwitter = inputValues.platform === 'Twitter';
+
+    if (isTwitter) {
+      // ── Twitter / Social Pulse path ──
+      setTrendsLoading(true);
+      try {
+        const { data, error: fnError } = await supabase.functions.invoke('fetch-twitter-trends', {
+          body: {
+            region: inputValues.twitter_geography || 'UK',
+            categories: inputValues.content_categories || [],
+            count: 20,
+          },
+        });
+        if (fnError) throw new Error(fnError.message || 'Failed to fetch Twitter trends');
+        if (!data || !data.trends) throw new Error('Invalid response from Twitter trends service');
+
+        setTwitterData(data);
+        setActiveStep("trends");
+        setGeneratedTweets([]);
+        setSelectedTwitterTrend(null);
+        // Clear normal-flow state
+        setRecommendations([]);
+        setCreativeDirections([]);
+        setDetailedDirection(null);
+      } catch (err) {
+        console.error('Twitter trends error:', err);
+        toast.error(err instanceof Error ? err.message : 'Failed to fetch Twitter trends');
+      } finally {
+        setTrendsLoading(false);
+      }
+      return;
+    }
+
+    // ── Standard platform path ──
     setTrendsLoading(true);
+    // Clear Twitter state when switching platforms
+    setTwitterData(null);
+    setGeneratedTweets([]);
+    setSelectedTwitterTrend(null);
 
     try {
       const { data, error: functionError } = await supabase.functions.invoke('recommend-trends', {
-        body: { user_profile: userProfile, user_id: user?.id || null }
+        body: {
+          user_profile: userProfile,
+          user_id: user?.id || null,
+          selected_categories: inputValues.content_categories.length > 0 ? inputValues.content_categories : undefined,
+        }
       });
 
       if (functionError) {
@@ -196,6 +259,63 @@ const TrendQuest = () => {
       toast.error('Failed to load recommendations');
     } finally {
       setTrendsLoading(false);
+    }
+  };
+
+  const handleGenerateTweets = async (trend: TwitterTrend) => {
+    if (!userProfile) {
+      toast.error('User profile is required');
+      return;
+    }
+    setTweetsLoading(true);
+    setTweetsError(null);
+    setSelectedTwitterTrend(trend);
+    setGeneratedTweets([]);
+    setActiveStep("directions");
+
+    const charLimit = inputValues.twitter_user_type === 'premium' ? 25000 : 280;
+
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('generate-tweet', {
+        body: {
+          user_profile: userProfile,
+          trend,
+          topic_angle: inputValues.topic_angle || undefined,
+          char_limit: charLimit,
+        },
+      });
+      if (fnError) throw new Error(fnError.message || 'Failed to generate tweets');
+      setGeneratedTweets(data.tweets || []);
+    } catch (err) {
+      setTweetsError(err instanceof Error ? err.message : 'Failed to generate tweets');
+      toast.error('Tweet generation failed. Please try again.');
+    } finally {
+      setTweetsLoading(false);
+    }
+  };
+
+  const handleRefreshTwitterTrends = async () => {
+    if (!twitterData) return;
+    setIsRefreshingTwitter(true);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('fetch-twitter-trends', {
+        body: {
+          region: inputValues.twitter_geography || 'UK',
+          categories: inputValues.content_categories || [],
+          count: 20,
+        },
+      });
+      if (fnError) throw new Error(fnError.message);
+      if (data?.trends) {
+        setTwitterData(data);
+        setGeneratedTweets([]);
+        setSelectedTwitterTrend(null);
+        setActiveStep("trends");
+      }
+    } catch (err) {
+      toast.error('Could not refresh trends. Try again.');
+    } finally {
+      setIsRefreshingTwitter(false);
     }
   };
 
@@ -256,7 +376,7 @@ const TrendQuest = () => {
     }
   };
 
-  const isLoading = trendsLoading || directionsLoading || blueprintLoading;
+  const isLoading = trendsLoading || directionsLoading || blueprintLoading || tweetsLoading;
 
   const handleOptimizeHashtags = () => {
     if (!detailedDirection || !userProfile) return;
@@ -274,6 +394,51 @@ const TrendQuest = () => {
   };
 
   const renderWorkspaceContent = () => {
+    // ── Twitter / Social Pulse flow ──
+    if (twitterData) {
+      switch (activeStep) {
+        case "trends":
+          return (
+            <TwitterTrends
+              data={twitterData}
+              onGenerateTweets={handleGenerateTweets}
+              onRefresh={handleRefreshTwitterTrends}
+              isRefreshing={isRefreshingTwitter}
+            />
+          );
+        case "directions":
+          if (tweetsError) {
+            return (
+              <div className="flex flex-col items-center justify-center h-full text-center gap-2">
+                <p className="text-destructive text-sm">{tweetsError}</p>
+                <button className="text-xs text-primary underline" onClick={() => setActiveStep("trends")}>
+                  ← Back to trends
+                </button>
+              </div>
+            );
+          }
+          return (
+            <TwitterContent
+              trendName={selectedTwitterTrend?.name || ''}
+              tweets={generatedTweets}
+              charLimit={inputValues.twitter_user_type === 'premium' ? 25000 : 280}
+              onBack={() => setActiveStep("trends")}
+            />
+          );
+        case "blueprint":
+          // Twitter has no blueprint — stay on tweet drafts
+          return (
+            <TwitterContent
+              trendName={selectedTwitterTrend?.name || ''}
+              tweets={generatedTweets}
+              charLimit={inputValues.twitter_user_type === 'premium' ? 25000 : 280}
+              onBack={() => setActiveStep("trends")}
+            />
+          );
+      }
+    }
+
+    // ── Default flow ──
     switch (activeStep) {
       case "trends":
         return <RecommendedTrends recommendations={recommendations} brandName={brandName} onViewDirections={handleViewDirections} onRefreshTrends={handleRefreshTrends} isRefreshing={isRefreshing} />;
@@ -320,12 +485,12 @@ const TrendQuest = () => {
           <div className="bg-card rounded-xl border border-border shadow-card flex-1 flex flex-col overflow-hidden">
             {/* Stepper */}
             <div className="p-3 border-b border-border">
-              <WorkspaceStepper 
-                activeStep={activeStep} 
-                hasTrends={recommendations.length > 0} 
-                hasDirections={creativeDirections.length > 0} 
-                hasBlueprint={detailedDirection !== null} 
-                onStepClick={setActiveStep} 
+              <WorkspaceStepper
+                activeStep={activeStep}
+                hasTrends={recommendations.length > 0 || twitterData !== null}
+                hasDirections={creativeDirections.length > 0 || generatedTweets.length > 0}
+                hasBlueprint={detailedDirection !== null}
+                onStepClick={setActiveStep}
               />
             </div>
 

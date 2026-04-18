@@ -3,7 +3,30 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-import { X, Users, Megaphone, Target, Palette } from "lucide-react";
+import { X, Users, Megaphone, Target, Palette, Twitter } from "lucide-react";
+
+const PLATFORMS = [
+  { value: 'Instagram',  label: 'Instagram',  icon: '📸' },
+  { value: 'Twitter',    label: 'X',          icon: '𝕏' },
+  { value: 'TikTok',     label: 'TikTok',     icon: '🎵' },
+  { value: 'LinkedIn',   label: 'LinkedIn',   icon: '💼' },
+  { value: 'YouTube',    label: 'YouTube',    icon: '▶️' },
+] as const;
+
+const TWITTER_REGIONS = [
+  'UK', 'USA', 'India', 'Canada', 'Australia', 'Global',
+  'Nigeria', 'South Africa', 'Pakistan', 'Brazil',
+] as const;
+
+const TREND_CATEGORIES = [
+  'Entertainment', 'News', 'Tech', 'Entrepreneurship',
+  'Sports', 'Fashion', 'Finance', 'Music', 'Gaming', 'Lifestyle',
+] as const;
+
+const TWITTER_FORMAT_OPTIONS = [
+  'Single tweet',
+  'Twitter thread',
+] as const;
 
 const AUDIENCE_OPTIONS = [
   "Gen Z",
@@ -112,6 +135,12 @@ export interface TrendQuestInputValues {
   primary_goal: string;
   tones: string[];
   tone_intensity: number;
+  // New fields
+  platform: string;
+  topic_angle: string;
+  content_categories: string[];
+  twitter_geography: string;
+  twitter_user_type: 'standard' | 'premium';
 }
 
 interface TrendQuestInputsProps {
@@ -140,8 +169,133 @@ export const TrendQuestInputs = ({ values, onChange }: TrendQuestInputsProps) =>
     onChange({ ...values, [key]: value });
   };
 
+  const isTwitter = values.platform === 'Twitter';
+
   return (
     <div className="space-y-4 pt-4 border-t">
+
+      {/* ── Platform selector ── */}
+      <div className="space-y-1.5">
+        <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Platform</Label>
+        <div className="grid grid-cols-5 gap-1">
+          {PLATFORMS.map((p) => (
+            <button
+              key={p.value}
+              type="button"
+              onClick={() => handleChange("platform", p.value)}
+              className={`flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg border text-[10px] font-medium transition-colors ${
+                values.platform === p.value
+                  ? 'bg-primary/15 border-primary text-primary'
+                  : 'bg-muted/40 border-border/50 text-muted-foreground hover:border-primary/40'
+              }`}
+            >
+              <span className="text-sm leading-none">{p.icon}</span>
+              <span className="leading-tight">{p.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Topic angle (all platforms, optional) ── */}
+      <div className="space-y-1.5">
+        <Label className="text-xs font-medium text-muted-foreground">
+          Topic angle <span className="font-normal">(optional)</span>
+        </Label>
+        <Input
+          value={values.topic_angle}
+          onChange={(e) => handleChange("topic_angle", e.target.value)}
+          placeholder="e.g. fat loss tips, product launch, morning routine"
+          className="h-8 text-sm"
+        />
+      </div>
+
+      {/* ── Trend categories (optional) ── */}
+      <div className="space-y-1.5">
+        <Label className="text-xs font-medium text-muted-foreground">
+          Trend categories <span className="font-normal">(optional)</span>
+        </Label>
+        <div className="flex flex-wrap gap-1">
+          {TREND_CATEGORIES.map((cat) => {
+            const active = values.content_categories.includes(cat);
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => handleChange(
+                  "content_categories",
+                  active
+                    ? values.content_categories.filter(c => c !== cat)
+                    : [...values.content_categories, cat]
+                )}
+                className={`text-[10px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
+                  active
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-muted/40 text-muted-foreground border-border/50 hover:border-primary/40'
+                }`}
+              >
+                {cat}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Twitter-specific settings ── */}
+      {isTwitter && (
+        <div className="space-y-3 p-3 rounded-lg border border-[#1DA1F2]/30 bg-[#1DA1F2]/5">
+          <div className="flex items-center gap-1.5">
+            <Twitter className="w-3.5 h-3.5 text-[#1DA1F2]" />
+            <Label className="text-xs font-semibold text-[#1DA1F2]">X / Twitter settings</Label>
+          </div>
+
+          {/* Trend region */}
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Trend region</Label>
+            <Select value={values.twitter_geography} onValueChange={(v) => handleChange("twitter_geography", v)}>
+              <SelectTrigger className="h-8 text-sm bg-background border-border/50">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TWITTER_REGIONS.map((r) => (
+                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Account type */}
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Account type</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => handleChange("twitter_user_type", "standard")}
+                className={`flex flex-col items-start px-3 py-2 rounded-lg border text-left transition-colors ${
+                  values.twitter_user_type === 'standard'
+                    ? 'bg-primary/15 border-primary'
+                    : 'bg-background border-border/50 hover:border-primary/40'
+                }`}
+              >
+                <span className={`text-xs font-semibold ${values.twitter_user_type === 'standard' ? 'text-primary' : 'text-foreground'}`}>Standard</span>
+                <span className="text-[10px] text-muted-foreground">280 chars</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleChange("twitter_user_type", "premium")}
+                className={`flex flex-col items-start px-3 py-2 rounded-lg border text-left transition-colors ${
+                  values.twitter_user_type === 'premium'
+                    ? 'bg-primary/15 border-primary'
+                    : 'bg-background border-border/50 hover:border-primary/40'
+                }`}
+              >
+                <span className={`text-xs font-semibold ${values.twitter_user_type === 'premium' ? 'text-primary' : 'text-foreground'}`}>Premium ✓</span>
+                <span className="text-[10px] text-muted-foreground">25,000 chars</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Audience */}
       <div className="space-y-1.5">
         <Label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
@@ -168,31 +322,56 @@ export const TrendQuestInputs = ({ values, onChange }: TrendQuestInputsProps) =>
         )}
       </div>
 
-      {/* Content Format */}
-      <div className="space-y-1.5">
-        <Label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <Megaphone className="w-3 h-3" />
-          Content Format
-        </Label>
-        <Select value={values.content_format} onValueChange={(v) => handleChange("content_format", v)}>
-          <SelectTrigger className="h-9">
-            <SelectValue placeholder="Select format" />
-          </SelectTrigger>
-          <SelectContent>
-            {CONTENT_FORMAT_OPTIONS.map((opt) => (
-              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {values.content_format === "Other" && (
-          <Input
-            placeholder="Describe format"
-            value={values.content_format_other}
-            onChange={(e) => handleChange("content_format_other", e.target.value)}
-            className="h-8 text-sm mt-1"
-          />
-        )}
-      </div>
+      {/* Content Format — hidden for Twitter */}
+      {!isTwitter && (
+        <div className="space-y-1.5">
+          <Label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Megaphone className="w-3 h-3" />
+            Content Format
+          </Label>
+          <Select value={values.content_format} onValueChange={(v) => handleChange("content_format", v)}>
+            <SelectTrigger className="h-9">
+              <SelectValue placeholder="Select format" />
+            </SelectTrigger>
+            <SelectContent>
+              {CONTENT_FORMAT_OPTIONS.map((opt) => (
+                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {values.content_format === "Other" && (
+            <Input
+              placeholder="Describe format"
+              value={values.content_format_other}
+              onChange={(e) => handleChange("content_format_other", e.target.value)}
+              className="h-8 text-sm mt-1"
+            />
+          )}
+        </div>
+      )}
+
+      {/* Twitter format */}
+      {isTwitter && (
+        <div className="space-y-1.5">
+          <Label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Megaphone className="w-3 h-3" />
+            Format
+          </Label>
+          <Select
+            value={values.content_format || 'Single tweet'}
+            onValueChange={(v) => handleChange("content_format", v)}
+          >
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TWITTER_FORMAT_OPTIONS.map((opt) => (
+                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {/* Primary Goal */}
       <div className="space-y-1.5">
@@ -226,8 +405,8 @@ export const TrendQuestInputs = ({ values, onChange }: TrendQuestInputsProps) =>
                 key={tone}
                 variant={isSelected ? "default" : "outline"}
                 className={`cursor-pointer text-xs py-0.5 px-2 transition-colors ${
-                  isSelected 
-                    ? "bg-primary text-primary-foreground hover:bg-primary/90" 
+                  isSelected
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
                     : "hover:bg-muted"
                 }`}
                 onClick={() => handleToneToggle(tone)}

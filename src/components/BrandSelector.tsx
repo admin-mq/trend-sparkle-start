@@ -28,8 +28,10 @@ export const BrandSelector = ({
 }: BrandSelectorProps) => {
   const selectedBrand = brands.find(b => b.id === selectedBrandId);
 
-  // Check if required fields are filled
-  const isFormValid = selectedBrandId && inputValues.audience && inputValues.content_format && inputValues.primary_goal;
+  const isTwitter = inputValues.platform === 'Twitter';
+  // For Twitter, content_format is not required; audience + goal still needed
+  const isFormValid = selectedBrandId && inputValues.audience && inputValues.primary_goal &&
+    (isTwitter || inputValues.content_format);
   if (brandsLoading) {
     return <Card className="h-full">
         <CardContent className="p-6 flex items-center justify-center h-full">
@@ -117,10 +119,10 @@ export const BrandSelector = ({
             <Button onClick={onGetTrends} disabled={!isFormValid || loading} className="w-full gap-2">
               {loading ? <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Scanning trends…
+                  {isTwitter ? 'Fetching X trends…' : 'Scanning trends…'}
                 </> : <>
                   <Sparkles className="w-4 h-4" />
-                  Get Trend Recommendations
+                  {isTwitter ? 'Get X / Twitter Trends' : 'Get Trend Recommendations'}
                 </>}
             </Button>
           </div>
