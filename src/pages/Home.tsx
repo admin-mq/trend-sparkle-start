@@ -935,6 +935,8 @@ export default function Home() {
 
   // ── CMO scroll-driven zoom ─────────────────────────────────────
   const heroSectionRef = useRef<HTMLElement>(null);
+  const cmoRef = useRef<HTMLSpanElement>(null);
+  const cmoOffsetRef = useRef({ x: 0, y: 0 });
   const [heroProgress, setHeroProgress] = useState(0);
 
   useEffect(() => {
@@ -956,21 +958,40 @@ export default function Home() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // ── Animation values (simple & reliable) ──────────────────────
+  // Measure CMO's offset from viewport center once mounted so translation is exact
+  useEffect(() => {
+    if (!mounted) return;
+    const measure = () => {
+      const el = cmoRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      cmoOffsetRef.current = {
+        x: window.innerWidth / 2 - (r.left + r.width / 2),
+        y: window.innerHeight / 2 - (r.top + r.height / 2),
+      };
+    };
+    measure();
+    const t = setTimeout(measure, 1700);
+    window.addEventListener("resize", measure);
+    return () => { clearTimeout(t); window.removeEventListener("resize", measure); };
+  }, [mounted]);
+
+  // ── Animation values ──────────────────────────────────────────
   const p = heroProgress;
-  // Hero UI (badge, subtitle, CTAs) fades out in first 15% of scroll
-  const uiFade = mounted ? Math.max(0, 1 - p / 0.15) : 0;
-  // Floating cards disappear fast
-  const cardOp = Math.max(0, 1 - p * 6);
-  // h1 headline fades out in first 20% of scroll
-  const h1Op = mounted ? Math.max(0, 1 - p / 0.2) : 0;
-  // CMO overlay: visible from p=0.05 to p=0.75, scale 1→6x max (no huge blob)
-  const cmoVisible = p >= 0.05 && p <= 0.75;
-  const cmoProgress = Math.max(0, Math.min(1, (p - 0.05) / 0.7)); // 0→1 over that range
-  const cmoSc = 1 + cmoProgress * 5; // 1x → 6x (controlled, crisp)
-  const cmoOp = p > 0.55 ? Math.max(0, 1 - (p - 0.55) / 0.2) : 1; // fade out 0.55→0.75
-  // Marquee rises from bottom into view at p=0.60 and sits at bottom of frame
-  const marqY = Math.max(0, 1 - (p - 0.55) / 0.25) * 100; // 100vh → 0vh offset
+  const uiFade  = mounted ? Math.max(0, 1 - p / 0.15) : 0;
+  const cardOp  = Math.max(0, 1 - p * 6);
+  const wordOp  = Math.max(0, 1 - p / 0.25);
+  const cmoProgress = Math.max(0, Math.min(1, p / 0.70));
+  const cmoSc   = 1 + cmoProgress * 5;
+  const cmoOp   = p > 0.55 ? Math.max(0, 1 - (p - 0.55) / 0.20) : 1;
+  const cmoTx   = cmoOffsetRef.current.x * cmoProgress;
+  const cmoTy   = cmoOffsetRef.current.y * cmoProgress;
+  const marqY   = Math.max(0, (1 - (p - 0.55) / 0.25)) * 100;
+  // Cinematic spotlight: closes in from edges around CMO, fades with CMO
+  const spotOp  = p < 0.04 ? 0 : p > 0.60 ? Math.max(0, 1 - (p - 0.60) / 0.15) : Math.min(1, (p - 0.04) / 0.12);
+  const spotR   = Math.max(8, 52 - cmoProgress * 43); // radius 52% → 9%
+  // Background depth-blur increases as CMO fills frame
+  const bgBlur  = cmoProgress * 3;
 
   const problemReveal = useReveal();
   const featuresReveal = useReveal();
@@ -1125,6 +1146,19 @@ export default function Home() {
             aria-hidden="true"
             style={{
               background: "radial-gradient(ellipse 90% 90% at 50% 50%, transparent 40%, hsl(222 24% 5% / 0.7) 100%)",
+              filter: bgBlur > 0 ? `blur(${bgBlur}px)` : undefined,
+              transition: "none",
+            }}
+          />
+
+          {/* ── Cinematic spotlight — closes in around CMO during zoom ── */}
+          <div
+            className="pointer-events-none absolute inset-0 z-[7]"
+            aria-hidden="true"
+            style={{
+              background: `radial-gradient(circle at 50% 50%, transparent ${spotR}%, hsl(222 24% 4% / 0.97) ${spotR + 28}%)`,
+              opacity: spotOp,
+              transition: "none",
             }}
           />
 
@@ -1195,19 +1229,38 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Headline — fades out immediately on first scroll pixel */}
+            {/* Headline — surrounding words fade out, CMO zooms from its inline position */}
             <h1
               className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight leading-[1.05] mb-6"
               style={{
-                opacity: h1Op,
+                opacity: mounted ? 1 : 0,
                 transform: mounted ? "translateY(0)" : "translateY(22px)",
                 transition: p > 0 ? "none" : "opacity 0.8s ease 0.65s, transform 0.8s cubic-bezier(.16,1,.3,1) 0.65s",
                 color: "hsl(210 20% 88%)",
+                position: "relative",
+                overflow: "visible",
               }}
             >
-              <ScrambleText text="Your Brand's CMO is finally here" scrambleDelay={700} charDelay={46} />
-              <br />
-              
+              <span style={{ opacity: wordOp, transition: "none" }}>
+                <ScrambleText text="Every Brand Deserves " scrambleDelay={700} charDelay={38} />
+              </span>
+              <span
+                ref={cmoRef}
+                style={{
+                  display: "inline-block",
+                  color: "white",
+                  transform: `translate(${cmoTx}px, ${cmoTy}px) scale(${cmoSc})`,
+                  transformOrigin: "center center",
+                  opacity: cmoOp,
+                  transition: "none",
+                  position: "relative",
+                  zIndex: 10,
+                }}
+              >CMO</span>
+              <span style={{ opacity: wordOp, transition: "none" }}>
+                <ScrambleText text=" Grade Marketing" scrambleDelay={1100} charDelay={42} />
+              </span>
+            </h1>
 
             {/* Subtitle + body + CTAs — fade with uiFade */}
             <div style={{ opacity: uiFade, pointerEvents: uiFade < 0.05 ? "none" : "auto" }}>
@@ -1283,32 +1336,6 @@ export default function Home() {
           >
             <ChevronDown size={22} />
           </div>
-
-          {/* ── CMO zoom overlay — centred via left/top 50% + translate(-50%,-50%) ── */}
-          {cmoVisible && (
-            <span
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                left: "50%",
-                top: "50%",
-                zIndex: 10,
-                pointerEvents: "none",
-                display: "block",
-                fontSize: "clamp(3rem, 9.5vw, 7.5rem)",
-                fontWeight: 700,
-                letterSpacing: "-0.02em",
-                lineHeight: 1,
-                color: "white",
-                whiteSpace: "nowrap",
-                transform: `translate(-50%, -50%) scale(${cmoSc})`,
-                opacity: cmoOp,
-                transition: "none",
-              }}
-            >
-              CMO
-            </span>
-          )}
 
           {/* ── Marquee bar — slides up from bottom when CMO fades ── */}
           <div
