@@ -92,8 +92,9 @@ function SmoothCursor() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ScrambleText — characters cycle through random glyphs before landing
+// Falls back to plain text if JS animation can't run
 // ─────────────────────────────────────────────────────────────────────────────
-const SCRAMBLE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@#$%^&*?!><';
+const SCRAMBLE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$?!';
 
 function ScrambleText({
   text,
@@ -106,47 +107,38 @@ function ScrambleText({
   scrambleDelay?: number;
   charDelay?: number;
 }) {
-  const ref = useRef<HTMLSpanElement>(null);
+  const [display, setDisplay] = useState(text);
 
   useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-
     const chars = text.split('');
-    // Start with random noise
-    const arr = chars.map(c => (c === ' ' ? ' ' : SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)]));
-    el.textContent = arr.join('');
-
+    const arr = [...chars];
     const timeouts: ReturnType<typeof setTimeout>[] = [];
 
     chars.forEach((target, i) => {
-      if (target === ' ') {
-        arr[i] = ' ';
-        return;
-      }
-      const t = setTimeout(() => {
-        let count = 0;
-        const max = 4 + Math.floor(Math.random() * 5);
-        const tick = () => {
-          if (!el) return;
-          if (count >= max) {
-            arr[i] = target;
-          } else {
-            arr[i] = SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
-            count++;
-          }
-          el.textContent = arr.join('');
-          if (count <= max) setTimeout(tick, 38);
-        };
-        tick();
-      }, scrambleDelay + i * charDelay);
-      timeouts.push(t);
+      if (target === ' ') return;
+      let count = 0;
+      const max = 4 + Math.floor(Math.random() * 4);
+
+      const scramble = () => {
+        if (count < max) {
+          arr[i] = SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
+          count++;
+        } else {
+          arr[i] = target;
+        }
+        setDisplay(arr.join(''));
+        if (count <= max) {
+          timeouts.push(setTimeout(scramble, 36));
+        }
+      };
+
+      timeouts.push(setTimeout(scramble, scrambleDelay + i * charDelay));
     });
 
     return () => timeouts.forEach(clearTimeout);
   }, [text, scrambleDelay, charDelay]);
 
-  return <span ref={ref} className={className}>{text}</span>;
+  return <span className={className}>{display}</span>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -612,6 +604,13 @@ export default function Home() {
     return () => clearInterval(id);
   }, []);
 
+  // Hero mount state — drives hero element visibility without CSS animation dependency
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const t = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(t);
+  }, []);
+
   // Reveal hooks
   const problemReveal  = useReveal();
   const featuresReveal = useReveal();
@@ -753,7 +752,11 @@ export default function Home() {
           {/* Badge */}
           <div
             className="inline-flex items-center gap-2 mb-8 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.04] text-xs font-medium tracking-widest uppercase text-white/50"
-            style={{ animation: 'fade-slide-up 0.6s ease both', animationDelay: '0.1s' }}
+            style={{
+              opacity: mounted ? 1 : 0,
+              transform: mounted ? 'translateY(0)' : 'translateY(14px)',
+              transition: 'opacity 0.6s ease 0.1s, transform 0.6s ease 0.1s',
+            }}
           >
             <span className="relative flex w-2 h-2">
               <span
@@ -766,8 +769,15 @@ export default function Home() {
           </div>
 
           {/* Headline — character scramble (terminal-industries style) */}
-          <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight text-white leading-[1.05] mb-6">
-            <ScrambleText text="The CMO Your Brand" scrambleDelay={200} charDelay={48} />
+          <h1
+            className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight text-white leading-[1.05] mb-6"
+            style={{
+              opacity: mounted ? 1 : 0,
+              transform: mounted ? 'translateY(0)' : 'translateY(20px)',
+              transition: 'opacity 0.7s ease 0.25s, transform 0.7s cubic-bezier(.16,1,.3,1) 0.25s',
+            }}
+          >
+            <ScrambleText text="The CMO Your Brand" scrambleDelay={300} charDelay={48} />
             <br />
             <ScrambleText text="Has Been Waiting For" scrambleDelay={900} charDelay={42} />
           </h1>
@@ -775,7 +785,11 @@ export default function Home() {
           {/* Rotating subtitle */}
           <p
             className="text-lg sm:text-xl md:text-2xl text-white/50 mb-4 font-light tracking-tight"
-            style={{ animation: 'fade-slide-up 0.7s ease both', animationDelay: '0.9s' }}
+            style={{
+              opacity: mounted ? 1 : 0,
+              transform: mounted ? 'translateY(0)' : 'translateY(16px)',
+              transition: 'opacity 0.7s ease 0.5s, transform 0.7s ease 0.5s',
+            }}
           >
             Built for{' '}
             <span
@@ -793,7 +807,11 @@ export default function Home() {
 
           <p
             className="max-w-2xl mx-auto text-base sm:text-lg text-white/40 leading-relaxed mb-10"
-            style={{ animation: 'fade-slide-up 0.7s ease both', animationDelay: '1.05s' }}
+            style={{
+              opacity: mounted ? 1 : 0,
+              transform: mounted ? 'translateY(0)' : 'translateY(14px)',
+              transition: 'opacity 0.7s ease 0.65s, transform 0.7s ease 0.65s',
+            }}
           >
             Marketers Quest gives your brand the intelligence, tools, and strategic guidance
             of a senior marketing team — at a fraction of the cost.
@@ -802,7 +820,11 @@ export default function Home() {
           {/* CTAs */}
           <div
             className="flex flex-col sm:flex-row items-center justify-center gap-3"
-            style={{ animation: 'fade-slide-up 0.7s ease both', animationDelay: '1.2s' }}
+            style={{
+              opacity: mounted ? 1 : 0,
+              transform: mounted ? 'translateY(0)' : 'translateY(14px)',
+              transition: 'opacity 0.7s ease 0.8s, transform 0.7s ease 0.8s',
+            }}
           >
             <AuroraButton to="/auth">
               Start for Free
