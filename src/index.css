@@ -272,3 +272,36 @@
   0%   { transform: scale(1); opacity: 0.8; }
   100% { transform: scale(2.5); opacity: 0; }
 }
+
+/* Rotating conic gradient border (aurora CTA) */
+@keyframes aurora-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Film grain shift — very slow so grain feels organic */
+@keyframes grain-drift {
+  0%   { transform: translate(0, 0); }
+  25%  { transform: translate(-1%, 0.5%); }
+  50%  { transform: translate(0.5%, -1%); }
+  75%  { transform: translate(-0.5%, 1%); }
+  100% { transform: translate(0, 0); }
+}
+
+/* Character reveal for scramble text */
+@keyframes char-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Underline scale from left */
+@keyframes underline-in {
+  from { transform: scaleX(0); transform-origin: left; }
+  to   { transform: scaleX(1); transform-origin: left; }
+}
+
+/* Section accent line draw */
+@keyframes line-draw {
+  from { width: 0; opacity: 0; }
+  to   { width: 3rem; opacity: 1; }
+}
