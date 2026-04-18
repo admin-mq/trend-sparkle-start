@@ -544,7 +544,10 @@ function ProductPreview({ visible }: { visible: boolean }) {
         style={{ gridTemplateColumns: "180px 1fr", minHeight: "400px", background: "hsl(222 22% 10%)" }}
       >
         {/* Sidebar */}
-        <div className="border-r p-3 space-y-0.5" style={{ background: "hsl(222 20% 8%)", borderColor: "hsl(222 14% 15%)" }}>
+        <div
+          className="border-r p-3 space-y-0.5"
+          style={{ background: "hsl(222 20% 8%)", borderColor: "hsl(222 14% 15%)" }}
+        >
           <div className="px-2 py-1.5 mb-2">
             <div className="flex items-center gap-2">
               <MQLogo size={18} />
@@ -960,14 +963,14 @@ export default function Home() {
   // Floating cards disappear fast
   const cardOp = Math.max(0, 1 - p * 6);
   // h1 headline fades out in first 20% of scroll
-  const h1Op   = mounted ? Math.max(0, 1 - p / 0.20) : 0;
+  const h1Op = mounted ? Math.max(0, 1 - p / 0.2) : 0;
   // CMO overlay: visible from p=0.05 to p=0.75, scale 1→6x max (no huge blob)
   const cmoVisible = p >= 0.05 && p <= 0.75;
-  const cmoProgress = Math.max(0, Math.min(1, (p - 0.05) / 0.70)); // 0→1 over that range
-  const cmoSc  = 1 + cmoProgress * 5;            // 1x → 6x (controlled, crisp)
-  const cmoOp  = p > 0.55 ? Math.max(0, 1 - (p - 0.55) / 0.20) : 1; // fade out 0.55→0.75
+  const cmoProgress = Math.max(0, Math.min(1, (p - 0.05) / 0.7)); // 0→1 over that range
+  const cmoSc = 1 + cmoProgress * 5; // 1x → 6x (controlled, crisp)
+  const cmoOp = p > 0.55 ? Math.max(0, 1 - (p - 0.55) / 0.2) : 1; // fade out 0.55→0.75
   // Marquee rises from bottom into view at p=0.60 and sits at bottom of frame
-  const marqY  = Math.max(0, (1 - (p - 0.55) / 0.25)) * 100; // 100vh → 0vh offset
+  const marqY = Math.max(0, 1 - (p - 0.55) / 0.25) * 100; // 100vh → 0vh offset
 
   const problemReveal = useReveal();
   const featuresReveal = useReveal();
@@ -1202,7 +1205,7 @@ export default function Home() {
                 color: "hsl(210 20% 88%)",
               }}
             >
-              <ScrambleText text="The CMO Your Brand" scrambleDelay={700} charDelay={46} />
+              <ScrambleText text="Your Brand's CMO is finally here" scrambleDelay={700} charDelay={46} />
               <br />
               <ScrambleText text="Has Been Waiting For" scrambleDelay={1200} charDelay={40} />
             </h1>
@@ -1324,14 +1327,23 @@ export default function Home() {
                 borderTop: "1px solid hsl(222 14% 14%)",
               }}
             >
-              <div className="absolute left-0 inset-y-0 w-28 z-10 pointer-events-none"
-                style={{ background: "linear-gradient(to right, hsl(222 22% 8%), transparent)" }} />
-              <div className="absolute right-0 inset-y-0 w-28 z-10 pointer-events-none"
-                style={{ background: "linear-gradient(to left, hsl(222 22% 8%), transparent)" }} />
+              <div
+                className="absolute left-0 inset-y-0 w-28 z-10 pointer-events-none"
+                style={{ background: "linear-gradient(to right, hsl(222 22% 8%), transparent)" }}
+              />
+              <div
+                className="absolute right-0 inset-y-0 w-28 z-10 pointer-events-none"
+                style={{ background: "linear-gradient(to left, hsl(222 22% 8%), transparent)" }}
+              />
               <div className="flex whitespace-nowrap" style={{ animation: "marquee 28s linear infinite" }}>
                 {[MARQUEE, MARQUEE].map((t, i) => (
-                  <span key={i} className="text-xs font-semibold tracking-[0.18em] uppercase"
-                    style={{ color: "hsl(217 60% 48%)" }}>{t}</span>
+                  <span
+                    key={i}
+                    className="text-xs font-semibold tracking-[0.18em] uppercase"
+                    style={{ color: "hsl(217 60% 48%)" }}
+                  >
+                    {t}
+                  </span>
                 ))}
               </div>
             </div>
