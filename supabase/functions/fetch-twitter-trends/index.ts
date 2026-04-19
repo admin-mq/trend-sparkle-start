@@ -26,7 +26,24 @@ const ALL_CATEGORIES = [
 ];
 
 const BATCH_SIZE = 5;
-const PERPLEXITY_MODEL = 'sonar';
+// sonar-pro does deeper per-topic web search. Falls back to sonar if the key
+// lacks access — see callPerplexity below.
+const PERPLEXITY_MODEL = 'sonar-pro';
+const PERPLEXITY_FALLBACK_MODEL = 'sonar';
+
+async function callPerplexity(apiKey: string, payload: any): Promise<Response> {
+  const res = await fetch('https://api.perplexity.ai/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if ((res.status === 400 || res.status === 404) && payload.model !== PERPLEXITY_FALLBACK_MODEL) {
+    const errText = await res.text();
+    console.warn(`[fetch-twitter-trends] ${payload.model} rejected (${res.status}): ${errText.slice(0, 120)}. Retrying with ${PERPLEXITY_FALLBACK_MODEL}`);
+    return callPerplexity(apiKey, { ...payload, model: PERPLEXITY_FALLBACK_MODEL });
+  }
+  return res;
+}
 
 // ── Robust JSON extractor ────────────────────────────────────────────────────
 function extractJson(text: string): any | null {
@@ -111,17 +128,13 @@ Return 3-5 topics per category, max 15 total. JSON array of strings only (no mar
   console.log(`[fetch-twitter-trends] Fetching category-specific trends for: ${categories.join(', ')}`);
 
   try {
-    const res = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: PERPLEXITY_MODEL,
-        messages: [
-          { role: 'system', content: 'You have live X/Twitter web search. Return only JSON arrays of specific topics currently active and buzzing today.' },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.3,
-      }),
+    const res = await callPerplexity(apiKey, {
+      model: PERPLEXITY_MODEL,
+      messages: [
+        { role: 'system', content: 'You have live X/Twitter web search. Return only JSON arrays of specific topics currently active and buzzing today.' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.3,
     });
 
     if (!res.ok) {
@@ -194,17 +207,13 @@ Return ALL ${batch.length} trends. JSON only (no markdown fences):
 }`;
 
   try {
-    const res = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: PERPLEXITY_MODEL,
-        messages: [
-          { role: 'system', content: 'You verify trending topics using live web search. Search per-topic. Be decisive: if a topic is trending on X, a reason exists — find it. Avoid over-using "low" confidence.' },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.2,
-      }),
+    const res = await callPerplexity(apiKey, {
+      model: PERPLEXITY_MODEL,
+      messages: [
+        { role: 'system', content: 'You verify trending topics using live web search. Search per-topic, focused on news from today/yesterday. Be decisive: if a topic is trending on X, a specific recent reason exists — find it. Avoid over-using "low" confidence.' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.2,
     });
 
     if (!res.ok) {
