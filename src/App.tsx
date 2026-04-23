@@ -55,10 +55,10 @@ const App = () => (
             <Route path="/free-scan" element={<FreeScan />} />
             <Route path="/debug" element={<Debug />} />
             <Route path="/data-deletion" element={<DataDeletion />} />
-            
+
             {/* Public homepage */}
             <Route path="/" element={<Home />} />
-            
+
             {/* Protected dashboard layout with nested routes */}
             <Route element={
               <ProtectedRoute>
@@ -86,7 +86,7 @@ const App = () => (
               <Route path="/settings" element={<Settings />} />
               <Route path="/admin" element={<Admin />} />
             </Route>
-            
+
             {/* PR print report — protected but no sidebar */}
             <Route path="/pr/report" element={
               <ProtectedRoute><PRPrint /></ProtectedRoute>
@@ -98,10 +98,11 @@ const App = () => (
             {/* Trend Test — public, no sidebar, unlinked */}
             <Route path="/trend-test" element={<TrendTest />} />
 
+            {/* Own 100K Eyeballs — public campaign page */}
+            <Route path="/100k-eyeballs" element={<HundredKEyeballs />} />
+
             {/* Instagram OAuth callback — public, no sidebar */}
             <Route path="/instagram-callback" element={<InstagramCallback />} />
-
-            <Route path="/100k-eyeballs" element={<HundredKEyeballs />} />
 
             {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
