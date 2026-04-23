@@ -36,7 +36,7 @@ const FAQS = [
   { q: 'Do you approve brands before they go live?', a: 'Yes. After you submit the form, we review within a few hours. And upload your slot to the wall once we receive the payment.' },
   { q: 'What image format is required?', a: 'PNG, JPG, or SVG. Keep it square (1:1 ratio) for the best results. Minimum 400px on the shortest side.' },
   { q: 'What is your refund policy?', a: 'Full refund if your brand is not approved. Once your slot is live, all sales are final.' },
-  { q: 'How is the 100K audience built?', a: 'Organically — through social content, newsletters, and community channels across the UK and US. High engagement, zero bots.' },
+  { q: 'How is the 100K audience built?', a: 'Organically through social content, newsletters, and community channels across the UK and US. High engagement, zero bots.' },
 ];
 
 const WHY_JOIN = [
