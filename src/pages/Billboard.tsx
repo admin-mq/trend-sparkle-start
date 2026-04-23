@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import {
   Users, Globe, TrendingUp, Flame, Shield, Clock,
-  ArrowRight, CheckCircle2, ChevronDown, Copyright,
+  ArrowRight, CheckCircle2, ChevronDown, Copyright, Eye,
 } from 'lucide-react';
 import mqLogoWhite from '@/assets/mq-logo-white.png';
 
