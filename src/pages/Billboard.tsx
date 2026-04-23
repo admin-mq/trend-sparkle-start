@@ -9,6 +9,7 @@ import {
   ArrowRight, CheckCircle2, ChevronDown, Copyright, Eye,
 } from 'lucide-react';
 import mqLogoWhite from '@/assets/mq-logo-white.png';
+import audienceBg from '@/assets/marketers-quest-ig.png';
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
@@ -274,7 +275,10 @@ export default function Billboard() {
       </nav>
 
       {/* ── AUDIENCE STRIP (3 rows, small images) ── */}
-      <section className="pt-6 pb-6 overflow-hidden bg-white/[0.01] border-b border-white/5">
+      <section
+        className="pt-6 pb-6 overflow-hidden bg-white/[0.01] border-b border-white/5 relative bg-cover bg-center"
+        style={{ backgroundImage: `url(${audienceBg})` }}
+      >
         <div className="max-w-7xl mx-auto px-6 mb-10 text-center">
           
           
