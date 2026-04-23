@@ -39,12 +39,12 @@ const FAQS = [
 ];
 
 const WHY_JOIN = [
-  { Icon: Users,      title: '100K+ Engaged Audience',    desc: 'Real humans who follow, click, and buy. Built organically across the UK and US.' },
+  { Icon: Users,      title: '100K+ Engaged Audience',    desc: 'A highly engaging audience of 100k+ people is the start of your visibility' },
   { Icon: Globe,      title: 'UK + US Dual Exposure',     desc: 'Your brand gets visibility across two of the highest-value markets in the world.' },
   { Icon: TrendingUp, title: 'Clickable Brand Traffic',   desc: 'Every slot is a live link to your site. Direct, trackable referral traffic.' },
   { Icon: Flame,      title: 'Viral Internet Moment',     desc: "Be part of a modern Million Dollar Homepage experiment people are talking about." },
   { Icon: Shield,     title: 'Brand-Vetted Wall',         desc: 'All brands are manually approved. Your logo sits next to quality companies only.' },
-  { Icon: Clock,      title: 'Limited Digital Real Estate', desc: "Once pixels are sold, they're gone. Scarcity is built in by design." },
+  { Icon: Clock,      title: 'Permanent Digital Real Estate', desc: "Once pixels are sold, they're yours forever. Scarcity is built in by design." },
 ];
 
 const STEPS = [
