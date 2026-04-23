@@ -9,7 +9,7 @@ import {
   ArrowRight, CheckCircle2, ChevronDown, Copyright, Eye,
 } from 'lucide-react';
 import mqLogoWhite from '@/assets/mq-logo-white.png';
-import audienceBg from '@/assets/marketers-quest-ig.png';
+import audienceBg from '@/assets/marketers-quest-ig-v2.png';
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
