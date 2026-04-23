@@ -8,6 +8,7 @@ import {
   Users, Globe, TrendingUp, Flame, Shield, Clock,
   ArrowRight, CheckCircle2, ChevronDown, Eye,
 } from 'lucide-react';
+import mqLogoWhite from '@/assets/mq-logo-white.png';
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
@@ -259,9 +260,7 @@ export default function Billboard() {
       <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-[#06080f]/85 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-md bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center">
-              <Eye className="h-4 w-4 text-white" />
-            </div>
+            <img src={mqLogoWhite} alt="Marketers Quest" className="w-7 h-7 object-contain" />
             <span className="font-bold text-sm tracking-tight">Marketers Quest</span>
           </div>
           <Button
