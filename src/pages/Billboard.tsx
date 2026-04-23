@@ -329,7 +329,7 @@ export default function Billboard() {
       </section>
 
       {/* ── HERO (compact — wall visible in first frame) ── */}
-      <section className="pt-12 pb-6 px-6 text-center">
+      <section className="pt-12 pb-6 px-6 text-center py-[20px]">
         <h1 className="font-black text-4xl md:text-5xl lg:text-6xl leading-tight tracking-tight mb-3">
           <span className="text-white">Own </span>
           <span style={{
