@@ -539,7 +539,7 @@ export default function Billboard() {
               </div>
 
               <Button type="submit" size="lg"
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold h-13 text-base rounded-xl"
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold h-13 text-base rounded-xl py-[15px]"
                 style={{ boxShadow: '0 0 36px rgba(59,130,246,0.3)' }}
               >
                 Submit Claim <ArrowRight className="ml-2 h-5 w-5" />
