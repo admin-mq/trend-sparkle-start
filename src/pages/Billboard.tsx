@@ -276,7 +276,7 @@ export default function Billboard() {
 
       {/* ── AUDIENCE STRIP (3 rows, small images) ── */}
       <section
-        className="pt-6 pb-6 overflow-hidden bg-white/[0.01] border-b border-white/5 relative bg-cover bg-center"
+        className="overflow-hidden bg-white/[0.01] border-b border-white/5 relative bg-cover bg-center pt-[40px] pb-[40px]"
         style={{ backgroundImage: `url(${audienceBg})` }}
       >
         <div className="max-w-7xl mx-auto px-6 mb-10 text-center">
