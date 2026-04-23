@@ -49,9 +49,9 @@ const WHY_JOIN = [
 
 const STEPS = [
   { n: '01', title: 'Choose your pixels', desc: 'Hover on the wall, pick your size, and see the exact cost.' },
-  { n: '02', title: 'Submit your brand',  desc: 'Fill in the claim form with your details and logo.' },
-  { n: '03', title: 'Complete payment',   desc: "We'll send a payment link — Stripe, Wise, or bank transfer." },
-  { n: '04', title: 'Go live on the wall', desc: 'Your brand appears within 24–48 hours of payment confirmation.' },
+  { n: '02', title: 'Submit your brand',  desc: "Fill in the claim form with your details and logo. We'll review." },
+  { n: '03', title: 'Complete payment',   desc: "We'll send a payment link - Stripe, Wise, or bank transfer." },
+  { n: '04', title: 'Go live on the wall', desc: 'Your brand appears once the payment is confirmed.' },
 ];
 
 // ─── WALL CANVAS ──────────────────────────────────────────────────────────────
@@ -355,7 +355,7 @@ export default function Billboard() {
         </div>
       </section>
       {/* ── WHY JOIN ── */}
-      <section className="py-24 px-6">
+      <section className="py-24 px-6 pt-[20px]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14">
             <p className="text-white/30 text-xs uppercase tracking-widest mb-3">Why brands join</p>
@@ -376,12 +376,12 @@ export default function Billboard() {
       </section>
 
       {/* ── HOW IT WORKS ── */}
-      <section className="py-24 px-6 bg-[#070a12]">
+      <section className="py-24 px-6 bg-[#070a12] pt-[50px]">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-14">
             <p className="text-white/30 text-xs uppercase tracking-widest mb-3">Simple process</p>
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">How it works</h2>
-            <p className="text-white/40">From pixel selection to going live — in 4 steps.</p>
+            <p className="text-white/40">From pixel selection to going live in 4 simple steps.</p>
           </div>
           <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-8">
             {STEPS.map((step, i) => (
