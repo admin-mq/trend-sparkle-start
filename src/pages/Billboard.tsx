@@ -12,15 +12,15 @@ import {
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
 const WALL_PX = 1000;
-const MIN_UNIT = 10;
+const MIN_UNIT = 20;
 
 const SIZE_PRESETS = [
-  { label: 'Micro',    w: 10,  h: 10  },
-  { label: 'Small',   w: 20,  h: 20  },
-  { label: 'Standard', w: 50, h: 50  },
-  { label: 'Featured', w: 100, h: 100 },
-  { label: 'Premium',  w: 200, h: 200 },
-  { label: 'Mega',     w: 500, h: 500 },
+  { label: 'Micro',    w: 20,  h: 20  },
+  { label: 'Small',   w: 40,  h: 40  },
+  { label: 'Standard', w: 100, h: 100 },
+  { label: 'Featured', w: 200, h: 200 },
+  { label: 'Premium',  w: 400, h: 400 },
+  { label: 'Mega',     w: 600, h: 600 },
 ];
 
 // 3 rows of avatars with different offsets for visual variety
@@ -64,8 +64,8 @@ function WallCanvas({ onClaim }: WallCanvasProps) {
   const [mouse, setMouse] = useState<{ x: number; y: number } | null>(null);
   const [activePreset, setActivePreset] = useState(SIZE_PRESETS[3]); // Featured 100×100
   const [isCustom, setIsCustom] = useState(false);
-  const [customW, setCustomW] = useState(100);
-  const [customH, setCustomH] = useState(100);
+  const [customW, setCustomW] = useState(200);
+  const [customH, setCustomH] = useState(200);
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const selW = isCustom ? customW : activePreset.w;
@@ -155,7 +155,7 @@ function WallCanvas({ onClaim }: WallCanvasProps) {
             'linear-gradient(to right, rgba(255,255,255,0.008) 1px, transparent 1px)',
             'linear-gradient(to bottom, rgba(255,255,255,0.008) 1px, transparent 1px)',
           ].join(','),
-          backgroundSize: '10% 10%, 10% 10%, 1% 1%, 1% 1%',
+          backgroundSize: '20% 20%, 20% 20%, 2% 2%, 2% 2%',
           border: '1px solid rgba(255,255,255,0.07)',
           borderRadius: '6px',
           overflow: 'hidden',
