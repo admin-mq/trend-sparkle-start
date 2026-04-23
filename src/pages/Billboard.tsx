@@ -153,10 +153,9 @@ function WallCanvas({ onClaim }: WallCanvasProps) {
       {/* ── Canvas ── */}
       <div
         ref={canvasRef}
-        className="relative cursor-crosshair mx-auto select-none"
+        className="relative cursor-crosshair select-none"
         style={{
           width: '100%',
-          maxWidth: WALL_PX,
           aspectRatio: '1 / 1',
           backgroundColor: '#07101f',
           backgroundImage: [
@@ -306,8 +305,8 @@ export default function Billboard() {
       </section>
 
       {/* ── THE WALL ── */}
-      <section className="px-4 md:px-8 pb-20">
-        <div className="max-w-[1060px] mx-auto">
+      <section className="pb-20" style={{ padding: '0 10px 80px' }}>
+        <div>
           <div className="text-center mb-8">
             <p className="text-white/30 text-xs uppercase tracking-widest mb-2">The digital billboard</p>
             <h2 className="text-2xl md:text-3xl font-bold text-white">1,000 × 1,000 pixels. Yours to own.</h2>
