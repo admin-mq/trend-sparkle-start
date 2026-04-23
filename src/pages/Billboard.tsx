@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import {
   Users, Globe, TrendingUp, Flame, Shield, Clock,
-  ArrowRight, CheckCircle2, ChevronDown, Eye,
+  ArrowRight, CheckCircle2, ChevronDown, Copyright,
 } from 'lucide-react';
 import mqLogoWhite from '@/assets/mq-logo-white.png';
 
@@ -364,7 +364,7 @@ export default function Billboard() {
             {WHY_JOIN.map(({ Icon, title, desc }) => (
               <div key={title} className="rounded-xl border border-white/7 bg-white/[0.02] p-6 hover:border-blue-500/25 hover:bg-blue-950/6 transition-all duration-200">
                 <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center mb-4">
-                  <Icon className="h-5 w-5 text-blue-400" />
+                  <Copyright className="h-5 w-5 text-blue-400" />
                 </div>
                 <h3 className="font-bold text-white mb-2">{title}</h3>
                 <p className="text-white/40 text-sm leading-relaxed">{desc}</p>
@@ -400,7 +400,7 @@ export default function Billboard() {
       </section>
 
       {/* ── FAQ ── */}
-      <section className="py-24 px-6">
+      <section className="py-24 px-6 pt-[50px]">
         <div className="max-w-2xl mx-auto">
           <div className="text-center mb-12">
             <p className="text-white/30 text-xs uppercase tracking-widest mb-3">Got questions?</p>
@@ -431,7 +431,7 @@ export default function Billboard() {
       <section ref={formRef} className="py-24 px-6 bg-[#070a12] pt-[15px]">
         <div className="max-w-xl mx-auto">
           <div className="text-center mb-10">
-            <p className="text-white/30 text-xs uppercase tracking-widest mb-3">Ready to own your pixels?</p>
+            <p className="text-white/30 text-xs uppercase tracking-widest mb-3">READY TO OWN YOUR PIXELS PROPERTY?</p>
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">Claim Your Slot</h2>
             {claimedSize && (
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-blue-500/30 bg-blue-500/8 text-blue-300 text-sm mt-2">
@@ -441,7 +441,7 @@ export default function Billboard() {
               </div>
             )}
             {!claimedSize && (
-              <p className="text-white/40 text-base">Fill in the details — we'll follow up within 24 hours.</p>
+              <p className="text-white/40 text-base">Fill in the details, and we'll follow up within a few hours.</p>
             )}
           </div>
 
@@ -562,7 +562,7 @@ export default function Billboard() {
             <span className="font-bold text-sm">Marketers Quest</span>
           </div>
           <p className="text-white/22 text-sm text-center">
-            Own 100K Eyeballs · A digital billboard · $0.50 per pixel · UK &amp; US audience
+            Own 100K Eyeballs · The digital billboard
           </p>
           <a href="mailto:admin@marketers.quest" className="text-white/30 hover:text-white/60 text-sm transition-colors">
             admin@marketers.quest
