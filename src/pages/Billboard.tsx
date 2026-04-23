@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -56,13 +57,27 @@ const STEPS = [
   { n: '04', title: 'Go live on the wall', desc: 'Your brand appears once the payment is confirmed.' },
 ];
 
+// ─── TYPES ────────────────────────────────────────────────────────────────────
+
+interface BillboardSlot {
+  id: string;
+  brand_name: string;
+  logo_url: string;
+  target_url: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 // ─── WALL CANVAS ──────────────────────────────────────────────────────────────
 
 interface WallCanvasProps {
+  slots: BillboardSlot[];
   onClaim: (w: number, h: number, cost: number) => void;
 }
 
-function WallCanvas({ onClaim }: WallCanvasProps) {
+function WallCanvas({ slots, onClaim }: WallCanvasProps) {
   const [mouse, setMouse] = useState<{ x: number; y: number } | null>(null);
   const [activePreset, setActivePreset] = useState(SIZE_PRESETS[3]); // Featured 100×100
   const [isCustom, setIsCustom] = useState(false);
@@ -174,6 +189,33 @@ function WallCanvas({ onClaim }: WallCanvasProps) {
           </div>
         </div>
 
+        {/* ── Sold slots ── */}
+        {slots.map(slot => (
+          <a
+            key={slot.id}
+            href={slot.target_url || '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={slot.brand_name}
+            className="absolute group overflow-hidden"
+            style={{
+              left:   `${(slot.x      / WALL_PX) * 100}%`,
+              top:    `${(slot.y      / WALL_PX) * 100}%`,
+              width:  `${(slot.width  / WALL_PX) * 100}%`,
+              height: `${(slot.height / WALL_PX) * 100}%`,
+            }}
+          >
+            <img
+              src={slot.logo_url}
+              alt={slot.brand_name}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <span className="text-white text-xs font-semibold text-center px-1 leading-tight">{slot.brand_name}</span>
+            </div>
+          </a>
+        ))}
+
         {/* Hover selection rectangle */}
         {mouse && (
           <>
@@ -218,9 +260,11 @@ function WallCanvas({ onClaim }: WallCanvasProps) {
 // ─── PAGE ────────────────────────────────────────────────────────────────────
 
 export default function Billboard() {
-  const [openFaq, setOpenFaq]   = useState<number | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+  const [openFaq, setOpenFaq]     = useState<number | null>(null);
+  const [submitted, setSubmitted]  = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [claimedSize, setClaimedSize] = useState<{ w: number; h: number; cost: number } | null>(null);
+  const [slots, setSlots]          = useState<BillboardSlot[]>([]);
   const [form, setForm] = useState({
     name: '', brand: '', email: '', website: '',
     instagram: '', pixelWidth: '', pixelHeight: '', preferredLink: '', notes: '',
@@ -228,16 +272,42 @@ export default function Billboard() {
 
   const formRef = useRef<HTMLDivElement>(null);
 
+  // Fetch active slots from Supabase on mount
+  useEffect(() => {
+    supabase
+      .from('billboard_slots')
+      .select('id, brand_name, logo_url, target_url, x, y, width, height')
+      .eq('status', 'active')
+      .then(({ data }) => { if (data) setSlots(data); });
+  }, []);
+
   const handleClaim = (w: number, h: number, cost: number) => {
     setClaimedSize({ w, h, cost });
     setForm(p => ({ ...p, pixelWidth: String(w), pixelHeight: String(h) }));
     formRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name || !form.brand || !form.email) {
       toast.error('Please fill in your name, brand, and email.');
+      return;
+    }
+    setSubmitting(true);
+    const { error } = await supabase.from('billboard_claims').insert({
+      name:           form.name,
+      brand:          form.brand,
+      email:          form.email,
+      website:        form.website || null,
+      instagram:      form.instagram || null,
+      pixel_width:    form.pixelWidth  ? Number(form.pixelWidth)  : null,
+      pixel_height:   form.pixelHeight ? Number(form.pixelHeight) : null,
+      preferred_link: form.preferredLink || null,
+      notes:          form.notes || null,
+    });
+    setSubmitting(false);
+    if (error) {
+      toast.error('Something went wrong. Please email us at admin@marketers.quest');
       return;
     }
     setSubmitted(true);
@@ -353,7 +423,7 @@ export default function Billboard() {
           <div className="text-center mb-8">
             <p className="text-white/30 text-xs uppercase tracking-widest mb-2 font-bold">The digital billboard</p>
           </div>
-          <WallCanvas onClaim={handleClaim} />
+          <WallCanvas slots={slots} onClaim={handleClaim} />
         </div>
       </section>
       {/* ── WHY JOIN ── */}
@@ -542,10 +612,11 @@ export default function Billboard() {
               </div>
 
               <Button type="submit" size="lg"
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold h-13 text-base rounded-xl py-[15px]"
+                disabled={submitting}
+                className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-semibold h-13 text-base rounded-xl py-[15px]"
                 style={{ boxShadow: '0 0 36px rgba(59,130,246,0.3)' }}
               >
-                Submit Claim <ArrowRight className="ml-2 h-5 w-5" />
+                {submitting ? 'Submitting…' : <>Submit Claim <ArrowRight className="ml-2 h-5 w-5" /></>}
               </Button>
               <p className="text-center text-white/22 text-xs">
                 We'll respond within a few hours. No spam. Ever.
