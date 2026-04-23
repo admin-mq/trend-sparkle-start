@@ -141,15 +141,6 @@ function WallCanvas({ onClaim }: WallCanvasProps) {
         </div>
       )}
 
-      {/* ── Live cost indicator ── */}
-      <div className="text-center mb-5">
-        <span className="text-white/40 text-sm">
-          {selW} × {selH} px &nbsp;·&nbsp;{' '}
-          <span className="text-blue-300 font-bold">${cost.toLocaleString()}</span>
-          <span className="text-white/30 text-xs ml-1.5">($1 per pixel)</span>
-        </span>
-      </div>
-
       {/* ── Canvas ── */}
       <div
         ref={canvasRef}
@@ -283,44 +274,12 @@ export default function Billboard() {
         </div>
       </nav>
 
-      {/* ── HERO (compact — wall visible in first frame) ── */}
-      <section className="pt-24 pb-6 px-6 text-center">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-blue-500/25 bg-blue-500/6 text-blue-300 text-xs mb-5">
-          <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
-          Live campaign · UK &amp; US audience · 100K+ people
-        </div>
-        <h1 className="font-black text-4xl md:text-5xl lg:text-6xl leading-tight tracking-tight mb-3">
-          <span className="text-white">Own </span>
-          <span style={{
-            background: 'linear-gradient(135deg, #60a5fa 0%, #38bdf8 50%, #a78bfa 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-          }}>100K Eyeballs</span>
-        </h1>
-        <p className="text-white/45 text-base max-w-xl mx-auto">
-          A limited digital billboard. Pick your pixels. Your brand, in front of 100,000 people.
-          <span className="text-blue-400 font-medium"> $1 per pixel.</span>
-        </p>
-      </section>
-
-      {/* ── THE WALL ── */}
-      <section className="pb-20" style={{ padding: '0 10px 80px' }}>
-        <div>
-          <div className="text-center mb-8">
-            <p className="text-white/30 text-xs uppercase tracking-widest mb-2">The digital billboard</p>
-            <h2 className="text-2xl md:text-3xl font-bold text-white">1,000 × 1,000 pixels. Yours to own.</h2>
-          </div>
-          <WallCanvas onClaim={handleClaim} />
-        </div>
-      </section>
-
       {/* ── AUDIENCE STRIP (3 rows, small images) ── */}
-      <section className="py-16 overflow-hidden bg-white/[0.01] border-y border-white/5">
+      <section className="pt-6 pb-6 overflow-hidden bg-white/[0.01] border-b border-white/5">
         <div className="max-w-7xl mx-auto px-6 mb-10 text-center">
-          <p className="text-white/30 text-xs uppercase tracking-widest mb-2">The audience watching right now</p>
-          <h2 className="text-2xl font-bold text-white mb-1">These are the people your brand gets in front of</h2>
-          <p className="text-white/40 text-sm">Real humans. High intent. UK &amp; US.</p>
+          
+          
+          
         </div>
 
         {/* Row 1 — left */}
@@ -369,6 +328,32 @@ export default function Billboard() {
         </div>
       </section>
 
+      {/* ── HERO (compact — wall visible in first frame) ── */}
+      <section className="pt-12 pb-6 px-6 text-center">
+        <h1 className="font-black text-4xl md:text-5xl lg:text-6xl leading-tight tracking-tight mb-3">
+          <span className="text-white">Own </span>
+          <span style={{
+            background: 'linear-gradient(135deg, #60a5fa 0%, #38bdf8 50%, #a78bfa 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+          }}>100K Eyeballs</span>
+        </h1>
+        <p className="text-white/45 text-base max-w-xl mx-auto">
+          A limited digital billboard. Pick your pixels. Your brand, in front of 100,000 people.
+          <span className="text-blue-400 font-medium"> $1 per pixel.</span>
+        </p>
+      </section>
+
+      {/* ── THE WALL ── */}
+      <section style={{ padding: '0 10px 80px' }}>
+        <div>
+          <div className="text-center mb-8">
+            <p className="text-white/30 text-xs uppercase tracking-widest mb-2">The digital billboard</p>
+          </div>
+          <WallCanvas onClaim={handleClaim} />
+        </div>
+      </section>
       {/* ── WHY JOIN ── */}
       <section className="py-24 px-6">
         <div className="max-w-6xl mx-auto">
