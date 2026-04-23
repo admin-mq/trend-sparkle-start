@@ -71,7 +71,7 @@ function WallCanvas({ onClaim }: WallCanvasProps) {
   const selW = isCustom ? customW : activePreset.w;
   const selH = isCustom ? customH : activePreset.h;
   const pixels = selW * selH;
-  const cost = pixels; // $1 per pixel
+  const cost = pixels * 0.5; // $0.50 per pixel
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!canvasRef.current) return;
@@ -199,7 +199,7 @@ function WallCanvas({ onClaim }: WallCanvasProps) {
                 color:      '#93c5fd',
               }}
             >
-              {selW}×{selH}px &nbsp;·&nbsp; ${cost.toLocaleString()}
+              {selW}×{selH}px &nbsp;·&nbsp; ${cost.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
             </div>
           </>
         )}
@@ -341,7 +341,7 @@ export default function Billboard() {
         </h1>
         <p className="text-white/45 text-base max-w-xl mx-auto">
           Pick your pixels. Your brand, in front of 100,000+ people in a second.&nbsp;<br />
-          <span className="text-blue-400 font-medium">$1 per pixel.</span>
+          <span className="text-blue-400 font-medium">$0.50 per pixel.</span>
         </p>
       </section>
 
@@ -438,7 +438,7 @@ export default function Billboard() {
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-blue-500/30 bg-blue-500/8 text-blue-300 text-sm mt-2">
                 <span className="font-bold">{claimedSize.w}×{claimedSize.h}px</span>
                 <span className="text-white/30">·</span>
-                <span className="font-bold text-blue-200">${claimedSize.cost.toLocaleString()}</span>
+                <span className="font-bold text-blue-200">${claimedSize.cost.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span>
               </div>
             )}
             {!claimedSize && (
@@ -563,7 +563,7 @@ export default function Billboard() {
             <span className="font-bold text-sm">Marketers Quest</span>
           </div>
           <p className="text-white/22 text-sm text-center">
-            Own 100K Eyeballs · A digital billboard · $1 per pixel · UK &amp; US audience
+            Own 100K Eyeballs · A digital billboard · $0.50 per pixel · UK &amp; US audience
           </p>
           <a href="mailto:admin@marketers.quest" className="text-white/30 hover:text-white/60 text-sm transition-colors">
             admin@marketers.quest
