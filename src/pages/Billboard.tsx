@@ -337,10 +337,10 @@ export default function Billboard() {
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',
-          }}>100k Eyeballs</span>
+          }}>100k+ Eyeballs</span>
         </h1>
         <p className="text-white/45 text-base max-w-xl mx-auto">
-          A digital billboard. Pick your pixels. Your brand, in front of 100,000+ people.&nbsp;<br />
+          Pick your pixels. Your brand, in front of 100,000+ people in a second.&nbsp;<br />
           <span className="text-blue-400 font-medium">$1 per pixel.</span>
         </p>
       </section>
@@ -349,7 +349,7 @@ export default function Billboard() {
       <section style={{ padding: '0 10px 80px' }}>
         <div>
           <div className="text-center mb-8">
-            <p className="text-white/30 text-xs uppercase tracking-widest mb-2">The digital billboard</p>
+            <p className="text-white/30 text-xs uppercase tracking-widest mb-2 font-bold">The digital billboard</p>
           </div>
           <WallCanvas onClaim={handleClaim} />
         </div>
