@@ -337,11 +337,11 @@ export default function Billboard() {
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',
-          }}>100K Eyeballs</span>
+          }}>100k Eyeballs</span>
         </h1>
         <p className="text-white/45 text-base max-w-xl mx-auto">
-          A limited digital billboard. Pick your pixels. Your brand, in front of 100,000 people.
-          <span className="text-blue-400 font-medium"> $1 per pixel.</span>
+          A digital billboard. Pick your pixels. Your brand, in front of 100,000+ people.&nbsp;<br />
+          <span className="text-blue-400 font-medium">$1 per pixel.</span>
         </p>
       </section>
 
@@ -429,7 +429,7 @@ export default function Billboard() {
       </section>
 
       {/* ── CLAIM FORM ── */}
-      <section ref={formRef} className="py-24 px-6 bg-[#070a12]">
+      <section ref={formRef} className="py-24 px-6 bg-[#070a12] pt-[15px]">
         <div className="max-w-xl mx-auto">
           <div className="text-center mb-10">
             <p className="text-white/30 text-xs uppercase tracking-widest mb-3">Ready to own your pixels?</p>
@@ -546,7 +546,7 @@ export default function Billboard() {
                 Submit Claim <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
               <p className="text-center text-white/22 text-xs">
-                We'll respond within 24 hours. No spam. Ever.
+                We'll respond within a few hours. No spam. Ever.
               </p>
             </form>
           )}
@@ -563,7 +563,7 @@ export default function Billboard() {
             <span className="font-bold text-sm">Marketers Quest</span>
           </div>
           <p className="text-white/22 text-sm text-center">
-            Own 100K Eyeballs · A limited digital billboard · $1 per pixel · UK &amp; US audience
+            Own 100K Eyeballs · A digital billboard · $1 per pixel · UK &amp; US audience
           </p>
           <a href="mailto:admin@marketers.quest" className="text-white/30 hover:text-white/60 text-sm transition-colors">
             admin@marketers.quest
