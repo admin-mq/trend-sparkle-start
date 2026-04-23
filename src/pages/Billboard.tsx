@@ -31,7 +31,7 @@ const ROW2 = [...IDS.slice(20), ...IDS, ...IDS.slice(0, 10)];
 const ROW3 = [...IDS.slice(45), ...IDS, ...IDS.slice(0, 20)];
 
 const FAQS = [
-  { q: 'How long does my brand stay on the wall?', a: 'All slots are permanent for the duration of the campaign (minimum 6 months). Premium slots can be extended or made permanent.' },
+  { q: 'How long does my brand stay on the wall?', a: 'All slots are permanent and forever. Premium slots can be placed better on the billboard.' },
   { q: 'Who can join the wall?', a: 'Any legitimate brand, startup, or business. We manually review all submissions to ensure quality and relevance for our 100K audience.' },
   { q: 'Do you approve brands before they go live?', a: 'Yes. After you submit the form and complete payment, we review within 24–48 hours and upload your slot to the wall.' },
   { q: 'What image format is required?', a: 'PNG, JPG, or SVG. Keep it square (1:1 ratio) for the best results. Minimum 400px on the shortest side.' },
