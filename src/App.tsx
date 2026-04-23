@@ -37,6 +37,7 @@ import AmcueBrandProfile from "./pages/AmcueBrandProfile";
 import DataDeletion from "./pages/DataDeletion";
 import MasterAdmin from "./pages/MasterAdmin";
 import TrendTest from "./pages/TrendTest";
+import HundredKEyeballs from "./pages/HundredKEyeballs";
 
 const queryClient = new QueryClient();
 
@@ -99,6 +100,8 @@ const App = () => (
 
             {/* Instagram OAuth callback — public, no sidebar */}
             <Route path="/instagram-callback" element={<InstagramCallback />} />
+
+            <Route path="/100k-eyeballs" element={<HundredKEyeballs />} />
 
             {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
