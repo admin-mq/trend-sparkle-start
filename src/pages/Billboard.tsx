@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import {
   Users, Globe, TrendingUp, Flame, Shield, Clock,
-  ArrowRight, CheckCircle2, ChevronDown, Copyright, Eye,
+  ArrowRight, CheckCircle2, ChevronDown, Copyright, Eye, Upload, X,
 } from 'lucide-react';
 import mqLogoWhite from '@/assets/mq-logo-white.png';
 import audienceBg from '@/assets/marketers-quest-ig-v2.png';
@@ -260,16 +260,21 @@ function WallCanvas({ slots, onClaim }: WallCanvasProps) {
 // ─── PAGE ────────────────────────────────────────────────────────────────────
 
 export default function Billboard() {
-  const [openFaq, setOpenFaq]     = useState<number | null>(null);
-  const [submitted, setSubmitted]  = useState(false);
+  const [openFaq, setOpenFaq]       = useState<number | null>(null);
+  const [submitted, setSubmitted]   = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [claimedSize, setClaimedSize] = useState<{ w: number; h: number; cost: number } | null>(null);
-  const [slots, setSlots]          = useState<BillboardSlot[]>([]);
+  const [slots, setSlots]           = useState<BillboardSlot[]>([]);
+  const [logoFile, setLogoFile]     = useState<File | null>(null);
+  const [logoUrl, setLogoUrl]       = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [form, setForm] = useState({
     name: '', brand: '', email: '', website: '',
     instagram: '', pixelWidth: '', pixelHeight: '', preferredLink: '', notes: '',
   });
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
 
   // Fetch active slots from Supabase on mount
@@ -280,6 +285,48 @@ export default function Billboard() {
       .eq('status', 'active')
       .then(({ data }) => { if (data) setSlots(data); });
   }, []);
+
+  const uploadLogo = useCallback(async (file: File) => {
+    const allowed = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      toast.error('Please upload a PNG, JPG, SVG, or WebP file.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File must be under 5 MB.');
+      return;
+    }
+    setLogoFile(file);
+    setLogoUploading(true);
+    const ext = file.name.split('.').pop();
+    const path = `claims/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await supabase.storage
+      .from('billboard-logos')
+      .upload(path, file, { upsert: false });
+    setLogoUploading(false);
+    if (error) {
+      toast.error('Logo upload failed. You can email it to admin@marketers.quest');
+      setLogoFile(null);
+      return;
+    }
+    const { data: { publicUrl } } = supabase.storage
+      .from('billboard-logos')
+      .getPublicUrl(path);
+    setLogoUrl(publicUrl);
+    toast.success('Logo uploaded!');
+  }, []);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadLogo(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) uploadLogo(file);
+  };
 
   const handleClaim = (w: number, h: number, cost: number) => {
     setClaimedSize({ w, h, cost });
@@ -304,6 +351,7 @@ export default function Billboard() {
       pixel_height:   form.pixelHeight ? Number(form.pixelHeight) : null,
       preferred_link: form.preferredLink || null,
       notes:          form.notes || null,
+      logo_url:       logoUrl || null,
     });
     setSubmitting(false);
     if (error) {
@@ -590,16 +638,53 @@ export default function Billboard() {
 
               <div>
                 <Label className="text-white/55 text-xs mb-2 block">Logo upload</Label>
-                <div className="border border-dashed border-white/12 rounded-xl p-7 text-center hover:border-blue-500/25 transition-colors">
-                  <p className="font-medium text-white/35 text-sm mb-1">Drop your logo here</p>
-                  <p className="text-white/22 text-xs">PNG, JPG, or SVG · Square format recommended</p>
-                  <p className="text-white/22 text-xs mt-1.5">
-                    Or email to{' '}
-                    <a href="mailto:admin@marketers.quest" className="text-blue-400/70 hover:text-blue-400 transition-colors">
-                      admin@marketers.quest
-                    </a>
-                  </p>
-                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+                {logoUrl ? (
+                  <div className="border border-green-500/30 rounded-xl p-4 flex items-center gap-4 bg-green-950/10">
+                    <img src={logoUrl} alt="Logo preview" className="w-14 h-14 object-contain rounded-lg border border-white/10 bg-white/5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-green-400 text-sm font-medium">Logo uploaded</p>
+                      <p className="text-white/35 text-xs truncate mt-0.5">{logoFile?.name}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setLogoFile(null); setLogoUrl(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                      className="text-white/30 hover:text-white/70 transition-colors flex-shrink-0"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    onDrop={handleDrop}
+                    onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    className={`border border-dashed rounded-xl p-7 text-center cursor-pointer transition-all ${
+                      isDragging
+                        ? 'border-blue-400/60 bg-blue-950/15'
+                        : 'border-white/12 hover:border-blue-500/30 hover:bg-white/[0.015]'
+                    }`}
+                  >
+                    {logoUploading ? (
+                      <p className="text-white/45 text-sm animate-pulse">Uploading…</p>
+                    ) : (
+                      <>
+                        <Upload className="h-6 w-6 text-white/25 mx-auto mb-2" />
+                        <p className="font-medium text-white/45 text-sm mb-1">
+                          {isDragging ? 'Drop to upload' : 'Click or drag your logo here'}
+                        </p>
+                        <p className="text-white/22 text-xs">PNG, JPG, SVG, WebP · Max 5 MB · Square format recommended</p>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
