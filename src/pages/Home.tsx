@@ -1049,16 +1049,13 @@ export default function Home() {
             </span>
           </Link>
           <div className="hidden md:flex items-center gap-6">
-            <Link
-              to="/auth"
-              className="relative text-sm text-white/50 hover:text-white transition-colors duration-200 group"
+            <a
+              href="https://marketers-quest.lovable.app/100k-eyeballs"
+              className="text-sm font-medium px-4 py-1.5 rounded-lg bg-white hover:bg-white/90 transition-colors"
+              style={{ color: "hsl(217 91% 60%)" }}
             >
-              Log in
-              <span
-                className="absolute bottom-[-2px] left-0 w-full h-[1px] origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-300"
-                style={{ background: "hsl(217 91% 60% / 0.6)", transitionTimingFunction: "cubic-bezier(.19,1,.22,1)" }}
-              />
-            </Link>
+              100k Eyeballs
+            </a>
             <AuroraButton to="/auth">Get Started</AuroraButton>
           </div>
           <Link
