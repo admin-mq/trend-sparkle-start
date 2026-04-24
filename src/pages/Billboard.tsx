@@ -378,10 +378,10 @@ export default function Billboard() {
       {/* ── NAV ── */}
       <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-[#06080f]/85 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <a href="https://marketers-quest.lovable.app/" className="flex items-center gap-2 cursor-pointer">
             <img src={mqLogoWhite} alt="Marketers Quest" className="w-7 h-7 object-contain" />
             <span className="font-bold text-sm tracking-tight">Marketers Quest</span>
-          </div>
+          </a>
           <Button
             size="sm"
             onClick={() => formRef.current?.scrollIntoView({ behavior: 'smooth' })}
