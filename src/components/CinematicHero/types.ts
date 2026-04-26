@@ -1,14 +1,13 @@
-import type { MotionValue } from "framer-motion";
-
 export type ScrollPhase = 0 | 1 | 2 | 3 | 4;
 
 export interface PhaseProgress {
   phase: ScrollPhase;
   progress: number;
+  overallProgress: number;
 }
 
 export interface PhaseComponentBaseProps {
-  scrollProgress: MotionValue<number>;
+  scrollProgress: number;
 }
 
 export interface AmbientSceneProps extends PhaseComponentBaseProps {
@@ -16,10 +15,10 @@ export interface AmbientSceneProps extends PhaseComponentBaseProps {
 }
 
 export interface ZoomSequenceProps extends PhaseComponentBaseProps {
-  onLockComplete: () => void;
-  isMobile: boolean;
+  isActive: boolean;
 }
 
-export interface DashboardRevealProps extends PhaseComponentBaseProps {
+export interface DashboardRevealProps {
   isVisible: boolean;
+  revealProgress: number;
 }
