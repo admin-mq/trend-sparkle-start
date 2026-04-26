@@ -1,37 +1,53 @@
+import { MQLogo } from "@/components/MQLogo";
+
 export function CinematicHomepage() {
   return (
-    <main className="min-h-screen bg-[radial-gradient(1200px_600px_at_12%_8%,rgba(59,130,246,0.22),transparent_46%),radial-gradient(900px_520px_at_85%_12%,rgba(34,211,238,0.16),transparent_42%),linear-gradient(180deg,#0b1220_0%,#0a0f1c_52%,#070b14_100%)] px-6 py-14 md:px-10 md:py-20">
-      <section className="mx-auto flex w-full max-w-6xl flex-col items-center gap-10 text-center md:gap-12">
-        <div className="max-w-3xl">
-          <span className="mb-5 inline-flex rounded-full border border-primary/40 bg-background/40 px-4 py-2 text-xs font-medium tracking-[0.16em] text-primary backdrop-blur-sm">
+    <main className="relative min-h-screen overflow-hidden bg-[linear-gradient(180deg,#0b1220_0%,#0a0f1c_48%,#070b14_100%)] text-white">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -left-24 top-0 h-[420px] w-[420px] rounded-full bg-primary/20 blur-3xl" />
+        <div className="absolute -right-20 top-20 h-[380px] w-[380px] rounded-full bg-cyan-400/15 blur-3xl" />
+      </div>
+
+      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-8 md:px-10 md:py-10">
+        <header className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <MQLogo size={30} showBackground />
+            <span className="text-sm font-semibold tracking-wide text-white/90">Marketers Quest</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <a href="/auth" className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white/90 transition hover:bg-white/10">
+              Log in
+            </a>
+            <a href="/auth" className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-[0_10px_30px_rgba(59,130,246,0.35)] transition hover:opacity-95">
+              Get Started
+            </a>
+          </div>
+        </header>
+
+        <section className="mx-auto mt-16 flex w-full max-w-3xl flex-col items-center text-center md:mt-20">
+          <span className="mb-5 inline-flex rounded-full border border-primary/35 bg-white/5 px-4 py-2 text-xs font-medium tracking-[0.16em] text-primary">
             AI-Powered Marketing Platform
           </span>
           <h1 className="text-4xl font-semibold leading-tight tracking-tight text-white md:text-6xl">
             Every Brand Deserves CMO-Grade Marketing
           </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-base text-white/75 md:text-lg">
-            Unify trend intelligence, PR planning, SEO insights, and campaign execution in one premium workspace.
+          <p className="mt-4 max-w-2xl text-base text-white/75 md:text-lg">
+            Unify trend intelligence, PR execution, and SEO planning inside one premium growth workspace.
           </p>
-
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <a
-              href="/auth"
-              className="inline-flex items-center rounded-full bg-primary px-6 py-3 text-sm font-medium text-primary-foreground shadow-[0_10px_30px_rgba(59,130,246,0.35)] transition hover:opacity-95"
-            >
+            <a href="/auth" className="inline-flex items-center rounded-full bg-primary px-6 py-3 text-sm font-medium text-primary-foreground shadow-[0_10px_30px_rgba(59,130,246,0.35)] transition hover:opacity-95">
               Start for Free →
             </a>
-            <a
-              href="/free-scan"
-              className="inline-flex items-center rounded-full border border-white/20 bg-white/5 px-6 py-3 text-sm font-medium text-white transition hover:bg-white/10"
-            >
+            <a href="/free-scan" className="inline-flex items-center rounded-full border border-white/20 bg-white/5 px-6 py-3 text-sm font-medium text-white transition hover:bg-white/10">
               See Demo Preview
             </a>
           </div>
-        </div>
+        </section>
 
-        <div className="w-full max-w-5xl">
-          <div className="rounded-[26px] border border-white/15 bg-slate-950/70 p-3 shadow-[0_24px_100px_rgba(0,0,0,0.62)] backdrop-blur-xl">
-            <div className="rounded-[20px] border border-white/10 bg-black/70 p-3 md:p-4">
+        <section className="mx-auto mt-16 w-full max-w-5xl md:mt-20">
+          <div className="rounded-[28px] border border-white/15 bg-slate-950/75 p-3 shadow-[0_28px_100px_rgba(0,0,0,0.62)] backdrop-blur-xl">
+            <div className="rounded-[22px] border border-white/10 bg-black/70 p-3 md:p-4">
               <div className="mb-3 flex items-center gap-2 border-b border-white/10 pb-3">
                 <span className="h-2.5 w-2.5 rounded-full bg-red-400/90" />
                 <span className="h-2.5 w-2.5 rounded-full bg-yellow-400/90" />
@@ -42,10 +58,7 @@ export function CinematicHomepage() {
               <div className="grid gap-3 md:grid-cols-[190px_1fr]">
                 <aside className="rounded-xl border border-white/10 bg-white/[0.03] p-2">
                   {["Dashboard", "Trend Quest", "PR Campaigns", "SEO", "Influencers", "Analytics"].map((item, idx) => (
-                    <div
-                      key={item}
-                      className={`mb-1 rounded-md px-2 py-2 text-xs ${idx === 0 ? "bg-primary/20 text-primary" : "text-white/65"}`}
-                    >
+                    <div key={item} className={`mb-1 rounded-md px-2 py-2 text-xs ${idx === 0 ? "bg-primary/20 text-primary" : "text-white/65"}`}>
                       {item}
                     </div>
                   ))}
@@ -78,8 +91,8 @@ export function CinematicHomepage() {
               </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }
