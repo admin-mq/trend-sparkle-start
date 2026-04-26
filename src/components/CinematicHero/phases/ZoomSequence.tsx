@@ -8,8 +8,6 @@ export function ZoomSequence({ scrollProgress, onLockComplete, isMobile }: ZoomS
   const triggerRef = useRef<HTMLDivElement>(null);
   const scanTriggeredRef = useRef(false);
   const lockTriggeredRef = useRef(false);
-  const [start, end] = [0.15, 0.6];
-
   const bracketOpacity = useTransform(scrollProgress, [0.15, 0.2, 0.55], [0, 1, 0]);
   const bracketScale = useTransform(scrollProgress, [0.15, 0.2], [1.1, 1]);
   const clipPath = useTransform(scrollProgress, [0.15, 0.6], ["inset(8% 10% round 12px)", "inset(0% 0% round 0px)"]);

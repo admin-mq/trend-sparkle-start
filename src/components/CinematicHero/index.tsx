@@ -56,7 +56,14 @@ export function CinematicHero() {
     <section ref={containerRef} className="relative" style={{ height: HERO_SCROLL_HEIGHT }}>
       <div className="sticky top-0 h-screen overflow-hidden bg-background">
         <AmbientScene scrollProgress={scrollYProgress} isActive={phase <= 1} />
-        <ZoomSequence scrollProgress={scrollYProgress} onLockComplete={() => setVortexComplete(false)} isMobile={isMobile} />
+
+        {phase >= 1 && phase <= 2 && (
+          <ZoomSequence
+            scrollProgress={scrollYProgress}
+            onLockComplete={() => setVortexComplete(false)}
+            isMobile={isMobile}
+          />
+        )}
 
         <AnimatePresence>
           {phase === 3 && !vortexComplete && (
@@ -70,38 +77,53 @@ export function CinematicHero() {
           )}
         </AnimatePresence>
 
-        <DashboardReveal scrollProgress={scrollYProgress} isVisible={phase >= 4 || vortexComplete} />
+        {phase >= 4 && <DashboardReveal scrollProgress={scrollYProgress} isVisible={phase >= 4} />}
       </div>
     </section>
   );
 }
 
 function MobileFallback() {
+  const [missingHeroImage, setMissingHeroImage] = useState(false);
+  const [missingDashboardImage, setMissingDashboardImage] = useState(false);
   const sectionRef = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({ target: sectionRef, offset: ["start start", "end end"] });
-  const dashboardOpacity = useTransform(scrollYProgress, [0.2, 0.6], [0, 1]);
+  const dashboardOpacity = useTransform(scrollYProgress, [0.35, 0.7], [0, 1]);
 
   return (
     <section ref={sectionRef} className="relative bg-background px-4 py-8">
       <div className="mx-auto max-w-md space-y-5">
-        <picture>
-          <source srcSet="/assets/hero-woman-macbook.webp" type="image/webp" />
-          <img
-            src="/assets/hero-woman-macbook.jpg"
-            alt="A marketer working at a laptop using Marketers Quest"
-            className="h-[48vh] w-full rounded-2xl object-cover object-top"
-            width={900}
-            height={1200}
-            loading="eager"
-          />
-        </picture>
+        {!missingHeroImage ? (
+          <picture>
+            <source srcSet="/assets/hero-woman-macbook.webp" type="image/webp" />
+            <img
+              src="/assets/hero-woman-macbook.jpg"
+              alt="A marketer working at a laptop using Marketers Quest"
+              className="h-[48vh] w-full rounded-2xl object-cover object-top"
+              width={900}
+              height={1200}
+              loading="eager"
+              onError={() => setMissingHeroImage(true)}
+            />
+          </picture>
+        ) : (
+          <div className="h-[48vh] w-full rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_20%_20%,hsl(217_91%_60%_/_0.30),transparent_45%),linear-gradient(180deg,hsl(222_24%_11%)_0%,hsl(222_24%_6%)_100%)]" />
+        )}
 
-        <motion.img
-          style={{ opacity: dashboardOpacity }}
-          src="/assets/dashboard-preview-mobile.jpg"
-          alt="Marketers Quest mobile dashboard preview"
-          className="h-[42vh] w-full rounded-2xl border border-white/10 object-cover"
-        />
+        {!missingDashboardImage ? (
+          <motion.img
+            style={{ opacity: dashboardOpacity }}
+            src="/assets/dashboard-preview-mobile.jpg"
+            alt="Marketers Quest mobile dashboard preview"
+            className="h-[42vh] w-full rounded-2xl border border-white/10 object-cover"
+            onError={() => setMissingDashboardImage(true)}
+          />
+        ) : (
+          <motion.div
+            style={{ opacity: dashboardOpacity }}
+            className="h-[42vh] w-full rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900 to-slate-950"
+          />
+        )}
 
         <div className="space-y-3 overflow-x-auto snap-x snap-mandatory pb-2">
           {[

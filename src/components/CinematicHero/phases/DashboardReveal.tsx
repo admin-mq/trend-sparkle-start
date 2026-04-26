@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion, useTransform } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { DashboardRevealProps } from "@/components/CinematicHero/types";
 import { TIMINGS } from "@/components/CinematicHero/constants";
 
@@ -25,8 +25,6 @@ export function DashboardReveal({ isVisible, scrollProgress }: DashboardRevealPr
   const prefersReducedMotion = useReducedMotion();
   const [typedInsight, setTypedInsight] = useState(prefersReducedMotion ? INSIGHT : "");
   const [cursorVisible, setCursorVisible] = useState(true);
-
-  const shellOpacity = useTransform(scrollProgress, [0.75, 0.9], [0.2, 1]);
 
   useEffect(() => {
     if (!isVisible || prefersReducedMotion) {
@@ -63,7 +61,9 @@ export function DashboardReveal({ isVisible, scrollProgress }: DashboardRevealPr
 
   return (
     <motion.section
-      style={{ opacity: shellOpacity }}
+      initial={{ opacity: 0, y: 24 }}
+      animate={isVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 24 }}
+      transition={{ duration: 0.45, ease: [0.25, 0.46, 0.45, 0.94] }}
       role="region"
       aria-label="Marketers Quest dashboard preview"
       className="absolute inset-0 z-20 flex items-center justify-center px-4 py-6 md:px-10"
