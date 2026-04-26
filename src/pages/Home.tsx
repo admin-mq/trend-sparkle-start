@@ -4,6 +4,7 @@ import { Brain, Search, Megaphone, TrendingUp, Users, BarChart3, ArrowRight, Che
 import { MQLogo } from "@/components/MQLogo";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import { CinematicHomepage } from "@/components/home/CinematicHomepage";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LetterboxReveal — cinematic black bars that slide away on load
@@ -889,7 +890,7 @@ const MARQUEE =
 // ─────────────────────────────────────────────────────────────────────────────
 // Home
 // ─────────────────────────────────────────────────────────────────────────────
-export default function Home() {
+function LegacyHome() {
   const { user, loading } = useAuthContext();
   const navigate = useNavigate();
   useEffect(() => {
@@ -1705,4 +1706,19 @@ export default function Home() {
       </footer>
     </div>
   );
+}
+
+export default function Home() {
+  const [useLegacy, setUseLegacy] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setUseLegacy(params.get("home") === "legacy");
+  }, []);
+
+  if (useLegacy) {
+    return <LegacyHome />;
+  }
+
+  return <CinematicHomepage />;
 }
