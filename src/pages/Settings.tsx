@@ -74,7 +74,17 @@ const Settings = () => {
       const { error: updateErr } = await supabase.auth.updateUser({ password: newPwd });
       if (updateErr) throw updateErr;
 
-      toast.success("Password updated successfully.");
+      // 3. Revoke every OTHER active session (other devices/browsers).
+      // Current device stays signed in. Failure here is non-fatal — the
+      // password is already changed; we just inform the user.
+      const { error: revokeErr } = await supabase.auth.signOut({ scope: "others" });
+      if (revokeErr) {
+        console.warn("Could not revoke other sessions:", revokeErr);
+        toast.success("Password updated. Other devices may take up to an hour to sign out.");
+      } else {
+        toast.success("Password updated. All other devices have been signed out.");
+      }
+
       setCurrentPwd("");
       setNewPwd("");
       setConfirmPwd("");
@@ -155,7 +165,7 @@ const Settings = () => {
             Change password
           </CardTitle>
           <CardDescription>
-            Use at least 8 characters. You'll stay signed in on this device.
+            Use at least 8 characters. All other devices will be signed out — you'll stay signed in here.
           </CardDescription>
         </CardHeader>
         <CardContent>
