@@ -3,8 +3,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2, LogOut, Trash2, Shield, User } from "lucide-react";
+import { Loader2, LogOut, Trash2, Shield, User, KeyRound, Eye, EyeOff } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,10 +24,67 @@ const Settings = () => {
   const [signingOut, setSigningOut] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Change password state
+  const [currentPwd, setCurrentPwd] = useState("");
+  const [newPwd, setNewPwd] = useState("");
+  const [confirmPwd, setConfirmPwd] = useState("");
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [changingPwd, setChangingPwd] = useState(false);
+
   const handleSignOut = async () => {
     setSigningOut(true);
     await supabase.auth.signOut();
     setSigningOut(false);
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.email) {
+      toast.error("No account email found.");
+      return;
+    }
+    if (newPwd.length < 8) {
+      toast.error("New password must be at least 8 characters.");
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      toast.error("New passwords do not match.");
+      return;
+    }
+    if (newPwd === currentPwd) {
+      toast.error("New password must be different from your current one.");
+      return;
+    }
+
+    setChangingPwd(true);
+    try {
+      // 1. Verify the current password by re-signing-in (Supabase has no native verify call)
+      const { error: verifyErr } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: currentPwd,
+      });
+      if (verifyErr) {
+        toast.error("Current password is incorrect.");
+        return;
+      }
+
+      // 2. Update to the new password
+      const { error: updateErr } = await supabase.auth.updateUser({ password: newPwd });
+      if (updateErr) throw updateErr;
+
+      toast.success("Password updated successfully.");
+      setCurrentPwd("");
+      setNewPwd("");
+      setConfirmPwd("");
+    } catch (err) {
+      console.error("Change password error:", err);
+      const msg = err instanceof Error ? err.message : "Could not update password.";
+      toast.error(msg);
+    } finally {
+      setChangingPwd(false);
+    }
   };
 
   const handleDeleteAccount = async () => {
@@ -85,6 +144,125 @@ const Settings = () => {
               Sign out
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Change password */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <KeyRound className="w-4 h-4" />
+            Change password
+          </CardTitle>
+          <CardDescription>
+            Use at least 8 characters. You'll stay signed in on this device.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleChangePassword} className="space-y-4">
+            {/* Current password */}
+            <div className="space-y-1.5">
+              <Label htmlFor="current-pwd" className="text-sm">Current password</Label>
+              <div className="relative">
+                <Input
+                  id="current-pwd"
+                  type={showCurrent ? "text" : "password"}
+                  value={currentPwd}
+                  onChange={(e) => setCurrentPwd(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCurrent((v) => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label={showCurrent ? "Hide password" : "Show password"}
+                  tabIndex={-1}
+                >
+                  {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* New password */}
+            <div className="space-y-1.5">
+              <Label htmlFor="new-pwd" className="text-sm">New password</Label>
+              <div className="relative">
+                <Input
+                  id="new-pwd"
+                  type={showNew ? "text" : "password"}
+                  value={newPwd}
+                  onChange={(e) => setNewPwd(e.target.value)}
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNew((v) => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label={showNew ? "Hide password" : "Show password"}
+                  tabIndex={-1}
+                >
+                  {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {newPwd.length > 0 && newPwd.length < 8 && (
+                <p className="text-xs text-destructive">Must be at least 8 characters.</p>
+              )}
+            </div>
+
+            {/* Confirm new password */}
+            <div className="space-y-1.5">
+              <Label htmlFor="confirm-pwd" className="text-sm">Confirm new password</Label>
+              <div className="relative">
+                <Input
+                  id="confirm-pwd"
+                  type={showConfirm ? "text" : "password"}
+                  value={confirmPwd}
+                  onChange={(e) => setConfirmPwd(e.target.value)}
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirm((v) => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label={showConfirm ? "Hide password" : "Show password"}
+                  tabIndex={-1}
+                >
+                  {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {confirmPwd.length > 0 && newPwd !== confirmPwd && (
+                <p className="text-xs text-destructive">Passwords don't match.</p>
+              )}
+            </div>
+
+            <div className="pt-1">
+              <Button
+                type="submit"
+                className="gap-2"
+                disabled={
+                  changingPwd ||
+                  !currentPwd ||
+                  newPwd.length < 8 ||
+                  newPwd !== confirmPwd
+                }
+              >
+                {changingPwd ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <KeyRound className="w-4 h-4" />
+                )}
+                Update password
+              </Button>
+            </div>
+          </form>
         </CardContent>
       </Card>
 
