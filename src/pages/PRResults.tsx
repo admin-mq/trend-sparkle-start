@@ -1229,7 +1229,7 @@ const PRResults = () => {
             size="sm"
             variant="outline"
             className="gap-1.5 text-xs shrink-0"
-            onClick={() => window.open(`/pr/report?project=${projectId}`, "_blank")}
+            onClick={() => window.open(`/pr/report?project=${projectId}&autoprint=1`, "_blank")}
           >
             <Download className="w-3.5 h-3.5" /> Export PDF
           </Button>
