@@ -51,10 +51,12 @@ interface VisibilityResult {
 
 interface ExternalMention {
   url: string;
-  title: string | null;
-  summary: string | null;
+  page_title: string | null;
+  ai_summary: string | null;
   sentiment: string | null;
+  themes: string[];
   proof_signals: string[];
+  key_quotes: { quote: string; context: string }[];
   brand_mentions: { brand: string; framing: string }[];
   status: string;
 }
@@ -183,7 +185,7 @@ const PRPrint = () => {
       // External mentions (completed only)
       const { data: mentionRows } = await (supabase as any)
         .from("pr_external_mentions")
-        .select("url, title, summary, sentiment, proof_signals, brand_mentions, status")
+        .select("url, page_title, ai_summary, sentiment, themes, proof_signals, key_quotes, brand_mentions, status")
         .eq("project_id", projectId)
         .eq("status", "done")
         .order("created_at", { ascending: false });
@@ -554,19 +556,36 @@ const PRPrint = () => {
                       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 12.5, fontWeight: 700, color: "#111827", marginBottom: 2 }}>
-                            {m.title || m.url}
+                            {m.page_title || (() => { try { return new URL(m.url).hostname.replace("www.", ""); } catch { return m.url; } })()}
                           </div>
                           <div style={{ fontSize: 10, color: "#9ca3af", wordBreak: "break-all" }}>{m.url}</div>
                         </div>
                         {m.sentiment && <Chip label={m.sentiment} color={sColor} />}
                       </div>
-                      {m.summary && (
-                        <p style={{ margin: "0 0 8px", fontSize: 12, color: "#6b7280", lineHeight: 1.6 }}>{m.summary}</p>
+                      {m.ai_summary && (
+                        <p style={{ margin: "0 0 8px", fontSize: 12, color: "#6b7280", lineHeight: 1.6 }}>{m.ai_summary}</p>
+                      )}
+                      {m.themes?.length > 0 && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
+                          {m.themes.map((t, j) => (
+                            <span key={j} style={{ fontSize: 10, background: "#eff6ff", color: "#2563eb", borderRadius: 4, padding: "1px 6px" }}>{t}</span>
+                          ))}
+                        </div>
                       )}
                       {m.proof_signals?.length > 0 && (
                         <div style={{ marginBottom: 6 }}>
                           <span style={{ fontSize: 10, fontWeight: 600, color: "#374151" }}>Proof signals: </span>
                           <span style={{ fontSize: 11, color: "#6b7280" }}>{m.proof_signals.join(" · ")}</span>
+                        </div>
+                      )}
+                      {m.key_quotes?.length > 0 && (
+                        <div style={{ marginBottom: 6 }}>
+                          {m.key_quotes.slice(0, 2).map((q, j) => (
+                            <div key={j} style={{ fontSize: 11, fontStyle: "italic", color: "#6b7280", borderLeft: "3px solid #e5e7eb", paddingLeft: 8, marginBottom: 4 }}>
+                              "{q.quote}"
+                              {q.context && <span style={{ fontStyle: "normal", color: "#9ca3af" }}> — {q.context}</span>}
+                            </div>
+                          ))}
                         </div>
                       )}
                       {m.brand_mentions?.length > 0 && (
