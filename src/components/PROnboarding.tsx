@@ -153,6 +153,33 @@ function BrandStep({
   industry, setIndustry, geography, setGeography,
   audience, setAudience, error, onNext,
 }: BrandStepProps) {
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  async function handleAnalyze() {
+    const url = websiteUrl.trim();
+    if (!url) return;
+    setIsAnalyzing(true);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('analyze-brand-website', {
+        body: { website_url: url }
+      });
+      if (fnError || !data?.brand_profile) return;
+      const p = data.brand_profile;
+      if (p.brand_name) setBrandName(p.brand_name);
+      if (p.industry)   setIndustry(p.industry);
+      if (p.geography)  setGeography(p.geography);
+      if (p.target_audience) setAudience(p.target_audience);
+      // Extract clean domain from the URL they pasted
+      const extracted = url.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase();
+      if (extracted && !domain) setDomain(extracted);
+    } catch {
+      // fail silently — user can fill manually
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
       <div className="text-center space-y-1">
@@ -161,6 +188,40 @@ function BrandStep({
         <p className="text-sm text-muted-foreground">
           We'll crawl your website and score how you're positioned online.
         </p>
+      </div>
+
+      {/* Auto-fill from URL */}
+      <div className="space-y-2 p-3 rounded-lg border border-primary/20 bg-primary/5">
+        <Label className="text-xs font-medium flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5 text-primary" />
+          Auto-fill from website
+        </Label>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input
+              className="pl-8 text-sm h-9"
+              placeholder="e.g. dreamhomestore.co.uk"
+              value={websiteUrl}
+              onChange={(e) => setWebsiteUrl(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
+              disabled={isAnalyzing}
+            />
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-9 gap-1.5 border-primary/40 text-primary hover:bg-primary/10 whitespace-nowrap"
+            onClick={handleAnalyze}
+            disabled={isAnalyzing || !websiteUrl.trim()}
+          >
+            {isAnalyzing
+              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analysing…</>
+              : <><Sparkles className="w-3.5 h-3.5" /> Analyse</>
+            }
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">Paste your URL to auto-fill the fields below.</p>
       </div>
 
       <div className="space-y-4">
