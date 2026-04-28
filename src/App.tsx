@@ -87,10 +87,10 @@ const App = () => (
               <Route path="/admin" element={<Admin />} />
             </Route>
 
-            {/* PR print report — protected but no sidebar */}
-            <Route path="/pr/report" element={
-              <ProtectedRoute><PRPrint /></ProtectedRoute>
-            } />
+            {/* PR print report — no ProtectedRoute wrapper; opened in new tab from
+                an already-authenticated session. ProtectedRoute's 2s timeout fires
+                before Supabase can re-init in a cold tab, causing a false redirect. */}
+            <Route path="/pr/report" element={<PRPrint />} />
 
             {/* Master Admin — public, secret URL, no sidebar */}
             <Route path="/master" element={<MasterAdmin />} />
