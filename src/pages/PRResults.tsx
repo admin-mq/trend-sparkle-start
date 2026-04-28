@@ -25,6 +25,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "@/hooks/use-toast";
+import { InfoTooltip } from "@/components/InfoTooltip";
 
 const SUPABASE_FUNCTIONS_URL = "https://njnnpdrevbkhbhzwccuz.supabase.co/functions/v1";
 
@@ -255,7 +256,7 @@ function ScoreDelta({ delta, invert = false }: { delta: number | null; invert?: 
 }
 
 function ScoreCard({
-  label, score, icon: Icon, invert = false, subtitle, delta,
+  label, score, icon: Icon, invert = false, subtitle, delta, tooltip,
 }: {
   label: string;
   score: number | null;
@@ -263,6 +264,7 @@ function ScoreCard({
   invert?: boolean;
   subtitle?: string;
   delta?: number | null;
+  tooltip?: string;
 }) {
   return (
     <Card className={`border-2 ${scoreRing(score, invert)}`}>
@@ -273,7 +275,10 @@ function ScoreCard({
         <div className={`text-3xl font-bold ${scoreColor(score, invert)}`}>
           {score != null ? score : "—"}
         </div>
-        <div className="text-xs font-medium text-foreground">{label}</div>
+        <div className="flex items-center justify-center gap-1 text-xs font-medium text-foreground">
+          {label}
+          {tooltip && <InfoTooltip text={tooltip} size={11} />}
+        </div>
         {delta != null && delta !== 0 && (
           <div className="flex items-center justify-center gap-1">
             <ScoreDelta delta={delta} invert={invert} />
@@ -1249,14 +1254,18 @@ const PRResults = () => {
           <TabsTrigger value="trends" className="gap-1.5">
             <BarChart2 className="w-3.5 h-3.5" /> Trends
           </TabsTrigger>
-          <TabsTrigger value="narratives">Narrative Map</TabsTrigger>
-          <TabsTrigger value="gaps">Proof Gaps</TabsTrigger>
+          <TabsTrigger value="narratives" className="gap-1.5">
+            Narrative Map <InfoTooltip text="A visual breakdown of the topics and themes your brand (and competitors) are associated with online. Shows which stories you 'own' and which you're losing to rivals." size={11} />
+          </TabsTrigger>
+          <TabsTrigger value="gaps" className="gap-1.5">
+            Proof Gaps <InfoTooltip text="Places where your brand makes a claim but has no evidence to back it up. For example, saying 'We're the most trusted' without reviews or awards to prove it." size={11} />
+          </TabsTrigger>
           <TabsTrigger value="actions">Actions</TabsTrigger>
           <TabsTrigger value="competitors" className="gap-1.5">
             <Swords className="w-3.5 h-3.5" /> Competitors
           </TabsTrigger>
           <TabsTrigger value="visibility" className="gap-1.5">
-            <Eye className="w-3.5 h-3.5" /> AI Visibility
+            <Eye className="w-3.5 h-3.5" /> AI Visibility <InfoTooltip text="Whether your brand appears when people ask AI tools (like ChatGPT or Perplexity) questions in your market. This is the new 'page one of Google' for AI-powered search." size={11} />
           </TabsTrigger>
           <TabsTrigger value="mentions" className="gap-1.5">
             <Link2 className="w-3.5 h-3.5" /> Mentions
@@ -1277,11 +1286,11 @@ const PRResults = () => {
         {/* ── Overview ─────────────────────────────────────────────────────── */}
         <TabsContent value="overview" className="space-y-5 mt-4">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <ScoreCard label="Narrative" score={result.narrative_score} icon={TrendingUp} subtitle="How strong & consistent" delta={scoreDelta("narrative_score")} />
-            <ScoreCard label="Authority" score={result.authority_score} icon={Shield} subtitle="How credible you appear" delta={scoreDelta("authority_score")} />
-            <ScoreCard label="Proof Density" score={result.proof_density_score} icon={FileText} subtitle="Evidence behind claims" delta={scoreDelta("proof_density_score")} />
-            <ScoreCard label="Risk" score={result.risk_score} icon={AlertTriangle} invert subtitle="Lower is better" delta={scoreDelta("risk_score")} />
-            <ScoreCard label="Opportunity" score={result.opportunity_score} icon={Zap} subtitle="Room to gain ground" delta={scoreDelta("opportunity_score")} />
+            <ScoreCard label="Narrative" score={result.narrative_score} icon={TrendingUp} subtitle="How strong & consistent" delta={scoreDelta("narrative_score")} tooltip="How clearly and consistently your brand tells its story online. A high score means people instantly understand what you stand for." />
+            <ScoreCard label="Authority" score={result.authority_score} icon={Shield} subtitle="How credible you appear" delta={scoreDelta("authority_score")} tooltip="How credible and trustworthy your brand looks to outsiders — built from press coverage, backlinks, reviews, and expert mentions." />
+            <ScoreCard label="Proof Density" score={result.proof_density_score} icon={FileText} subtitle="Evidence behind claims" delta={scoreDelta("proof_density_score")} tooltip="How much real evidence backs up what your brand claims. Not just what you say — but case studies, testimonials, and third-party references that prove it." />
+            <ScoreCard label="Risk" score={result.risk_score} icon={AlertTriangle} invert subtitle="Lower is better" delta={scoreDelta("risk_score")} tooltip="How exposed your brand is to negative coverage or reputation gaps. Lower is better — a high risk score means there are things that could hurt your brand's image." />
+            <ScoreCard label="Opportunity" score={result.opportunity_score} icon={Zap} subtitle="Room to gain ground" delta={scoreDelta("opportunity_score")} tooltip="How much untapped space exists for your brand to grow. A high score means there are gaps in the market your brand isn't filling yet — but easily could." />
           </div>
 
           {/* Baseline notice — only 1 scan so far */}
@@ -1307,7 +1316,10 @@ const PRResults = () => {
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <RefreshCw className="w-4 h-4 text-muted-foreground" />
-                    <p className="text-sm font-semibold text-foreground">Rescan schedule</p>
+                    <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                      Rescan schedule
+                      <InfoTooltip text="How often the tool re-checks the internet and AI tools for fresh data about your brand. More frequent = more up-to-date scores." size={12} />
+                    </p>
                   </div>
                   {project.next_scan_at && project.scan_frequency !== "manual" && (
                     <p className="text-xs text-muted-foreground">
@@ -1353,7 +1365,10 @@ const PRResults = () => {
           {result.proof_gaps.length > 0 && (
             <Card>
               <CardHeader className="pb-2 pt-4 px-4">
-                <CardTitle className="text-sm font-semibold">Top Proof Gaps</CardTitle>
+                <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+                  Top Proof Gaps
+                  <InfoTooltip text="The most important places where your brand makes a claim but has nothing to back it up. Fixing these builds trust with buyers and AI tools." size={12} />
+                </CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-4 space-y-2">
                 {result.proof_gaps.slice(0, 3).map((gap, i) => (
@@ -1559,6 +1574,7 @@ const PRResults = () => {
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-primary" />
                 {project.brand_name} — Narrative Themes
+                <InfoTooltip text="The recurring topics and messages people associate with your brand online — e.g. 'affordable quality' or 'fast delivery'. Strong themes mean your brand story is landing consistently." size={12} />
               </CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-4 space-y-4">

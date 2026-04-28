@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "@/hooks/use-toast";
+import { InfoTooltip } from "@/components/InfoTooltip";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -107,6 +108,13 @@ function StatusBadge({ status, step }: { status: string; step: string | null }) 
 
 // ── Score mini-cell with delta arrow ─────────────────────────────────────────
 
+const SCORE_PILL_TIPS: Record<string, string> = {
+  Narrative:   "How clearly your brand tells its story online.",
+  Authority:   "How credible and trustworthy your brand looks to outsiders.",
+  Proof:       "How much real evidence backs up what your brand claims.",
+  Opportunity: "How much untapped space exists for your brand to grow.",
+};
+
 function ScorePill({
   label,
   value,
@@ -140,7 +148,10 @@ function ScorePill({
       ) : (
         <span className="text-[10px] text-muted-foreground">—</span>
       )}
-      <span className="text-[9px] text-muted-foreground leading-tight text-center">{label}</span>
+      <span className="flex items-center justify-center gap-0.5 text-[9px] text-muted-foreground leading-tight text-center">
+        {label}
+        {SCORE_PILL_TIPS[label] && <InfoTooltip text={SCORE_PILL_TIPS[label]} size={9} />}
+      </span>
     </div>
   );
 }
@@ -642,6 +653,7 @@ function CreateProjectDialog({
               <div className="flex items-center justify-between">
                 <Label className="flex items-center gap-1.5">
                   <Target className="w-4 h-4" /> AI Search Queries
+                  <InfoTooltip text="Questions your target buyers type into AI tools like ChatGPT or Perplexity. We check whether your brand appears in the AI's answer — the new 'page one of Google'." size={12} />
                 </Label>
                 {!suggesting && (
                   <button
