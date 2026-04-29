@@ -214,15 +214,24 @@ export const TwitterTrends = ({ data, onGenerateTweets, onRefresh, isRefreshing 
                   )}
                 </div>
 
-                {/* Why trending */}
-                {trend.why_trending && trend.confidence !== 'low' && (
-                  <p className="text-sm text-secondary-foreground mt-2">
+                {/* Why trending — always show if we have anything; tag if unverified */}
+                {trend.why_trending && (
+                  <p className={`text-sm mt-2 ${
+                    trend.confidence === 'low'
+                      ? 'text-muted-foreground/80 italic'
+                      : 'text-secondary-foreground'
+                  }`}>
                     {trend.why_trending}
+                    {trend.confidence === 'low' && (
+                      <span className="not-italic text-[10px] text-muted-foreground ml-1">
+                        (best guess)
+                      </span>
+                    )}
                   </p>
                 )}
-                {trend.confidence === 'low' && (
+                {!trend.why_trending && trend.confidence === 'low' && (
                   <p className="text-sm text-muted-foreground/60 italic mt-2">
-                    Context unverified — proceed with caution
+                    No upstream context — we'll re-check live before generating.
                   </p>
                 )}
 
@@ -240,11 +249,15 @@ export const TwitterTrends = ({ data, onGenerateTweets, onRefresh, isRefreshing 
                   onClick={() => onGenerateTweets(trend)}
                   variant="ghost"
                   size="sm"
-                  disabled={trend.confidence === 'low'}
                   className="mt-3 text-primary hover:text-primary hover:bg-primary/10 gap-1"
+                  title={
+                    trend.confidence === 'low'
+                      ? 'Upstream context is weak — we\'ll run a fresh live search before drafting'
+                      : 'Draft 3 on-brand tweets for this trend'
+                  }
                 >
-                  {trend.confidence === 'low' ? 'Context unverified' : 'Generate tweets'}
-                  {trend.confidence !== 'low' && <ArrowRight className="w-3 h-3" />}
+                  {trend.confidence === 'low' ? 'Generate (verify live)' : 'Generate tweets'}
+                  <ArrowRight className="w-3 h-3" />
                 </Button>
               </div>
             </div>
