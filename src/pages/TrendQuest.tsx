@@ -76,6 +76,8 @@ const TrendQuest = () => {
   const [generatedTweets, setGeneratedTweets] = useState<GeneratedTweet[]>([]);
   const [tweetsSaved, setTweetsSaved] = useState<boolean>(false);
   const [tweetsSaveError, setTweetsSaveError] = useState<string | null>(null);
+  const [tweetsLiveContextSource, setTweetsLiveContextSource] = useState<'live' | 'stale' | 'none' | null>(null);
+  const [tweetsLiveContextPreview, setTweetsLiveContextPreview] = useState<string | null>(null);
   const [selectedTwitterTrend, setSelectedTwitterTrend] = useState<TwitterTrend | null>(null);
   const [tweetsLoading, setTweetsLoading] = useState(false);
   const [tweetsError, setTweetsError] = useState<string | null>(null);
@@ -273,6 +275,10 @@ const TrendQuest = () => {
     setTweetsError(null);
     setSelectedTwitterTrend(trend);
     setGeneratedTweets([]);
+    setTweetsSaved(false);
+    setTweetsSaveError(null);
+    setTweetsLiveContextSource(null);
+    setTweetsLiveContextPreview(null);
     setActiveStep("directions");
 
     const charLimit = inputValues.twitter_user_type === 'premium' ? 25000 : 280;
@@ -292,6 +298,8 @@ const TrendQuest = () => {
       setGeneratedTweets(data.tweets || []);
       setTweetsSaved(!!data?.saved);
       setTweetsSaveError(data?.save_error ?? null);
+      setTweetsLiveContextSource(data?.live_context_source ?? null);
+      setTweetsLiveContextPreview(data?.live_context_preview ?? null);
       if (data?.saved) {
         toast.success('Drafts saved to My Drafts');
       } else if (data?.tweets?.length) {
@@ -324,6 +332,10 @@ const TrendQuest = () => {
         setTwitterData(data);
         setGeneratedTweets([]);
         setSelectedTwitterTrend(null);
+        setTweetsSaved(false);
+        setTweetsSaveError(null);
+        setTweetsLiveContextSource(null);
+        setTweetsLiveContextPreview(null);
         setActiveStep("trends");
       }
     } catch (err) {
@@ -439,6 +451,8 @@ const TrendQuest = () => {
               onBack={() => setActiveStep("trends")}
               saved={tweetsSaved}
               saveError={tweetsSaveError}
+              liveContextSource={tweetsLiveContextSource}
+              liveContextPreview={tweetsLiveContextPreview}
             />
           );
         case "blueprint":
@@ -451,6 +465,8 @@ const TrendQuest = () => {
               onBack={() => setActiveStep("trends")}
               saved={tweetsSaved}
               saveError={tweetsSaveError}
+              liveContextSource={tweetsLiveContextSource}
+              liveContextPreview={tweetsLiveContextPreview}
             />
           );
       }

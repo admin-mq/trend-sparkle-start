@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { GeneratedTweet } from "@/types/trends";
-import { Copy, Check, ArrowLeft, Twitter, AlertTriangle, BookmarkCheck, Sparkles, AlertCircle } from "lucide-react";
+import { Copy, Check, ArrowLeft, Twitter, AlertTriangle, BookmarkCheck, Sparkles, AlertCircle, Radio, RadioTower, RadioReceiver, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 
 interface TwitterContentProps {
@@ -14,7 +14,41 @@ interface TwitterContentProps {
   saved?: boolean;
   /** If saving failed, the underlying error message. */
   saveError?: string | null;
+  /**
+   * Result of the in-flight Perplexity live search the edge function ran
+   * before drafting. Lets users know whether the tweets are anchored in
+   * fresh news ('live'), thin/old context ('stale'), or just brand voice
+   * with no upstream context ('none').
+   */
+  liveContextSource?: 'live' | 'stale' | 'none' | null;
+  /** First ~400 chars of the live-context block, for the expandable detail. */
+  liveContextPreview?: string | null;
 }
+
+// ── Live-context pill ──────────────────────────────────────────────────────
+const LIVE_CONTEXT_CONFIG = {
+  live: {
+    label: 'Live context',
+    tooltip: 'Fresh news pulled in seconds ago — these tweets are grounded in current reality',
+    icon: RadioTower,
+    pill: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30',
+    dot: 'bg-emerald-500',
+  },
+  stale: {
+    label: 'Weak context',
+    tooltip: 'Live search returned thin or stale info — sanity-check facts before posting',
+    icon: Radio,
+    pill: 'bg-amber-500/10 text-amber-500 border-amber-500/30',
+    dot: 'bg-amber-500',
+  },
+  none: {
+    label: 'No live context',
+    tooltip: 'Live search came up empty — drafts are based on the trend name and your brand voice. Treat as a starting point.',
+    icon: RadioReceiver,
+    pill: 'bg-muted text-muted-foreground border-border/50',
+    dot: 'bg-muted-foreground/60',
+  },
+} as const;
 
 const CharBar = ({ count, limit }: { count: number; limit: number }) => {
   const pct = Math.min(100, (count / limit) * 100);
@@ -57,8 +91,22 @@ const getAngleColor = (angle: string) => {
   return 'bg-secondary text-muted-foreground border-border';
 };
 
-export const TwitterContent = ({ trendName, tweets, charLimit, onBack, saved, saveError }: TwitterContentProps) => {
+export const TwitterContent = ({
+  trendName,
+  tweets,
+  charLimit,
+  onBack,
+  saved,
+  saveError,
+  liveContextSource,
+  liveContextPreview,
+}: TwitterContentProps) => {
   const [copied, setCopied] = useState<number | null>(null);
+  const [contextOpen, setContextOpen] = useState(false);
+
+  const liveCfg = liveContextSource ? LIVE_CONTEXT_CONFIG[liveContextSource] : null;
+  const LiveIcon = liveCfg?.icon;
+  const hasPreview = !!liveContextPreview && liveContextPreview.trim().length > 0;
 
   const handleCopy = async (tweet: GeneratedTweet) => {
     await navigator.clipboard.writeText(tweet.text);
@@ -102,6 +150,27 @@ export const TwitterContent = ({ trendName, tweets, charLimit, onBack, saved, sa
           </p>
         </div>
 
+        <div className="flex items-center gap-2 flex-wrap">
+        {/* Live-context pill */}
+        {liveCfg && LiveIcon && (
+          <button
+            type="button"
+            onClick={() => hasPreview && setContextOpen(o => !o)}
+            disabled={!hasPreview}
+            title={liveCfg.tooltip}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${liveCfg.pill} ${hasPreview ? 'cursor-pointer hover:brightness-110' : 'cursor-default'}`}
+            aria-expanded={contextOpen}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${liveCfg.dot}`} />
+            <LiveIcon className="w-3.5 h-3.5" />
+            {liveCfg.label}
+            {hasPreview && (contextOpen
+              ? <ChevronUp className="w-3 h-3" />
+              : <ChevronDown className="w-3 h-3" />
+            )}
+          </button>
+        )}
+
         {/* Persistence indicator */}
         <Link
           to="/tweet-drafts"
@@ -131,7 +200,24 @@ export const TwitterContent = ({ trendName, tweets, charLimit, onBack, saved, sa
             </>
           )}
         </Link>
+        </div>
       </div>
+
+      {/* Live-context preview (collapsed by default) */}
+      {liveCfg && hasPreview && contextOpen && (
+        <div className={`mb-4 p-3 rounded-lg border text-xs ${liveCfg.pill}`}>
+          <div className="flex items-center gap-1.5 mb-1.5 font-semibold">
+            {LiveIcon && <LiveIcon className="w-3.5 h-3.5" />}
+            What the live search returned
+          </div>
+          <p className="text-foreground/90 leading-relaxed whitespace-pre-wrap font-normal">
+            {liveContextPreview}
+          </p>
+          <p className="mt-2 text-[10px] text-muted-foreground/80">
+            This is what the AI saw before drafting. If it looks wrong or missing, refresh the trend or try a different one.
+          </p>
+        </div>
+      )}
 
       {/* Tweet cards */}
       <div className="flex-1 space-y-4 overflow-y-auto pr-1">
