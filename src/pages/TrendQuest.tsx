@@ -29,7 +29,7 @@ const DEFAULT_INPUT_VALUES: TrendQuestInputValues = {
   primary_goal: "",
   tones: ["casual"],
   tone_intensity: 3,
-  platform: "Instagram",
+  platform: "Twitter",
   topic_angle: "",
   content_categories: [],
   twitter_geography: "UK",

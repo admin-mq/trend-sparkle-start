@@ -155,12 +155,12 @@ const PRIMARY_GOALS = [
   "Website traffic"
 ];
 
-const PLATFORMS: { value: Platform; label: string; icon?: string }[] = [
-  { value: 'Instagram',  label: 'Instagram',  icon: '📸' },
-  { value: 'Twitter',    label: 'X / Twitter', icon: '𝕏' },
-  { value: 'TikTok',     label: 'TikTok',      icon: '🎵' },
-  { value: 'LinkedIn',   label: 'LinkedIn',    icon: '💼' },
-  { value: 'YouTube',    label: 'YouTube',     icon: '▶️' },
+const PLATFORMS: { value: Platform; label: string; icon?: string; enabled: boolean }[] = [
+  { value: 'Twitter',    label: 'X / Twitter', icon: '𝕏',  enabled: true  },
+  { value: 'Instagram',  label: 'Instagram',   icon: '📸', enabled: false },
+  { value: 'TikTok',     label: 'TikTok',      icon: '🎵', enabled: false },
+  { value: 'LinkedIn',   label: 'LinkedIn',    icon: '💼', enabled: false },
+  { value: 'YouTube',    label: 'YouTube',     icon: '▶️', enabled: false },
 ];
 
 const TWITTER_REGIONS = [
@@ -214,7 +214,7 @@ export const BrandProfileForm = ({
   const [error, setError] = useState<string | null>(null);
 
   // Platform & Twitter state
-  const [selectedPlatform, setSelectedPlatform] = useState<Platform>('Instagram');
+  const [selectedPlatform, setSelectedPlatform] = useState<Platform>('Twitter');
   const [topicAngle, setTopicAngle] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [twitterRegion, setTwitterRegion] = useState('UK');
@@ -654,22 +654,39 @@ export const BrandProfileForm = ({
             Platform
           </Label>
           <div className="grid grid-cols-5 gap-1.5">
-            {PLATFORMS.map((p) => (
-              <button
-                key={p.value}
-                type="button"
-                onClick={() => setSelectedPlatform(p.value)}
-                className={`flex flex-col items-center gap-1 py-2 px-1 rounded-lg border text-[10px] font-medium transition-colors ${
-                  selectedPlatform === p.value
-                    ? 'bg-primary/15 border-primary text-primary'
-                    : 'bg-secondary/50 border-border/50 text-muted-foreground hover:border-primary/40'
-                }`}
-              >
-                <span className="text-base leading-none">{p.icon}</span>
-                <span className="leading-tight text-center">{p.value === 'Twitter' ? 'X' : p.value}</span>
-              </button>
-            ))}
+            {PLATFORMS.map((p) => {
+              const isActive = selectedPlatform === p.value;
+              const disabled = !p.enabled;
+              return (
+                <button
+                  key={p.value}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => !disabled && setSelectedPlatform(p.value)}
+                  title={disabled ? `${p.label} support coming soon — Twitter is live now` : p.label}
+                  aria-disabled={disabled}
+                  className={`relative flex flex-col items-center gap-1 py-2 px-1 rounded-lg border text-[10px] font-medium transition-colors ${
+                    isActive
+                      ? 'bg-primary/15 border-primary text-primary'
+                      : disabled
+                        ? 'bg-secondary/30 border-border/30 text-muted-foreground/50 cursor-not-allowed opacity-70'
+                        : 'bg-secondary/50 border-border/50 text-muted-foreground hover:border-primary/40'
+                  }`}
+                >
+                  <span className="text-base leading-none">{p.icon}</span>
+                  <span className="leading-tight text-center">{p.value === 'Twitter' ? 'X' : p.value}</span>
+                  {disabled && (
+                    <span className="absolute -top-1.5 -right-1 px-1 py-px rounded-full bg-amber-500/15 text-amber-500 text-[8px] font-semibold border border-amber-500/30 leading-none">
+                      Soon
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
+          <p className="text-[11px] text-muted-foreground/70">
+            Twitter / X is live. Instagram, TikTok, LinkedIn & YouTube coming soon.
+          </p>
         </div>
 
         {/* ── Topic angle (all platforms) ── */}
