@@ -7,7 +7,7 @@ import { X, Users, Megaphone, Target, Palette, Twitter } from "lucide-react";
 
 const PLATFORMS = [
   { value: 'Twitter',    label: 'X',          icon: '𝕏',  enabled: true  },
-  { value: 'Instagram',  label: 'Instagram',  icon: '📸', enabled: false },
+  { value: 'Instagram',  label: 'Instagram',  icon: '📸', enabled: true  },
   { value: 'TikTok',     label: 'TikTok',     icon: '🎵', enabled: false },
   { value: 'LinkedIn',   label: 'LinkedIn',   icon: '💼', enabled: false },
   { value: 'YouTube',    label: 'YouTube',    icon: '▶️', enabled: false },
@@ -209,7 +209,7 @@ export const TrendQuestInputs = ({ values, onChange }: TrendQuestInputsProps) =>
           })}
         </div>
         <p className="text-[10px] text-muted-foreground/70">
-          Twitter / X is live. Instagram, TikTok, LinkedIn & YouTube coming soon.
+          Twitter / X & Instagram are live. TikTok, LinkedIn & YouTube coming soon.
         </p>
       </div>
 

@@ -157,7 +157,7 @@ const PRIMARY_GOALS = [
 
 const PLATFORMS: { value: Platform; label: string; icon?: string; enabled: boolean }[] = [
   { value: 'Twitter',    label: 'X / Twitter', icon: '𝕏',  enabled: true  },
-  { value: 'Instagram',  label: 'Instagram',   icon: '📸', enabled: false },
+  { value: 'Instagram',  label: 'Instagram',   icon: '📸', enabled: true  },
   { value: 'TikTok',     label: 'TikTok',      icon: '🎵', enabled: false },
   { value: 'LinkedIn',   label: 'LinkedIn',    icon: '💼', enabled: false },
   { value: 'YouTube',    label: 'YouTube',     icon: '▶️', enabled: false },
@@ -685,7 +685,7 @@ export const BrandProfileForm = ({
             })}
           </div>
           <p className="text-[11px] text-muted-foreground/70">
-            Twitter / X is live. Instagram, TikTok, LinkedIn & YouTube coming soon.
+            Twitter / X & Instagram are live. TikTok, LinkedIn & YouTube coming soon.
           </p>
         </div>
 
