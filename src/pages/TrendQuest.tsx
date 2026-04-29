@@ -74,6 +74,8 @@ const TrendQuest = () => {
   // Twitter / Social Pulse state
   const [twitterData, setTwitterData] = useState<TwitterTrendsResponse | null>(null);
   const [generatedTweets, setGeneratedTweets] = useState<GeneratedTweet[]>([]);
+  const [tweetsSaved, setTweetsSaved] = useState<boolean>(false);
+  const [tweetsSaveError, setTweetsSaveError] = useState<string | null>(null);
   const [selectedTwitterTrend, setSelectedTwitterTrend] = useState<TwitterTrend | null>(null);
   const [tweetsLoading, setTweetsLoading] = useState(false);
   const [tweetsError, setTweetsError] = useState<string | null>(null);
@@ -282,10 +284,22 @@ const TrendQuest = () => {
           trend,
           topic_angle: inputValues.topic_angle || undefined,
           char_limit: charLimit,
+          brand_id: selectedBrandId || undefined,
+          region: inputValues.twitter_geography || undefined,
         },
       });
       if (fnError) throw new Error(fnError.message || 'Failed to generate tweets');
       setGeneratedTweets(data.tweets || []);
+      setTweetsSaved(!!data?.saved);
+      setTweetsSaveError(data?.save_error ?? null);
+      if (data?.saved) {
+        toast.success('Drafts saved to My Drafts');
+      } else if (data?.tweets?.length) {
+        // Generation worked but persistence didn't — non-blocking, just inform
+        toast.message('Drafts generated (not saved)', {
+          description: data?.save_error || 'Saving failed — drafts will only live in this session.',
+        });
+      }
     } catch (err) {
       setTweetsError(err instanceof Error ? err.message : 'Failed to generate tweets');
       toast.error('Tweet generation failed. Please try again.');
@@ -423,6 +437,8 @@ const TrendQuest = () => {
               tweets={generatedTweets}
               charLimit={inputValues.twitter_user_type === 'premium' ? 25000 : 280}
               onBack={() => setActiveStep("trends")}
+              saved={tweetsSaved}
+              saveError={tweetsSaveError}
             />
           );
         case "blueprint":
@@ -433,6 +449,8 @@ const TrendQuest = () => {
               tweets={generatedTweets}
               charLimit={inputValues.twitter_user_type === 'premium' ? 25000 : 280}
               onBack={() => setActiveStep("trends")}
+              saved={tweetsSaved}
+              saveError={tweetsSaveError}
             />
           );
       }

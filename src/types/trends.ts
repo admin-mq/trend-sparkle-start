@@ -98,6 +98,49 @@ export interface GeneratedTweet {
   char_count: number;
   hashtags: string[];
   over_limit?: boolean;
+  // Populated when the draft was persisted to tweet_drafts during generation.
+  // Lets the UI favorite/delete without re-fetching.
+  id?: string | null;
+}
+
+// Persisted draft row (mirrors public.tweet_drafts).
+export interface SavedTweetDraft {
+  id: string;
+  user_id: string;
+  brand_id: string | null;
+  brand_name: string | null;
+  generation_id: string;
+  trend_name: string;
+  trend_category: string | null;
+  trend_metadata: TwitterTrend | null;
+  region: string | null;
+  topic_angle: string | null;
+  draft_id: number;
+  angle: string | null;
+  tweet_text: string;
+  char_count: number;
+  char_limit: number;
+  hashtags: string[];
+  over_limit: boolean;
+  live_context_source: 'live' | 'stale' | 'none' | null;
+  live_context_preview: string | null;
+  is_favorite: boolean;
+  posted_at: string | null;
+  created_at: string;
+}
+
+// A "generation" = the 3 drafts produced by one Generate Tweets click.
+export interface DraftGeneration {
+  generation_id: string;
+  trend_name: string;
+  trend_category: string | null;
+  region: string | null;
+  brand_name: string | null;
+  topic_angle: string | null;
+  live_context_source: 'live' | 'stale' | 'none' | null;
+  live_context_preview: string | null;
+  created_at: string;
+  drafts: SavedTweetDraft[];
 }
 
 // ── Creative directions & blueprint ──────────────────────────────────────────

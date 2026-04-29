@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -43,7 +44,9 @@ serve(async (req) => {
       user_profile,
       trend,           // TwitterTrend object
       topic_angle,     // optional string
-      char_limit = 280 // 280 standard, 25000 premium
+      char_limit = 280, // 280 standard, 25000 premium
+      brand_id,        // optional — links drafts back to a brand profile
+      region,          // optional — Twitter region the trend was scanned in
     } = await req.json();
 
     if (!user_profile?.brand_name) {
@@ -269,19 +272,103 @@ After writing each tweet, count the characters carefully and set char_count accu
     if (!content) throw new Error('No content in OpenAI response');
 
     const parsed = JSON.parse(content);
-    const tweets = (parsed.tweets || []).map((t: any) => ({
+    let tweets = (parsed.tweets || []).map((t: any) => ({
       ...t,
       char_count: t.text?.length || 0, // recalculate to be safe
       over_limit: (t.text?.length || 0) > char_limit,
     }));
 
-    console.log(`[generate-tweet] Done — generated ${tweets.length} drafts (context source: ${liveContextSource})`);
+    // ─────────────────────────────────────────────────────────────────────────
+    // STEP 3: Persist drafts so user doesn't lose work on refresh.
+    //
+    // We use an authenticated Supabase client (anon key + the caller's JWT)
+    // so RLS automatically scopes the insert to the user. If persistence
+    // fails we still return the drafts — saving is best-effort, not blocking.
+    // ─────────────────────────────────────────────────────────────────────────
+    const generation_id = crypto.randomUUID();
+    let saved = false;
+    let saveError: string | null = null;
+
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL');
+      const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+      const authHeader = req.headers.get('Authorization');
+
+      if (supabaseUrl && supabaseAnonKey && authHeader) {
+        const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+          global: { headers: { Authorization: authHeader } },
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+
+        const { data: userData, error: userErr } = await supabase.auth.getUser();
+        if (userErr || !userData?.user) {
+          console.warn('[generate-tweet] Could not resolve user from JWT, skipping persistence:', userErr?.message);
+        } else {
+          const userId = userData.user.id;
+          const livePreview = liveContext.slice(0, 400);
+
+          const rows = tweets.map((t: any, idx: number) => ({
+            user_id: userId,
+            brand_id: brand_id || null,
+            brand_name: user_profile.brand_name || null,
+            generation_id,
+            trend_name: trend.name,
+            trend_category: trend.category || null,
+            trend_metadata: trend,
+            region: region || user_profile.twitter_geography || null,
+            topic_angle: topic_angle || null,
+            draft_id: t.draft_id ?? idx + 1,
+            angle: t.angle || null,
+            tweet_text: t.text || '',
+            char_count: t.char_count || 0,
+            char_limit,
+            hashtags: Array.isArray(t.hashtags) ? t.hashtags : [],
+            over_limit: !!t.over_limit,
+            live_context_source: liveContextSource,
+            live_context_preview: livePreview,
+          }));
+
+          const { data: inserted, error: insertErr } = await supabase
+            .from('tweet_drafts')
+            .insert(rows)
+            .select('id, draft_id');
+
+          if (insertErr) {
+            console.warn('[generate-tweet] Draft persistence failed:', insertErr.message);
+            saveError = insertErr.message;
+          } else {
+            saved = true;
+            // Backfill the persisted row id onto each tweet so the UI can
+            // immediately favorite/delete without re-fetching.
+            const idByDraft = new Map<number, string>();
+            for (const row of inserted || []) {
+              idByDraft.set(row.draft_id as number, row.id as string);
+            }
+            tweets = tweets.map((t: any) => ({
+              ...t,
+              id: idByDraft.get(t.draft_id) ?? null,
+            }));
+            console.log(`[generate-tweet] Persisted ${rows.length} drafts (generation ${generation_id})`);
+          }
+        }
+      } else {
+        console.warn('[generate-tweet] Missing SUPABASE_URL / SUPABASE_ANON_KEY / Authorization — skipping persistence');
+      }
+    } catch (persistErr) {
+      console.warn('[generate-tweet] Persistence step threw:', persistErr);
+      saveError = persistErr instanceof Error ? persistErr.message : 'unknown';
+    }
+
+    console.log(`[generate-tweet] Done — generated ${tweets.length} drafts (context source: ${liveContextSource}, saved: ${saved})`);
 
     return new Response(
       JSON.stringify({
         tweets,
         trend_name: trend.name,
         char_limit,
+        generation_id,
+        saved,
+        save_error: saveError,
         live_context_source: liveContextSource,  // so UI can show a "fresh vs stale" badge if desired
         live_context_preview: liveContext.slice(0, 400),
       }),

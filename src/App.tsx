@@ -9,6 +9,7 @@ import { ProfileCompletionWrapper } from "@/components/ProfileCompletionWrapper"
 import { DashboardLayout } from "@/components/DashboardLayout";
 import Dashboard from "./pages/Dashboard";
 import TrendQuest from "./pages/TrendQuest";
+import TweetDrafts from "./pages/TweetDrafts";
 import HashtagAnalysis from "./pages/HashtagAnalysis";
 import HashtagHistory from "./pages/HashtagHistory";
 import HashtagWatchlist from "./pages/HashtagWatchlist";
@@ -67,6 +68,7 @@ const App = () => (
             }>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/trend-quest" element={<TrendQuest />} />
+              <Route path="/tweet-drafts" element={<TweetDrafts />} />
               <Route path="/hashtag-analysis" element={<HashtagAnalysis />} />
               <Route path="/hashtag-history" element={<HashtagHistory />} />
               <Route path="/hashtag-watchlist" element={<HashtagWatchlist />} />

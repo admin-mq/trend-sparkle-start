@@ -20,6 +20,7 @@ import {
   User,
   Brain,
   X,
+  Sparkles,
 } from "lucide-react";
 // Brain is still used for the Amcue nav item
 import { cn } from "@/lib/utils";
@@ -38,6 +39,7 @@ const navGroups = [
     items: [
       { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { path: "/trend-quest", label: "Trend Quest", icon: TrendingUp },
+      { path: "/tweet-drafts", label: "My Drafts", icon: Sparkles },
       { path: "/hashtag-analysis", label: "Hashtag Analysis", icon: Hash },
       { path: "/hashtag-watchlist",     label: "Watchlist",     icon: Bookmark },
       { path: "/hashtag-gap-analysis",  label: "Tag Gap Finder", icon: Layers   },

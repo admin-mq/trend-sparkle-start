@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { GeneratedTweet } from "@/types/trends";
-import { Copy, Check, ArrowLeft, Twitter, AlertTriangle } from "lucide-react";
+import { Copy, Check, ArrowLeft, Twitter, AlertTriangle, BookmarkCheck, Sparkles, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
 interface TwitterContentProps {
@@ -9,6 +10,10 @@ interface TwitterContentProps {
   tweets: GeneratedTweet[];
   charLimit: number;
   onBack: () => void;
+  /** Whether the drafts were persisted to tweet_drafts during generation. */
+  saved?: boolean;
+  /** If saving failed, the underlying error message. */
+  saveError?: string | null;
 }
 
 const CharBar = ({ count, limit }: { count: number; limit: number }) => {
@@ -52,7 +57,7 @@ const getAngleColor = (angle: string) => {
   return 'bg-secondary text-muted-foreground border-border';
 };
 
-export const TwitterContent = ({ trendName, tweets, charLimit, onBack }: TwitterContentProps) => {
+export const TwitterContent = ({ trendName, tweets, charLimit, onBack, saved, saveError }: TwitterContentProps) => {
   const [copied, setCopied] = useState<number | null>(null);
 
   const handleCopy = async (tweet: GeneratedTweet) => {
@@ -79,7 +84,7 @@ export const TwitterContent = ({ trendName, tweets, charLimit, onBack }: Twitter
   return (
     <div className="h-full w-full flex flex-col animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
         <div>
           <div className="flex items-center gap-2">
             <Button onClick={onBack} variant="ghost" size="sm" className="h-7 px-2 -ml-2 text-muted-foreground">
@@ -96,6 +101,36 @@ export const TwitterContent = ({ trendName, tweets, charLimit, onBack }: Twitter
             <span className="ml-2">{isPremium ? 'Premium' : 'Standard'} ({charLimit.toLocaleString()} chars)</span>
           </p>
         </div>
+
+        {/* Persistence indicator */}
+        <Link
+          to="/tweet-drafts"
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+            saved
+              ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/15'
+              : saveError
+              ? 'bg-amber-500/10 text-amber-500 border-amber-500/30 hover:bg-amber-500/15'
+              : 'bg-secondary/40 text-muted-foreground border-border/40 hover:bg-secondary/60'
+          }`}
+          title={saveError || (saved ? 'Drafts saved automatically' : 'Open My Drafts')}
+        >
+          {saved ? (
+            <>
+              <BookmarkCheck className="w-3.5 h-3.5" />
+              Saved · View all
+            </>
+          ) : saveError ? (
+            <>
+              <AlertCircle className="w-3.5 h-3.5" />
+              Not saved · View archive
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-3.5 h-3.5" />
+              My Drafts
+            </>
+          )}
+        </Link>
       </div>
 
       {/* Tweet cards */}
