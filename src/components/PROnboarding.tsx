@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Megaphone, Globe, Plus, Trash2, Target, Clock,
   ChevronRight, ChevronLeft, AlertCircle, Loader2, Sparkles,
@@ -146,13 +146,14 @@ interface BrandStepProps {
   geography: string; setGeography: (v: string) => void;
   audience: string; setAudience: (v: string) => void;
   error: string | null;
+  prefilled?: boolean;
   onNext: () => void;
 }
 
 function BrandStep({
   brandName, setBrandName, domain, setDomain,
   industry, setIndustry, geography, setGeography,
-  audience, setAudience, error, onNext,
+  audience, setAudience, error, prefilled, onNext,
 }: BrandStepProps) {
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -190,6 +191,14 @@ function BrandStep({
           We'll crawl your website and score how you're positioned online.
         </p>
       </div>
+
+      {/* Pre-filled from profile banner */}
+      {prefilled && (
+        <div className="flex items-center gap-1.5 text-xs text-emerald-400 px-1">
+          <Sparkles className="w-3 h-3 shrink-0" />
+          Pre-filled from your Brand Profile — add your domain to continue.
+        </div>
+      )}
 
       {/* Auto-fill from URL */}
       <div className="space-y-2 p-3 rounded-lg border border-primary/20 bg-primary/5">
@@ -546,6 +555,7 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
   const [step, setStep] = useState(0); // 0=welcome, 1=brand, 2=competitors, 3=prompts
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [prefilledFromProfile, setPrefilledFromProfile] = useState(false);
 
   // Brand step state
   const [brandName, setBrandName] = useState("");
@@ -553,6 +563,28 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
   const [industry, setIndustry] = useState("");
   const [geography, setGeography] = useState("Global");
   const [audience, setAudience] = useState("");
+
+  // Pre-fill from brand profile on mount
+  useEffect(() => {
+    async function prefill() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await (supabase as any)
+        .from('brand_profiles')
+        .select('brand_name, industry, geography, business_summary')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!data) return;
+      if (data.brand_name) setBrandName(data.brand_name);
+      if (data.industry)   setIndustry(data.industry);
+      if (data.geography)  setGeography(data.geography);
+      if (data.business_summary) setAudience(data.business_summary);
+      setPrefilledFromProfile(true);
+    }
+    void prefill();
+  }, []);
 
   // Competitors step state
   const [competitors, setCompetitors] = useState<Competitor[]>([{ name: "", domain: "" }]);
@@ -700,6 +732,7 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
             geography={geography} setGeography={setGeography}
             audience={audience} setAudience={setAudience}
             error={error}
+            prefilled={prefilledFromProfile}
             onNext={handleBrandNext}
           />
         )}

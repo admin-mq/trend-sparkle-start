@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { PROnboarding } from "@/components/PROnboarding";
 import {
@@ -304,6 +304,30 @@ function CreateProjectDialog({
   const [industry, setIndustry] = useState("");
   const [geography, setGeography] = useState("Global");
   const [audience, setAudience] = useState("");
+  const prefillDone = useRef(false);
+
+  // Pre-fill from brand profile when dialog opens
+  useEffect(() => {
+    if (!open || prefillDone.current) return;
+    async function prefill() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await (supabase as any)
+        .from('brand_profiles')
+        .select('brand_name, industry, geography, business_summary')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!data) return;
+      if (data.brand_name) setBrandName(data.brand_name);
+      if (data.industry)   setIndustry(data.industry);
+      if (data.geography)  setGeography(data.geography);
+      if (data.business_summary) setAudience(data.business_summary);
+      prefillDone.current = true;
+    }
+    void prefill();
+  }, [open]);
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -374,6 +398,7 @@ function CreateProjectDialog({
     setDiscovering(false);
     setDiscoverError(null);
     setSuggesting(false);
+    prefillDone.current = false;
   }
 
   async function discoverCompetitors(bName: string, bDomain: string, bIndustry: string, bGeo: string) {
