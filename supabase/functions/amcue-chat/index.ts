@@ -24,6 +24,74 @@ When users ask about their website or marketing:
 
 Keep responses concise but thorough. Use bullet points and structure for readability. Always end with a clear next step or action item.`;
 
+const EXTRACT_SYSTEM_PROMPT = `You are a brand data extractor. Given a user message in a marketing chat, extract any brand or company information the user mentions. Return ONLY a valid JSON object — no markdown, no explanation. Only include fields where the information is clearly stated. Omit fields not mentioned (do not include them at all, not even as null).
+
+Fields to extract (use exact key names):
+- company_name (string)
+- company_description (string)
+- industry (string)
+- business_model (string, e.g. B2C, B2B, SaaS, D2C, Marketplace)
+- usp (string, unique selling proposition or what makes them different)
+- target_audience (string)
+- geographic_markets (array of strings, countries or regions)
+- products_services (string, what they sell)
+- marketing_goals (array of strings)
+- biggest_marketing_challenge (string)
+- current_channels (object, keys are channel names e.g. "instagram", "google_ads", values are brief descriptions)
+- monthly_marketing_budget_usd (number, only if a USD amount is clearly stated)
+- average_order_value_usd (number)
+- customer_ltv_usd (number)
+- competitors (array of strings, competitor brand or company names)
+- brand_voice (string, tone/personality description)`;
+
+async function extractBrandInfo(
+  userMessage: string,
+  userId: string,
+  supabase: ReturnType<typeof createClient>,
+  apiKey: string,
+): Promise<void> {
+  try {
+    const extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          { role: "system", content: EXTRACT_SYSTEM_PROMPT },
+          { role: "user", content: userMessage },
+        ],
+      }),
+    });
+
+    if (!extractResponse.ok) return;
+
+    const extractData = await extractResponse.json();
+    const raw = extractData.choices?.[0]?.message?.content || "{}";
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const extracted: Record<string, unknown> = JSON.parse(cleaned);
+
+    // Keep only non-empty values
+    const updates: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(extracted)) {
+      if (value === null || value === undefined || value === "") continue;
+      if (Array.isArray(value) && value.length === 0) continue;
+      updates[key] = value;
+    }
+
+    if (Object.keys(updates).length === 0) return;
+
+    await supabase.from("amcue_brand_memory").upsert(
+      { user_id: userId, ...updates, last_updated_at: new Date().toISOString() },
+      { onConflict: "user_id" },
+    );
+  } catch (e) {
+    console.error("Brand extraction error:", e);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -87,24 +155,27 @@ serve(async (req) => {
 
     const messages = [
       { role: "system", content: SYSTEM_PROMPT },
-      ...(history || []).map((m: any) => ({ role: m.role, content: m.content })),
+      ...(history || []).map((m: { role: string; content: string }) => ({ role: m.role, content: m.content })),
     ];
 
-    // Call Lovable AI Gateway
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages,
+    // Run main AI call and brand extraction in parallel
+    const [aiResponse] = await Promise.all([
+      fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          messages,
+        }),
       }),
-    });
+      extractBrandInfo(message, user.id, supabase, LOVABLE_API_KEY),
+    ]);
 
     if (!aiResponse.ok) {
       if (aiResponse.status === 429) {

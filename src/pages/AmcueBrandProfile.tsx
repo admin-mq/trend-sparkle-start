@@ -223,13 +223,53 @@ const AmcueBrandProfile = () => {
     if (!user) return;
     setUserId(user.id);
 
-    const { data } = await (supabase as any)
-      .from("amcue_brand_memory")
-      .select("*")
-      .eq("user_id", user.id)
-      .single();
+    const [{ data: memData }, { data: profileData }] = await Promise.all([
+      (supabase as any).from("amcue_brand_memory").select("*").eq("user_id", user.id).single(),
+      (supabase as any).from("brand_profiles").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(1).single(),
+    ]);
 
-    setMemory(data || EMPTY);
+    const mem: BrandMemory = memData || EMPTY;
+
+    // Seed empty amcue_brand_memory fields from brand_profiles
+    if (profileData) {
+      const seeds: Partial<BrandMemory> = {};
+
+      if (!mem.company_name && profileData.brand_name)
+        seeds.company_name = profileData.brand_name;
+
+      if (!mem.company_description && profileData.business_summary)
+        seeds.company_description = profileData.business_summary;
+
+      if (!mem.industry) {
+        const ind = profileData.industry === "Other" ? profileData.industry_other : profileData.industry;
+        if (ind) seeds.industry = ind;
+      }
+
+      if (!mem.geographic_markets?.length && profileData.geography)
+        seeds.geographic_markets = [profileData.geography];
+
+      if (!mem.competitors?.length && profileData.competitors?.length) {
+        const names = (profileData.competitors as { name: string }[])
+          .map((c) => c.name)
+          .filter(Boolean);
+        if (names.length) seeds.competitors = names;
+      }
+
+      if (Object.keys(seeds).length > 0) {
+        const merged = { ...mem, ...seeds };
+        await (supabase as any)
+          .from("amcue_brand_memory")
+          .upsert(
+            { user_id: user.id, ...seeds, last_updated_at: new Date().toISOString() },
+            { onConflict: "user_id" },
+          );
+        setMemory({ ...merged, last_updated_at: new Date().toISOString() });
+        setLoading(false);
+        return;
+      }
+    }
+
+    setMemory(mem);
     setLoading(false);
   }, []);
 
