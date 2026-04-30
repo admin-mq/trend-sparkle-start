@@ -188,8 +188,9 @@ const Profile = () => {
     });
     setEditingId(brand.id);
     setIsCreating(false);
-    setCompetitors([]);
-    setCompetitorsDiscovered(false);
+    const saved = (brand as any).competitors ?? [];
+    setCompetitors(saved);
+    setCompetitorsDiscovered(saved.length > 0);
     setCompetitorsError(null);
     setManualInput('');
   };
@@ -236,8 +237,15 @@ const Profile = () => {
 
     setSaving(true);
 
+    const payload = {
+      ...formData,
+      competitors: competitors.map(({ name, domain, type, why_relevant, is_aspirational }) => ({
+        name, domain, type, why_relevant, is_aspirational,
+      })),
+    };
+
     if (editingId) {
-      const { success, error } = await updateBrand(editingId, formData);
+      const { success, error } = await updateBrand(editingId, payload);
       if (success) {
         toast.success("Brand profile updated");
         resetForm();
@@ -245,7 +253,7 @@ const Profile = () => {
         toast.error(error || "Failed to update");
       }
     } else {
-      const { success, error } = await createBrand(formData);
+      const { success, error } = await createBrand(payload);
       if (success) {
         toast.success("Brand profile created");
         resetForm();

@@ -2,6 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuthContext } from '@/contexts/AuthContext';
 
+export interface BrandCompetitor {
+  name: string;
+  domain: string;
+  type?: 'local' | 'national' | 'global' | 'manual';
+  why_relevant?: string;
+  is_aspirational?: boolean;
+}
+
 export interface BrandProfile {
   id: string;
   user_id: string;
@@ -12,6 +20,7 @@ export interface BrandProfile {
   geography: string | null;
   business_summary: string | null;
   logo_url: string | null;
+  competitors: BrandCompetitor[];
   created_at: string;
   updated_at: string;
 }
@@ -23,6 +32,7 @@ export interface BrandProfileInput {
   geography?: string | null;
   business_summary?: string | null;
   logo_url?: string | null;
+  competitors?: BrandCompetitor[];
 }
 
 export function useBrandProfiles() {

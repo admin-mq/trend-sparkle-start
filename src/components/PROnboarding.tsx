@@ -311,6 +311,7 @@ interface CompetitorsStepProps {
   competitors: Competitor[];
   discovering: boolean;
   discoverError: string | null;
+  fromProfile?: boolean;
   onAdd: () => void;
   onRemove: (i: number) => void;
   onUpdate: (i: number, field: "name" | "domain", value: string) => void;
@@ -318,7 +319,7 @@ interface CompetitorsStepProps {
   onBack: () => void;
 }
 
-function CompetitorsStep({ competitors, discovering, discoverError, onAdd, onRemove, onUpdate, onNext, onBack }: CompetitorsStepProps) {
+function CompetitorsStep({ competitors, discovering, discoverError, fromProfile, onAdd, onRemove, onUpdate, onNext, onBack }: CompetitorsStepProps) {
   const hasDiscovered = !discovering && !discoverError && competitors.some(c => c.domain);
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
@@ -341,7 +342,8 @@ function CompetitorsStep({ competitors, discovering, discoverError, onAdd, onRem
       )}
       {hasDiscovered && (
         <div className="flex items-center gap-1.5 text-xs text-emerald-400">
-          <Sparkles className="w-3 h-3" /> Auto-populated — edit or remove as needed
+          <Sparkles className="w-3 h-3" />
+          {fromProfile ? 'Pulled from your Brand Profile — edit or remove as needed' : 'Auto-populated — edit or remove as needed'}
         </div>
       )}
       {!discovering && discoverError && (
@@ -571,7 +573,7 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
       if (!user) return;
       const { data } = await (supabase as any)
         .from('brand_profiles')
-        .select('brand_name, industry, geography, business_summary')
+        .select('brand_name, industry, geography, business_summary, competitors')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -581,6 +583,11 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
       if (data.industry)   setIndustry(data.industry);
       if (data.geography)  setGeography(data.geography);
       if (data.business_summary) setAudience(data.business_summary);
+      const savedCompetitors: { name: string; domain: string }[] = (data.competitors ?? [])
+        .filter((c: any) => c.domain)
+        .slice(0, 4)
+        .map((c: any) => ({ name: c.name || c.domain, domain: c.domain }));
+      if (savedCompetitors.length > 0) setCompetitors(savedCompetitors);
       setPrefilledFromProfile(true);
     }
     void prefill();
@@ -655,9 +662,13 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
     const err = validateBrand();
     if (err) { setError(err); return; }
     setError(null);
-    setCompetitors([{ name: "", domain: "" }]);
     setStep(2);
-    void discoverCompetitors(brandName, domain, industry, geography);
+    // Only auto-discover if no profile competitors were pre-loaded
+    const hasProfileCompetitors = competitors.some(c => c.domain.trim());
+    if (!hasProfileCompetitors) {
+      setCompetitors([{ name: "", domain: "" }]);
+      void discoverCompetitors(brandName, domain, industry, geography);
+    }
   }
 
   function addCompetitor() {
@@ -742,6 +753,7 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
             competitors={competitors}
             discovering={discovering}
             discoverError={discoverError}
+            fromProfile={prefilledFromProfile}
             onAdd={addCompetitor}
             onRemove={removeCompetitor}
             onUpdate={updateCompetitor}
