@@ -1361,24 +1361,27 @@ const PRResults = () => {
             </Card>
           )}
 
+          {/* Top gaps + Top actions — side by side */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+
           {/* Top gaps preview */}
           {result.proof_gaps.length > 0 && (
-            <Card>
+            <Card className="h-full">
               <CardHeader className="pb-2 pt-4 px-4">
                 <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
                   Top Proof Gaps
                   <InfoTooltip text="The most important places where your brand makes a claim but has nothing to back it up. Fixing these builds trust with buyers and AI tools." size={12} />
                 </CardTitle>
               </CardHeader>
-              <CardContent className="px-4 pb-4 space-y-2">
+              <CardContent className="px-4 pb-4 space-y-3">
                 {result.proof_gaps.slice(0, 3).map((gap, i) => (
                   <div key={i} className="flex items-start gap-3">
                     <Badge variant="outline" className={`text-xs shrink-0 mt-0.5 ${severityBadge(gap.severity)}`}>
                       {gap.severity}
                     </Badge>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground">{gap.gap_type}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{gap.description}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{gap.description}</p>
                     </div>
                   </div>
                 ))}
@@ -1391,19 +1394,19 @@ const PRResults = () => {
 
           {/* Top actions preview */}
           {result.recommended_actions.length > 0 && (
-            <Card>
+            <Card className="h-full">
               <CardHeader className="pb-2 pt-4 px-4">
                 <CardTitle className="text-sm font-semibold">Top Recommended Actions</CardTitle>
               </CardHeader>
-              <CardContent className="px-4 pb-4 space-y-2">
+              <CardContent className="px-4 pb-4 space-y-3">
                 {result.recommended_actions.slice(0, 3).map((action, i) => (
-                  <div key={i} className="flex items-start gap-3 py-1">
+                  <div key={i} className="flex items-start gap-3 py-0.5">
                     <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
                       {i + 1}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground">{action.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{action.why_it_matters}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{action.why_it_matters}</p>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <Badge variant="outline" className={`text-xs ${effortBadge(action.effort)}`}>{action.effort} effort</Badge>
@@ -1413,6 +1416,8 @@ const PRResults = () => {
               </CardContent>
             </Card>
           )}
+
+          </div>{/* end side-by-side grid */}
         </TabsContent>
 
         {/* ── Trends ───────────────────────────────────────────────────────── */}
