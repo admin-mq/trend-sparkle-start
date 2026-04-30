@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { ProfileCompletionWrapper } from "@/components/ProfileCompletionWrapper";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import Dashboard from "./pages/Dashboard";
 import TrendQuest from "./pages/TrendQuest";
@@ -49,7 +48,6 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <ProfileCompletionWrapper />
           <Routes>
             {/* Public auth route */}
             <Route path="/auth" element={<Auth />} />

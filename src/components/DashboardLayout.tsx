@@ -71,7 +71,7 @@ export const DashboardLayout = () => {
   const [sessionChecked, setSessionChecked] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, profile, signOut } = useAuthContext();
+  const { user, profile, signOut, needsProfileCompletion } = useAuthContext();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -79,6 +79,12 @@ export const DashboardLayout = () => {
       setSessionChecked(true);
     });
   }, []);
+
+  useEffect(() => {
+    if (needsProfileCompletion && location.pathname !== '/profile') {
+      navigate('/profile', { replace: true });
+    }
+  }, [needsProfileCompletion, location.pathname, navigate]);
 
   const handleLogout = async () => {
     const { error } = await signOut();
