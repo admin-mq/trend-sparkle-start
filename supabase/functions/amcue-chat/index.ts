@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_PROMPT = `You are Amcue, the AI Chief Marketing Officer (CMO) for Marketers Quest. You are an expert in digital marketing, SEO, social media strategy, content marketing, paid advertising, influencer marketing, PR, and brand strategy.
+const BASE_SYSTEM_PROMPT = `You are Amcue, the AI Chief Marketing Officer (CMO) for Marketers Quest. You are an expert in digital marketing, SEO, social media strategy, content marketing, paid advertising, influencer marketing, PR, and brand strategy.
 
 Your personality:
 - Professional but approachable
@@ -16,11 +16,11 @@ Your personality:
 - You reference real marketing frameworks and best practices
 
 When users ask about their website or marketing:
-- Give specific, actionable advice
+- Give specific, actionable advice based on their real data provided below
+- Reference their actual scores, metrics, and results when relevant
 - Suggest metrics to track
 - Recommend tools and strategies
 - Create frameworks and plans when asked
-- Reference current marketing trends
 
 Keep responses concise but thorough. Use bullet points and structure for readability. Always end with a clear next step or action item.`;
 
@@ -43,6 +43,202 @@ Fields to extract (use exact key names):
 - customer_ltv_usd (number)
 - competitors (array of strings, competitor brand or company names)
 - brand_voice (string, tone/personality description)`;
+
+// ── Build user context from all tools ────────────────────────────────────────
+
+async function buildUserContext(userId: string, supabase: ReturnType<typeof createClient>): Promise<string> {
+  const sections: string[] = [];
+
+  try {
+    // First round: parallel fetches that don't depend on each other
+    const [
+      { data: brandMemory },
+      { data: prProjects },
+      { data: hashtagRequestIds },
+      { data: watchlist },
+      { data: seoSites },
+    ] = await Promise.all([
+      supabase.from("amcue_brand_memory").select("*").eq("user_id", userId).maybeSingle(),
+
+      supabase.from("pr_projects")
+        .select("id, brand_name, domain")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(5),
+
+      supabase.from("hashtag_requests")
+        .select("id")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(10),
+
+      supabase.from("hashtag_watchlist")
+        .select("tag, trend_status, trend_score, trend_note")
+        .eq("user_id", userId)
+        .order("trend_score", { ascending: false })
+        .limit(20),
+
+      supabase.from("scc_sites")
+        .select("id, site_url")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1),
+    ]);
+
+    // Second round: fetches that depend on IDs from round 1
+    const prProjectIds = (prProjects || []).map((p: Record<string, string>) => p.id);
+    const hashtagReqIds = (hashtagRequestIds || []).map((r: Record<string, string>) => r.id);
+    const seoSiteId = seoSites?.[0]?.id;
+
+    const [
+      { data: prResult },
+      { data: hashtagResult },
+      { data: seoSnapshot },
+    ] = await Promise.all([
+      prProjectIds.length
+        ? supabase.from("pr_narrative_results")
+            .select("narrative_score, authority_score, proof_density_score, risk_score, opportunity_score, executive_summary, proof_gaps, recommended_actions, pages_analyzed, created_at, project_id")
+            .in("project_id", prProjectIds)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+
+      hashtagReqIds.length
+        ? supabase.from("hashtag_results")
+            .select("set_score, confidence_level, why_this_works, warnings, hashtags, best_posting_time, created_at")
+            .in("request_id", hashtagReqIds)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+
+      seoSiteId
+        ? supabase.from("scc_snapshots")
+            .select("id, finished_at, created_at")
+            .eq("site_id", seoSiteId)
+            .eq("status", "completed")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+
+    // ── Format: Brand Profile ─────────────────────────────────────────────────
+    if (brandMemory) {
+      const b = brandMemory as Record<string, unknown>;
+      const lines: string[] = [];
+      if (b.company_name) lines.push(`Company: ${b.company_name}`);
+      if (b.industry) lines.push(`Industry: ${b.industry}`);
+      if (b.business_model) lines.push(`Business Model: ${b.business_model}`);
+      if (b.company_description) lines.push(`Description: ${b.company_description}`);
+      if (b.usp) lines.push(`USP: ${b.usp}`);
+      if (b.target_audience) lines.push(`Target Audience: ${b.target_audience}`);
+      if (Array.isArray(b.geographic_markets) && b.geographic_markets.length)
+        lines.push(`Markets: ${b.geographic_markets.join(", ")}`);
+      if (Array.isArray(b.competitors) && b.competitors.length)
+        lines.push(`Competitors: ${b.competitors.join(", ")}`);
+      if (b.brand_voice) lines.push(`Brand Voice: ${b.brand_voice}`);
+      if (b.monthly_marketing_budget_usd)
+        lines.push(`Monthly Budget: $${Number(b.monthly_marketing_budget_usd).toLocaleString()}`);
+      if (Array.isArray(b.marketing_goals) && b.marketing_goals.length)
+        lines.push(`Goals: ${b.marketing_goals.join(", ")}`);
+      if (b.biggest_marketing_challenge)
+        lines.push(`Main Challenge: ${b.biggest_marketing_challenge}`);
+      if (b.products_services) lines.push(`Products/Services: ${b.products_services}`);
+      if (lines.length) sections.push(`### Brand Profile\n${lines.join("\n")}`);
+    }
+
+    // ── Format: PR Campaign Results ───────────────────────────────────────────
+    if (prResult) {
+      const pr = prResult as Record<string, unknown>;
+      const project = (prProjects || []).find((p: Record<string, string>) => p.id === pr.project_id);
+      const lines: string[] = [
+        `Brand/Domain: ${(project as Record<string, string>)?.brand_name || "unknown"} (${(project as Record<string, string>)?.domain || ""})`,
+        `Narrative Score: ${pr.narrative_score}/100`,
+        `Authority Score: ${pr.authority_score}/100`,
+        `Proof Density Score: ${pr.proof_density_score}/100`,
+        `Risk Score: ${pr.risk_score}/100`,
+        `Opportunity Score: ${pr.opportunity_score}/100`,
+        `Pages Analyzed: ${pr.pages_analyzed}`,
+      ];
+      if (pr.executive_summary) lines.push(`Executive Summary: ${pr.executive_summary}`);
+
+      const gaps = pr.proof_gaps as unknown[];
+      if (Array.isArray(gaps) && gaps.length) {
+        const topGaps = gaps.slice(0, 3).map((g) =>
+          typeof g === "string" ? g : (g as Record<string, string>).gap || (g as Record<string, string>).title || JSON.stringify(g)
+        );
+        lines.push(`Top Proof Gaps: ${topGaps.join("; ")}`);
+      }
+
+      const actions = pr.recommended_actions as unknown[];
+      if (Array.isArray(actions) && actions.length) {
+        const topActions = actions.slice(0, 3).map((a) =>
+          typeof a === "string" ? a : (a as Record<string, string>).action || (a as Record<string, string>).title || JSON.stringify(a)
+        );
+        lines.push(`Top Recommended Actions: ${topActions.join("; ")}`);
+      }
+
+      sections.push(`### PR Campaign Results (${new Date(pr.created_at as string).toLocaleDateString()})\n${lines.join("\n")}`);
+    }
+
+    // ── Format: SEO ───────────────────────────────────────────────────────────
+    if (seoSites?.[0] && seoSnapshot) {
+      const snap = seoSnapshot as Record<string, string>;
+      const date = snap.finished_at || snap.created_at;
+      sections.push(`### SEO\nSite: ${seoSites[0].site_url}\nLast crawl completed: ${new Date(date).toLocaleDateString()}`);
+    } else if (seoSites?.[0]) {
+      sections.push(`### SEO\nSite connected: ${seoSites[0].site_url} (no completed crawl yet)`);
+    }
+
+    // ── Format: Hashtag Analysis ──────────────────────────────────────────────
+    if (hashtagResult) {
+      const h = hashtagResult as Record<string, unknown>;
+      const lines: string[] = [
+        `Set Score: ${h.set_score}/100`,
+        `Confidence: ${h.confidence_level}`,
+      ];
+      if (h.why_this_works) lines.push(`Why It Works: ${h.why_this_works}`);
+      if (h.best_posting_time) lines.push(`Best Posting Time: ${h.best_posting_time}`);
+
+      const hashtags = h.hashtags as unknown[];
+      if (Array.isArray(hashtags) && hashtags.length) {
+        const tagList = hashtags.slice(0, 10).map((t) =>
+          typeof t === "string" ? t : (t as Record<string, string>).tag || (t as Record<string, string>).name || JSON.stringify(t)
+        );
+        lines.push(`Hashtags: ${tagList.join(", ")}`);
+      }
+
+      const warnings = h.warnings as unknown[];
+      if (Array.isArray(warnings) && warnings.length)
+        lines.push(`Warnings: ${warnings.slice(0, 2).join("; ")}`);
+
+      sections.push(`### Latest Hashtag Analysis (${new Date(h.created_at as string).toLocaleDateString()})\n${lines.join("\n")}`);
+    }
+
+    // ── Format: Hashtag Watchlist ─────────────────────────────────────────────
+    if (watchlist?.length) {
+      const rising = (watchlist as Record<string, unknown>[]).filter((w) => w.trend_status === "rising");
+      const plateauing = (watchlist as Record<string, unknown>[]).filter((w) => w.trend_status === "plateauing");
+      const declining = (watchlist as Record<string, unknown>[]).filter((w) => w.trend_status === "declining");
+
+      const lines: string[] = [];
+      if (rising.length) lines.push(`Rising: ${rising.map((w) => `${w.tag} (${w.trend_score})`).join(", ")}`);
+      if (plateauing.length) lines.push(`Plateauing: ${plateauing.map((w) => w.tag).join(", ")}`);
+      if (declining.length) lines.push(`Declining: ${declining.map((w) => w.tag).join(", ")}`);
+
+      sections.push(`### Hashtag Watchlist (${watchlist.length} tags)\n${lines.join("\n")}`);
+    }
+  } catch (e) {
+    console.error("buildUserContext error:", e);
+  }
+
+  if (!sections.length) return "";
+  return `\n\n---\n## YOUR USER'S REAL DATA\nUse this data to give specific, personalised advice. Reference actual scores and metrics in your responses.\n\n${sections.join("\n\n")}`;
+}
+
+// ── Brand info extraction from chat ──────────────────────────────────────────
 
 async function extractBrandInfo(
   userMessage: string,
@@ -73,7 +269,6 @@ async function extractBrandInfo(
     const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     const extracted: Record<string, unknown> = JSON.parse(cleaned);
 
-    // Keep only non-empty values
     const updates: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(extracted)) {
       if (value === null || value === undefined || value === "") continue;
@@ -91,6 +286,8 @@ async function extractBrandInfo(
     console.error("Brand extraction error:", e);
   }
 }
+
+// ── Main handler ──────────────────────────────────────────────────────────────
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -110,7 +307,6 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Verify user
     const anonClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!);
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await anonClient.auth.getUser(token);
@@ -125,7 +321,6 @@ serve(async (req) => {
 
     let convId = conversation_id;
 
-    // Create new conversation if needed
     if (!convId) {
       const title = message.length > 50 ? message.substring(0, 50) + "..." : message;
       const { data: conv, error: convErr } = await supabase
@@ -137,7 +332,6 @@ serve(async (req) => {
       convId = conv.id;
     }
 
-    // Save user message
     await supabase.from("amcue_messages").insert({
       conversation_id: convId,
       role: "user",
@@ -145,16 +339,21 @@ serve(async (req) => {
       context_page,
     });
 
-    // Fetch conversation history (last 20 messages)
-    const { data: history } = await supabase
-      .from("amcue_messages")
-      .select("role, content")
-      .eq("conversation_id", convId)
-      .order("created_at", { ascending: true })
-      .limit(20);
+    // Fetch history and build user context in parallel
+    const [{ data: history }, userContext] = await Promise.all([
+      supabase
+        .from("amcue_messages")
+        .select("role, content")
+        .eq("conversation_id", convId)
+        .order("created_at", { ascending: true })
+        .limit(20),
+      buildUserContext(user.id, supabase),
+    ]);
+
+    const systemPrompt = BASE_SYSTEM_PROMPT + userContext;
 
     const messages = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: systemPrompt },
       ...(history || []).map((m: { role: string; content: string }) => ({ role: m.role, content: m.content })),
     ];
 
@@ -198,7 +397,6 @@ serve(async (req) => {
     const aiData = await aiResponse.json();
     const reply = aiData.choices?.[0]?.message?.content || "I'm sorry, I couldn't generate a response.";
 
-    // Save assistant message
     await supabase.from("amcue_messages").insert({
       conversation_id: convId,
       role: "assistant",
