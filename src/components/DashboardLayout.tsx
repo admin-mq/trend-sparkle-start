@@ -139,7 +139,7 @@ export const DashboardLayout = () => {
 
       {/* ── Sidebar ──────────────────────────────────────────────────────── */}
       <aside className={cn(
-        "fixed lg:static inset-y-0 left-0 z-50 w-60 bg-card border-r border-border flex flex-col transition-transform duration-200 ease-in-out",
+        "fixed inset-y-0 left-0 z-50 w-60 bg-card border-r border-border flex flex-col transition-transform duration-200 ease-in-out",
         sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
       )}>
 
@@ -206,7 +206,7 @@ export const DashboardLayout = () => {
       </aside>
 
       {/* ── Main content ─────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 lg:ml-60">
 
         {/* Top bar */}
         <header className="h-14 flex items-center justify-between px-4 border-b border-border bg-card/60 shrink-0">
