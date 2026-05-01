@@ -253,7 +253,8 @@ const TrendQuest = () => {
 
   // Get trends — branches on platform
   const handleGetTrends = async () => {
-    if (!selectedBrandId || !userProfile) return;
+    if (!userProfile) return;
+    if (!isCreator && !selectedBrandId) return;
 
     const isTwitter = inputValues.platform === 'Twitter';
 
