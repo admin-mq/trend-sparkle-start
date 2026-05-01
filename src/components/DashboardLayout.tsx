@@ -87,7 +87,7 @@ export const DashboardLayout = () => {
   const [sessionChecked, setSessionChecked] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, profile, signOut, needsProfileCompletion } = useAuthContext();
+  const { user, profile, loading: authLoading, signOut, needsProfileCompletion } = useAuthContext();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -112,7 +112,9 @@ export const DashboardLayout = () => {
     }
   };
 
-  const isCreator = profile?.account_type === "creator";
+  // Use profile as source of truth; fall back to auth user_metadata (set at signup)
+  const accountType = profile?.account_type ?? user?.user_metadata?.account_type;
+  const isCreator = accountType === "creator";
   const navGroups = isCreator ? creatorNavGroups : brandNavGroups;
 
   const isActive = (path: string) => location.pathname === path;
@@ -202,7 +204,13 @@ export const DashboardLayout = () => {
 
         {/* Nav groups */}
         <nav className="flex-1 px-3 pb-3 overflow-y-auto">
-          {navGroups.map((group) => (
+          {authLoading ? (
+            <div className="space-y-1.5 mt-3">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="h-8 rounded-lg bg-muted/40 animate-pulse" />
+              ))}
+            </div>
+          ) : navGroups.map((group) => (
             <div key={group.label}>
               <p className="nav-group-label mt-3 mb-1">{group.label}</p>
               <div className="space-y-0.5">

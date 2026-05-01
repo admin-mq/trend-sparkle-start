@@ -183,6 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         password: data.password,
         options: {
           emailRedirectTo: `${window.location.origin}/dashboard`,
+          data: { account_type: data.accountType },
         },
       });
 
