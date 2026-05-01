@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { BrandOnlyRoute } from "@/components/BrandOnlyRoute";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import Dashboard from "./pages/Dashboard";
 import TrendQuest from "./pages/TrendQuest";
@@ -74,19 +75,21 @@ const App = () => (
               <Route path="/hashtag-gap-analysis" element={<HashtagGapAnalysis />} />
               <Route path="/creator-intelligence" element={<CreatorIntelligence />} />
               <Route path="/trending-audios" element={<TrendingAudios />} />
-              <Route path="/seo" element={<SEO />} />
-              <Route path="/seo/results" element={<SEOResults />} />
-              <Route path="/influencers" element={<Influencers />} />
-              <Route path="/pr" element={<PR />} />
-              <Route path="/pr/results" element={<PRResults />} />
-              <Route path="/analytics" element={<Analytics />} />
-              <Route path="/paid-campaigns" element={<PaidCampaigns />} />
+              {/* Brand-only routes — creators are redirected to /dashboard */}
+              <Route path="/seo" element={<BrandOnlyRoute><SEO /></BrandOnlyRoute>} />
+              <Route path="/seo/results" element={<BrandOnlyRoute><SEOResults /></BrandOnlyRoute>} />
+              <Route path="/influencers" element={<BrandOnlyRoute><Influencers /></BrandOnlyRoute>} />
+              <Route path="/pr" element={<BrandOnlyRoute><PR /></BrandOnlyRoute>} />
+              <Route path="/pr/results" element={<BrandOnlyRoute><PRResults /></BrandOnlyRoute>} />
+              <Route path="/analytics" element={<BrandOnlyRoute><Analytics /></BrandOnlyRoute>} />
+              <Route path="/paid-campaigns" element={<BrandOnlyRoute><PaidCampaigns /></BrandOnlyRoute>} />
+              <Route path="/admin" element={<BrandOnlyRoute><Admin /></BrandOnlyRoute>} />
+              {/* Shared routes */}
               <Route path="/creator-analysis" element={<CreatorAnalysis />} />
               <Route path="/amcue" element={<Amcue />} />
               <Route path="/amcue/brand-profile" element={<AmcueBrandProfile />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/settings" element={<Settings />} />
-              <Route path="/admin" element={<Admin />} />
             </Route>
 
             {/* PR print report — no ProtectedRoute wrapper; opened in new tab from
