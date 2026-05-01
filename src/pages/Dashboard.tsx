@@ -470,21 +470,40 @@ const Dashboard = () => {
   const insights = data ? generateInsights(data) : [];
   const topAction = data ? getTopAction(data) : null;
 
+  const isCreator = profile?.account_type === "creator";
+
   // ── Empty state ───────────────────────────────────────────────────────────
-  if (!loading && data?.sitesCount === 0) {
+  if (!loading && (isCreator || data?.sitesCount === 0)) {
+    const creatorName = profile?.full_name || profile?.brand_name || "Creator";
     return (
       <div className="h-full flex items-center justify-center p-8">
         <div className="text-center space-y-5 max-w-md">
           <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto">
             <Brain className="w-6 h-6 text-primary" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">{greeting}</h1>
-          <p className="text-sm text-muted-foreground">
-            Run your first brand intelligence scan to unlock your full dashboard.
-          </p>
-          <Button onClick={() => navigate("/seo")} className="gap-2">
-            <Search className="w-4 h-4" /> Run Your First Scan
-          </Button>
+          {isCreator ? (
+            <>
+              <h1 className="text-2xl font-bold text-foreground">
+                Your content is one trend away from going viral, {creatorName}.
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Discover what's trending right now and get AI-powered content ideas tailored to your niche.
+              </p>
+              <Button onClick={() => navigate("/trend-quest")} className="gap-2">
+                <TrendingUp className="w-4 h-4" /> Make Trending Content
+              </Button>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold text-foreground">{greeting}</h1>
+              <p className="text-sm text-muted-foreground">
+                Run your first brand intelligence scan to unlock your full dashboard.
+              </p>
+              <Button onClick={() => navigate("/seo")} className="gap-2">
+                <Search className="w-4 h-4" /> Run Your First Scan
+              </Button>
+            </>
+          )}
         </div>
       </div>
     );
