@@ -219,13 +219,16 @@ If a category has nothing, write "None found". Keep each bullet under 20 words.`
 
 /**
  * Stage 2: Strategic synthesis across all extracted page facts.
- * Uses gpt-4o and is strictly evidence-grounded — no hallucination.
+ * Tier-aware. Uses gpt-4o, evidence-grounded, with forbidden-phrase filter
+ * and live brand-context + AI-search-visibility injection.
  */
 async function synthesizeAnalysis(
   project: any,
   brandFacts: string[],
   competitorFacts: Record<string, string[]>,
-  externalMentions: any[] = []
+  externalMentions: any[] = [],
+  brandContext: any | null = null,
+  visibilityResults: any[] = []
 ): Promise<any> {
   const brandEvidence = brandFacts.join("\n\n");
 
@@ -255,23 +258,163 @@ Summary: ${m.ai_summary ?? ""}`;
       }).join("\n\n")
     : null;
 
-  const system = `You are a world-class PR strategist and brand narrative analyst with 20+ years experience advising Fortune 500 companies and scaling startups.
+  // ── Brand context block (live web intelligence) ──
+  const tier = brandContext?.tier && brandContext.tier !== "unknown" ? brandContext.tier : "unknown";
+  const tierLabel: Record<string, string> = {
+    mega: "MEGA-BRAND (Fortune 500 / >$10B / >10K employees)",
+    enterprise: "ENTERPRISE ($1B-$10B / 1K-10K employees)",
+    growth: "GROWTH-STAGE ($10M-$1B / 50-1K employees)",
+    startup: "STARTUP (<$10M / <50 employees)",
+    unknown: "UNCLASSIFIED (treat as growth-stage by default)",
+  };
+  const effectiveTier = tier === "unknown" ? "growth" : tier;
 
-You are given structured evidence extracted from a brand's actual website pages and competitor pages.
+  const brandContextBlock = brandContext ? `=== LIVE BRAND CONTEXT (web intelligence, last 90 days) ===
+Tier: ${tierLabel[tier] ?? tier}${brandContext.tier_rationale ? ` — ${brandContext.tier_rationale}` : ""}
+Scale: ${brandContext.approximate_revenue ?? "unknown"} revenue · ${brandContext.approximate_employees ?? "unknown"} employees · ${brandContext.public_or_private ?? "unknown"}${brandContext.ticker_symbol ? ` (${brandContext.ticker_symbol})` : ""}
+Founded: ${brandContext.founded_year ?? "unknown"} | HQ: ${brandContext.headquarters ?? "unknown"}
+Market position: ${brandContext.market_position ?? "unknown"}
+Primary scale-competitors: ${(brandContext.primary_competitors ?? []).join(", ") || "unknown"}
 
-CRITICAL RULES:
-1. Every finding MUST be directly evidenced by the content provided. Never invent, infer, or guess.
-2. If the evidence shows something IS present (e.g. testimonials, FAQ, case studies), you MUST NOT report it as missing.
-3. If you cannot find evidence of something, only flag it as a gap if its absence genuinely matters for this brand's PR position.
-4. Be specific to THIS brand — reference actual claims, actual page content, actual competitive dynamics.
-5. Think at a strategic advisory level. Go beyond surface observations. Ask: what does this brand's narrative architecture tell us about their competitive positioning?
-6. Write like McKinsey, not like a generic AI tool.`;
+Recent press themes (last 90 days):
+${(brandContext.recent_press_themes ?? []).map((t: string) => `  • ${t}`).join("\n") || "  • (none surfaced)"}
 
-  const user = `Analyze the narrative intelligence for ${project.brand_name} (${project.domain}).
+Active PR risks the brand is currently exposed to or managing:
+${(brandContext.active_pr_risks ?? []).map((t: string) => `  • ${t}`).join("\n") || "  • (none surfaced)"}
+
+Open narrative whitespaces (no competitor strongly owns these yet):
+${(brandContext.open_narrative_whitespaces ?? []).map((t: string) => `  • ${t}`).join("\n") || "  • (none surfaced)"}
+
+AI search landscape: ${brandContext.ai_search_landscape_note ?? "(not assessed)"}` : `=== LIVE BRAND CONTEXT ===
+(Not yet derived. Treat as growth-stage. Suggestions should NOT assume startup tier.)`;
+
+  // ── AI search visibility block ──
+  const visibilityBlock = visibilityResults.length > 0 ? (() => {
+    const present = visibilityResults.filter((v) => v.brand_present).length;
+    const total = visibilityResults.length;
+    const lines = visibilityResults.map((v) => {
+      const compDomination = v.competitor_presence
+        ? Object.entries(v.competitor_presence as Record<string, boolean>)
+            .filter(([_, p]) => p).map(([d]) => d).join(", ")
+        : "";
+      return `  • "${v.prompt_text}" — ${v.brand_present ? `BRAND PRESENT${v.brand_position ? ` (#${v.brand_position})` : ""}` : "BRAND ABSENT"}${compDomination ? ` | competitors present: ${compDomination}` : ""}`;
+    }).join("\n");
+    return `=== AI SEARCH VISIBILITY (latest run — most valuable signal) ===
+Brand appears in ${present}/${total} tracked buying-intent queries.
+${lines}
+
+This is the new "page one of Google." A brand absent from AI-search responses for its own category is functionally invisible to the next generation of buyers, no matter how much they spend on traditional channels.`;
+  })() : `=== AI SEARCH VISIBILITY ===
+(No visibility run completed yet. After scan, run a visibility check to surface where the brand wins/loses in AI search.)`;
+
+  const system = `You are a senior PR strategist advising the head of communications at the brand below. You think like a Fortune-500 comms head — narrative warfare, media relations, crisis pre-emption, exec thought leadership, AI search positioning. You do NOT think like a content marketer or website copywriter.
+
+═══════════════════════════════════════════════════════════════════════════════
+TIER PLAYBOOK — match the suggestion to the brand's actual scale
+═══════════════════════════════════════════════════════════════════════════════
+THIS BRAND IS: ${tierLabel[effectiveTier] ?? "growth-stage"}
+
+• MEGA / ENTERPRISE (Walmart, Salesforce, Coca-Cola scale):
+  → Exec op-eds in tier-1 press (WSJ, FT, NYT, Atlantic, HBR, Bloomberg, Axios, Economist)
+  → Narrative warfare moves vs NAMED competitors
+  → AI search SERP shaping for high-stakes category queries
+  → ESG / policy positioning, regulatory narrative shaping
+  → Crisis pre-emption / inoculation campaigns
+  → Owned proprietary data drops (exclusives to tier-1 outlets)
+  → Analyst relations (Forrester, Gartner) and exec analyst briefings
+  → Investor narrative + earnings-day positioning (if public)
+  → CEO / C-suite thought leadership cadences with named platforms
+  ⚠️  NEVER suggest: "add testimonials", "build trust", "create case studies",
+     "showcase social proof", "develop FAQ", "improve about page" —
+     these brands have all of that at scale already.
+
+• GROWTH-STAGE ($10M-$1B):
+  → Trade press exclusives in vertical (TechCrunch, The Information, Stratechery, Axios Pro)
+  → Vertical thought leadership with NAMED journalist beats
+  → Analyst relations (G2 Grid, IDC, Forrester wave entries)
+  → Scaled customer story campaigns with named anchor accounts
+  → Founder/exec podcast tour with named-tier shows
+  → Category-defining content (definitive guides, benchmarks, indices)
+
+• STARTUP (<$10M):
+  → Founder thought leadership cadence (LinkedIn, X, Substack)
+  → Niche podcast tours
+  → Hand-curated case studies with named customers
+  → Product Hunt / Hacker News narrative plays
+  → Micro-influencer partnerships in vertical
+  → Definitional category-creation content
+
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL RULES — every recommended_action MUST satisfy ALL of:
+═══════════════════════════════════════════════════════════════════════════════
+1. NAME a specific channel — publication, podcast, journalist beat, AI search
+   query, exec platform, analyst firm, conference. "Press coverage" alone fails.
+2. REFERENCE competitive context — either "vs. {named competitor}" or
+   "open whitespace because {specific reason from live context}".
+3. INCLUDE strategic "why now" — what makes this the right move at this
+   moment, ideally tied to active PR risks or recent press themes.
+4. PASS the "would the CMO show this to the CEO without embarrassment" test.
+   Apply ruthlessly.
+5. USE the LIVE BRAND CONTEXT — recent press themes, active PR risks, open
+   whitespaces, AI search landscape are your PRIMARY raw material. Reference
+   them by name in your reasoning. The website evidence is secondary.
+
+═══════════════════════════════════════════════════════════════════════════════
+FORBIDDEN PHRASES (auto-fail — if you find yourself using these, REWRITE):
+═══════════════════════════════════════════════════════════════════════════════
+"build credibility", "enhance trust", "leverage social proof",
+"showcase customer testimonials", "develop content strategy",
+"improve customer experience", "integrate testimonials",
+"establish thought leadership" (without naming a venue),
+"create case studies" (for non-startup tiers),
+"showcase success stories" (for non-startup tiers),
+"drive engagement", "boost visibility", "strengthen brand",
+"communicate value", "highlight expertise", "showcase expertise",
+"engage audiences", "amplify reach", "create compelling content",
+"share customer stories" (without specific outlet),
+"add testimonials" (for non-startup tiers).
+
+═══════════════════════════════════════════════════════════════════════════════
+PROOF GAPS — what they should look like at each tier:
+═══════════════════════════════════════════════════════════════════════════════
+✅ Mega/enterprise GOOD examples:
+  • "Brand absent from AI search query 'best online grocery delivery' while
+     Amazon dominates with 80% mention rate — directly threatens grocery
+     pipeline as AI becomes default search."
+  • "CEO has not published a tier-1 op-ed in 14 months while Andy Jassy
+     publishes monthly on AI strategy — competitor is actively shaping the
+     category narrative."
+  • "No proprietary data drop in 12 months while category competitors run
+     quarterly — losing the 'category authority' positioning."
+
+❌ NEVER as a gap (any tier above startup):
+  • "lacks customer testimonials" / "missing FAQ" / "no case studies"
+  • "weak social proof" / "absence of third-party validation"
+  • "limited success stories"
+  These are CRO observations, not PR gaps. They will be rejected.
+
+═══════════════════════════════════════════════════════════════════════════════
+EVIDENCE GROUNDING & HONESTY:
+═══════════════════════════════════════════════════════════════════════════════
+- LIVE BRAND CONTEXT (press themes, PR risks, whitespaces, AI search) is the
+  HIGHEST-VALUE input. Reference it by name.
+- AI SEARCH VISIBILITY data shows where the brand is winning/losing — use it.
+- WEBSITE EVIDENCE is what the brand currently says about itself (secondary).
+- COMPETITOR EVIDENCE shows what rivals are claiming (comparative).
+- EXTERNAL MENTIONS are third-party validation signals (high trust).
+- NEVER fabricate. NEVER report something as missing if the evidence shows
+  it's present (e.g. don't say "no testimonials" if mentions show reviews).
+- Be brutally specific. Generic = failure.`;
+
+  const user = `Generate the narrative intelligence report for ${project.brand_name} (${project.domain}).
 
 Industry: ${project.industry || "Not specified"}
 Geography: ${project.geography || "Global"}
 Target Audience: ${project.target_audience || "Not specified"}
+
+${brandContextBlock}
+
+${visibilityBlock}
 
 === EVIDENCE FROM ${project.brand_name.toUpperCase()} WEBSITE (${brandFacts.length} pages) ===
 ${brandEvidence || "No pages could be fetched."}
@@ -279,78 +422,67 @@ ${brandEvidence || "No pages could be fetched."}
 === EVIDENCE FROM COMPETITOR WEBSITES ===
 ${competitorBlocks || "No competitor pages fetched."}
 ${mentionsBlock ? `\n=== EXTERNAL THIRD-PARTY MENTIONS (${externalMentions.length} sources) ===
-These are press articles, review sites, roundups, or other third-party pages about this brand.
-Third-party sources are high-trust signals — weight them heavily for authority_score and proof_density_score.
+Press articles, review sites, roundups, or third-party pages about this brand.
+Third-party sources are high-trust signals — weight heavily for authority_score and proof_density_score.
 
 ${mentionsBlock}` : ""}
 
-Based ONLY on this evidence, return a JSON object with this exact structure:
-
+═══════════════════════════════════════════════════════════════════════════════
+Return ONLY a JSON object with this exact structure:
+═══════════════════════════════════════════════════════════════════════════════
 {
-  "narrative_score": <integer 0-100: strength and consistency of the brand's core narrative based on what you actually read>,
-  "authority_score": <integer 0-100: how credible and authoritative they actually appear from the evidence>,
-  "proof_density_score": <integer 0-100: how much concrete proof actually backs their claims in the evidence>,
-  "risk_score": <integer 0-100: genuine risks visible in the evidence — higher = more risk>,
-  "opportunity_score": <integer 0-100: how much untapped PR/trust opportunity exists given what's missing or weak>,
-  "executive_summary": "<4-5 sentences: what this brand's actual narrative position is right now, key strengths grounded in evidence, specific competitive risks, and the single highest-leverage opportunity. Reference real things you found.>",
+  "narrative_score": <0-100: clarity & consistency of brand's core narrative across evidence>,
+  "authority_score": <0-100: credibility from press, mentions, third-party signals — for mega-brands, weight live brand context heavily>,
+  "proof_density_score": <0-100: real evidence backing claims — for mega-brands, public data, financial filings, and known scale count as proof>,
+  "risk_score": <0-100: genuine narrative risk visible in evidence + active_pr_risks from brand context — higher = more risk>,
+  "opportunity_score": <0-100: untapped narrative space, prioritized by open_narrative_whitespaces and AI search gaps>,
+  "executive_summary": "<4-5 sentences. Reference: tier, recent press themes, the single most acute active PR risk, the single highest-leverage open whitespace, and AI search posture. Sound like an actual senior PR advisor briefing the CEO.>",
   "brand_narratives": [
     {
-      "theme": "<specific theme name grounded in what you read — e.g. 'Everyday Low Price Leadership', 'Omnichannel Convenience'>",
-      "strength": <integer 0-100>,
-      "description": "<1-2 sentences referencing actual content found that supports this theme>",
+      "theme": "<specific theme grounded in evidence — e.g. 'Everyday Low Price Leadership', 'Omnichannel Convenience'. NOT generic.>",
+      "strength": <0-100>,
+      "description": "<1-2 sentences citing actual content found>",
       "status": "<'strong' | 'emerging' | 'weak' | 'missing'>"
     }
   ],
   "competitor_narratives": {
     "<competitor_domain>": [
-      {
-        "theme": "<theme name grounded in competitor evidence>",
-        "strength": <integer 0-100>,
-        "description": "<1-2 sentences on how this theme shows up for this competitor based on evidence>"
-      }
+      { "theme": "<grounded theme>", "strength": <0-100>, "description": "<1-2 sentences from competitor evidence>" }
     ]
   },
   "proof_gaps": [
     {
-      "gap_type": "<a gap type specific to this brand — ONLY report things that are genuinely absent or weak in the evidence>",
-      "description": "<specific explanation grounded in the evidence: what exactly is missing or weak, and what competitive risk does it create>",
+      "gap_type": "<tier-appropriate gap. For mega/enterprise: AI search absence, exec voice silence, narrative warfare gaps, data drop cadence gaps, analyst-relations gaps, missing crisis inoculation. NOT testimonials or FAQ.>",
+      "description": "<specific gap grounded in EVIDENCE + LIVE CONTEXT. Reference named competitors and specific press themes/risks.>",
       "severity": "<'critical' | 'high' | 'medium' | 'low'>",
-      "narrative_affected": "<which brand narrative this gap weakens>"
+      "narrative_affected": "<which brand narrative or PR risk this gap connects to>"
     }
   ],
   "recommended_actions": [
     {
-      "title": "<specific, actionable title tailored to this brand>",
+      "title": "<specific action. Must name a channel/venue/query/journalist beat. e.g. 'Run 90-day grocery-delivery data drop exclusive to Bloomberg'>",
       "action_type": "<'content' | 'pr' | 'page' | 'authority' | 'proof' | 'narrative'>",
-      "priority": <integer 1-10>,
+      "priority": <1-10>,
       "effort": "<'low' | 'medium' | 'high'>",
       "expected_impact": "<'low' | 'medium' | 'high'>",
-      "why_it_matters": "<1-2 sentences: specific narrative and trust impact for THIS brand>",
-      "what_to_do": "<2-3 concrete, specific steps tailored to this brand's situation>"
+      "why_it_matters": "<1-2 sentences. MUST reference: (a) competitive context — vs. named competitor or open whitespace, (b) why now — tied to recent_press_themes / active_pr_risks / AI visibility gap. Tier-appropriate framing.>",
+      "what_to_do": "<2-4 concrete steps with named channels, named outlets, named journalists/podcasts, specific timing. The level of detail a CMO would brief their team with.>"
     }
   ]
 }
 
-Rules for scoring:
-- DO NOT default to mid-range scores. A brand with strong actual evidence should score 75-90. A brand with weak evidence should score 25-45.
-- narrative_score should reflect the actual clarity and consistency you observed across pages
-- proof_density_score should be HIGH if you found real testimonials, stats, case studies — not low just because you want to recommend improvements
-- risk_score is about ACTUAL risks visible in the evidence — weak claims, contradictions, competitor dominance on key themes
+═══════════════════════════════════════════════════════════════════════════════
+Final reminders before generating:
+═══════════════════════════════════════════════════════════════════════════════
+1. Generate 5-8 actions, sorted by priority descending.
+2. Generate 3-5 proof_gaps — only ones that genuinely matter at THIS tier.
+3. EVERY action must pass: named channel ✓, competitive context ✓, why now ✓,
+   tier-appropriate ✓, no forbidden phrases ✓.
+4. The CMO of ${project.brand_name} should READ THIS and think "yes, this is
+   what I'd brief my comms team with this Monday."
+5. If any action would embarrass the CMO, REWRITE before returning.
 
-Rules for proof_gaps:
-- ONLY include gaps for things genuinely absent or underweight in the evidence
-- DO NOT say "no case studies" if case studies were found in the evidence
-- DO NOT say "missing FAQ" if FAQ content was found
-- DO NOT say "weak social proof" if reviews, testimonials or ratings were found
-- Aim for 3-5 real gaps maximum, not a generic checklist
-
-Rules for recommended_actions:
-- Make them strategic and specific to THIS brand's situation
-- Reference their actual competitive context
-- Think like a senior PR advisor, not a generic content marketer
-- Provide 5-8 actions sorted by priority descending
-
-Be specific about ${project.brand_name}. Reference actual things you found. Make this genuinely useful.`;
+Be brutally specific about ${project.brand_name}. Reference real things. Make it usable.`;
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -475,13 +607,75 @@ Deno.serve(async (req: Request) => {
       console.log(`[pr-scan] Including ${externalMentions.length} external mention(s) in synthesis`);
     }
 
+    // ── Step 3.6: Ensure brand_context is fresh (auto-derive if missing) ─────
+    let brandContext = project.brand_context ?? null;
+    if (!brandContext) {
+      console.log(`[pr-scan] No brand_context found — deriving via Perplexity sonar`);
+      await supabase
+        .from("pr_scan_jobs")
+        .update({ progress_step: "Pulling live brand intelligence (web search)…" })
+        .eq("id", scan_job_id);
+
+      try {
+        const deriveRes = await fetch(`${SUPABASE_URL}/functions/v1/derive-brand-context`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify({ project_id, merge: false }),
+        });
+        if (deriveRes.ok) {
+          const deriveJson = await deriveRes.json();
+          brandContext = deriveJson?.brand_context ?? null;
+          console.log(`[pr-scan] Brand context derived. Tier: ${brandContext?.tier ?? "unknown"}`);
+        } else {
+          console.warn(`[pr-scan] derive-brand-context failed (${deriveRes.status}); continuing without context`);
+        }
+      } catch (e) {
+        console.warn(`[pr-scan] derive-brand-context exception: ${(e as any)?.message}; continuing without context`);
+      }
+    } else {
+      console.log(`[pr-scan] Using existing brand_context. Tier: ${brandContext?.tier ?? "unknown"}`);
+    }
+
+    // ── Step 3.7: Load latest AI search visibility for synthesis ─────────────
+    const { data: latestVisRun } = await supabase
+      .from("pr_visibility_runs")
+      .select("id")
+      .eq("project_id", project_id)
+      .eq("status", "completed")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let visibilityResults: any[] = [];
+    if (latestVisRun?.id) {
+      const { data: visRows } = await supabase
+        .from("pr_visibility_results")
+        .select("prompt_text, brand_present, brand_position, visibility_score, competitor_presence")
+        .eq("run_id", latestVisRun.id)
+        .order("visibility_score", { ascending: false });
+      visibilityResults = visRows ?? [];
+      if (visibilityResults.length > 0) {
+        console.log(`[pr-scan] Including ${visibilityResults.length} AI-search visibility result(s) in synthesis`);
+      }
+    }
+
     // ── Step 4: Strategic synthesis (gpt-4o) ─────────────────────────────────
     await supabase
       .from("pr_scan_jobs")
       .update({ progress_step: "Running strategic narrative analysis…" })
       .eq("id", scan_job_id);
 
-    const analysis = await synthesizeAnalysis(project, brandFacts, competitorFacts, externalMentions ?? []);
+    const analysis = await synthesizeAnalysis(
+      project,
+      brandFacts,
+      competitorFacts,
+      externalMentions ?? [],
+      brandContext,
+      visibilityResults
+    );
 
     // ── Step 5: Store results ─────────────────────────────────────────────────
     await supabase
