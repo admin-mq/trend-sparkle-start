@@ -5,7 +5,7 @@ import { DetailedDirection, UserProfile } from "@/types/trends";
 import {
   ArrowLeft, FileText, Hash, Lightbulb, Play, MessageSquare,
   Heart, Meh, ThumbsDown, Zap, Loader2, ExternalLink, Mic2,
-  AlignLeft, AlignJustify, ChevronDown, ChevronUp,
+  AlignLeft, AlignJustify, ChevronDown, ChevronUp, RefreshCw,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
@@ -25,6 +25,9 @@ interface ExecutionBlueprintProps {
     newOutput: string;
     userFeedback: "love" | "ok" | "dislike";
   }) => void;
+  /** Re-runs generate-blueprint on the same chosen direction. */
+  onRegenerate?: () => void;
+  regenerating?: boolean;
 }
 
 export const ExecutionBlueprint = ({
@@ -37,8 +40,12 @@ export const ExecutionBlueprint = ({
   userProfile,
   contentFormat,
   onFeedback,
+  onRegenerate,
+  regenerating = false,
 }: ExecutionBlueprintProps) => {
   const isVideo = /video|reels|tiktok/i.test(contentFormat || "");
+  const missingNewFields =
+    (isVideo && !blueprint?.full_script) || !blueprint?.long_caption;
 
   // Caption tab: "short" | "long"
   const [captionTab, setCaptionTab] = useState<"short" | "long">("short");
@@ -101,12 +108,50 @@ export const ExecutionBlueprint = ({
           Back
         </Button>
         <div className="h-4 w-px bg-border" />
-        <div className="text-sm">
+        <div className="text-sm flex-1 min-w-0 truncate">
           <span className="text-muted-foreground">Blueprint for </span>
           <span className="text-foreground font-medium">{ideaTitle}</span>
           <span className="text-muted-foreground"> · {trendName}</span>
         </div>
+        {onRegenerate && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onRegenerate}
+            disabled={regenerating}
+            className="gap-1.5 text-xs h-8"
+            title="Re-run the AI to refresh script, captions and hashtags"
+          >
+            {regenerating
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <RefreshCw className="w-3.5 h-3.5" />}
+            {regenerating ? "Regenerating…" : "Regenerate"}
+          </Button>
+        )}
       </div>
+
+      {/* Upgrade banner for older blueprints missing new fields */}
+      {onRegenerate && missingNewFields && !regenerating && (
+        <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 flex items-start gap-2.5">
+          <RefreshCw className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+          <div className="flex-1 text-sm">
+            <p className="text-foreground font-medium">New fields available</p>
+            <p className="text-muted-foreground text-xs mt-0.5">
+              {isVideo
+                ? "This blueprint was created before the Full Script and Long Caption upgrades. Click Regenerate to add them."
+                : "This blueprint was created before the Long Caption upgrade. Click Regenerate to add it."}
+            </p>
+          </div>
+          <Button
+            size="sm"
+            onClick={onRegenerate}
+            className="gap-1.5 text-xs h-7"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Regenerate
+          </Button>
+        </div>
+      )}
 
       <div className="flex-1 space-y-4 overflow-y-auto pr-2">
 

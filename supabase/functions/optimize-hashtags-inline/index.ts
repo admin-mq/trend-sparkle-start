@@ -13,8 +13,8 @@ serve(async (req) => {
   try {
     const { caption, current_hashtags, niche, platform, trend_name } = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not configured");
 
     const prompt = `You are a hashtag strategy expert for ${platform || "Instagram"}.
 
@@ -30,31 +30,45 @@ Rules:
 - All must be directly relevant — no generic #love #instagood #photooftheday.
 - Include the trend name as a hashtag if appropriate.
 - No duplicates with current hashtags.
-- Return ONLY a JSON array of hashtag strings, e.g. ["#fitnessgoals", "#morningroutine"].
-- No markdown, no explanation.`;
+- Return JSON in the form { "hashtags": ["#tag1", "#tag2", ...] }.
+- Each item starts with '#'. No spaces inside tags.`;
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.7,
       }),
     });
 
     if (!res.ok) {
       const errBody = await res.text().catch(() => "");
-      console.error("AI gateway error", res.status, errBody);
-      throw new Error(`AI gateway error: ${res.status}`);
+      console.error("OpenAI error", res.status, errBody);
+      throw new Error(`OpenAI error: ${res.status}`);
     }
 
     const data = await res.json();
-    const raw = data.choices?.[0]?.message?.content || "[]";
-    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-    const hashtags: string[] = JSON.parse(cleaned);
+    const raw = data.choices?.[0]?.message?.content || "{}";
+    const parsed = JSON.parse(raw);
+    let hashtags: string[] = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed.hashtags)
+        ? parsed.hashtags
+        : [];
+
+    // Sanitise: ensure starts with '#', no spaces, dedupe
+    hashtags = Array.from(new Set(
+      hashtags
+        .map((t: any) => String(t).trim().replace(/\s+/g, ""))
+        .filter(Boolean)
+        .map((t: string) => (t.startsWith("#") ? t : `#${t}`))
+    ));
 
     return new Response(JSON.stringify({ hashtags }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

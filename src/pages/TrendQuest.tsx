@@ -85,6 +85,7 @@ const TrendQuest = () => {
   // Blueprint
   const [detailedDirection, setDetailedDirection] = useState<DetailedDirection | null>(null);
   const [selectedIdeaTitle, setSelectedIdeaTitle] = useState<string>('');
+  const [selectedDirection, setSelectedDirection] = useState<CreativeDirection | null>(null);
   const [blueprintLoading, setBlueprintLoading] = useState(false);
   const [blueprintError, setBlueprintError] = useState<string | null>(null);
   const [trendHashtags, setTrendHashtags] = useState<string>('');
@@ -442,6 +443,7 @@ const TrendQuest = () => {
     setBlueprintLoading(true);
     setBlueprintError(null);
     setSelectedIdeaTitle(direction.title);
+    setSelectedDirection(direction);
     setActiveStep("blueprint");
     try {
       const { data, error } = await supabase.functions.invoke('generate-blueprint', {
@@ -460,6 +462,11 @@ const TrendQuest = () => {
     } finally {
       setBlueprintLoading(false);
     }
+  };
+
+  const handleRegenerateBlueprint = async () => {
+    if (!selectedDirection) return;
+    await handleViewBlueprint(selectedDirection);
   };
 
   const isLoading = trendsLoading || directionsLoading || blueprintLoading || tweetsLoading;
@@ -553,7 +560,7 @@ const TrendQuest = () => {
             </div>
           );
         }
-        return <ExecutionBlueprint trendName={selectedTrendName} ideaTitle={selectedIdeaTitle} blueprint={detailedDirection} trendHashtags={trendHashtags} onBack={() => setActiveStep("directions")} onDeepHashtagAnalysis={detailedDirection ? handleOptimizeHashtags : undefined} userProfile={userProfile} contentFormat={inputValues.content_format} onFeedback={handleFeedback} />;
+        return <ExecutionBlueprint trendName={selectedTrendName} ideaTitle={selectedIdeaTitle} blueprint={detailedDirection} trendHashtags={trendHashtags} onBack={() => setActiveStep("directions")} onDeepHashtagAnalysis={detailedDirection ? handleOptimizeHashtags : undefined} userProfile={userProfile} contentFormat={inputValues.content_format} onFeedback={handleFeedback} onRegenerate={selectedDirection ? handleRegenerateBlueprint : undefined} regenerating={blueprintLoading} />;
     }
   };
 
