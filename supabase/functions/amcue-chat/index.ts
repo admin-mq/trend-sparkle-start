@@ -57,6 +57,7 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
       { data: hashtagRequestIds },
       { data: watchlist },
       { data: seoSites },
+      { data: referenceAccounts },
     ] = await Promise.all([
       supabase.from("amcue_brand_memory").select("*").eq("user_id", userId).maybeSingle(),
 
@@ -81,7 +82,14 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
       supabase.from("scc_sites")
         .select("id, site_url")
         .eq("user_id", userId)
+        .order("created_at", { ascending: false }),
+
+      supabase.from("creator_reference_accounts")
+        .select("instagram_handle, display_name, why_inspiring, tone_analysis")
+        .eq("user_id", userId)
+        .not("tone_analysis", "is", null)
         .order("created_at", { ascending: false })
+        .limit(5),
         .limit(1),
     ]);
 
@@ -229,6 +237,25 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
       if (declining.length) lines.push(`Declining: ${declining.map((w) => w.tag).join(", ")}`);
 
       sections.push(`### Hashtag Watchlist (${watchlist.length} tags)\n${lines.join("\n")}`);
+    }
+
+    // ── Format: Reference Accounts (creator style inspiration) ────────────────
+    if (referenceAccounts?.length) {
+      const refLines = (referenceAccounts as Record<string, unknown>[]).map((ref) => {
+        const ta = ref.tone_analysis as Record<string, unknown> | null;
+        if (!ta) return null;
+        const parts = [`@${ref.instagram_handle}`];
+        if (ref.why_inspiring) parts.push(`(why inspiring: ${ref.why_inspiring})`);
+        if (ta.primary_tone) parts.push(`Tone: ${ta.primary_tone}${ta.secondary_tone ? ` + ${ta.secondary_tone}` : ""}`);
+        if (ta.writing_style) parts.push(`Style: ${ta.writing_style}`);
+        if (Array.isArray(ta.content_themes) && ta.content_themes.length) parts.push(`Themes: ${(ta.content_themes as string[]).join(", ")}`);
+        if (ta.what_to_borrow) parts.push(`What to borrow: ${ta.what_to_borrow}`);
+        return parts.join(" | ");
+      }).filter(Boolean);
+
+      if (refLines.length) {
+        sections.push(`### Creator Style References\nThis creator looks up to these accounts — use their styles as inspiration when suggesting content:\n${refLines.join("\n")}`);
+      }
     }
   } catch (e) {
     console.error("buildUserContext error:", e);
