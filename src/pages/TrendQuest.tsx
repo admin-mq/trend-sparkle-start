@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { BrandSelector } from "@/components/BrandSelector";
+import { CreatorSelector } from "@/components/CreatorSelector";
 import { RecommendedTrends } from "@/components/RecommendedTrends";
 import { CreativeDirections } from "@/components/CreativeDirections";
 import { ExecutionBlueprint } from "@/components/ExecutionBlueprint";
@@ -16,6 +17,7 @@ import {
 } from "@/components/TrendQuestInputs";
 import { RecommendedTrend, CreativeDirection, UserProfile, DetailedDirection, TwitterTrendsResponse, TwitterTrend, GeneratedTweet } from "@/types/trends";
 import { useAuth } from "@/hooks/useAuth";
+import { useAuthContext } from "@/contexts/AuthContext";
 import { useBrandProfiles, BrandProfile } from "@/hooks/useBrandProfiles";
 import { BrandMemory, updateBrandMemory } from "@/lib/brandMemory";
 import { toast } from "sonner";
@@ -36,10 +38,24 @@ const DEFAULT_INPUT_VALUES: TrendQuestInputValues = {
   twitter_user_type: "standard",
 };
 
+type CreatorProfileData = {
+  full_name: string | null;
+  niche: string | null;
+  location: string | null;
+  business_summary: string | null;
+};
+
 const TrendQuest = () => {
   const { user } = useAuth();
+  const { user: authUser, profile: authProfile } = useAuthContext();
   const navigate = useNavigate();
   const { brands, loading: brandsLoading } = useBrandProfiles();
+
+  const isCreator =
+    authProfile?.account_type === "creator" ||
+    authUser?.user_metadata?.account_type === "creator";
+
+  const [creatorProfile, setCreatorProfile] = useState<CreatorProfileData | null>(null);
   
   // Selected brand
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
@@ -132,8 +148,48 @@ const TrendQuest = () => {
     };
   };
 
+  const buildCreatorProfile = (cp: CreatorProfileData, inputs: TrendQuestInputValues): UserProfile => {
+    const audience = inputs.audience === "Other" && inputs.audience_other
+      ? inputs.audience_other
+      : inputs.audience;
+    const contentFormat = inputs.content_format === "Other" && inputs.content_format_other
+      ? inputs.content_format_other
+      : inputs.content_format;
+    const primaryTone = getPrimaryTone(inputs.tones);
+    return {
+      brand_name: cp.full_name || cp.niche || "Creator",
+      business_summary: cp.business_summary || "",
+      industry: cp.niche || "",
+      niche: cp.niche || "",
+      audience,
+      geography: cp.location || "",
+      content_format: contentFormat,
+      primary_goal: inputs.primary_goal,
+      tone: deriveToneString(inputs.tones),
+      tones: inputs.tones,
+      primary_tone: primaryTone,
+      tone_intensity: inputs.tone_intensity,
+      tone_meter_label: getToneMeterLabel(primaryTone),
+      platform: inputs.platform as any,
+      topic_angle: inputs.topic_angle || undefined,
+      content_categories: inputs.content_categories.length > 0 ? inputs.content_categories : undefined,
+      twitter_geography: inputs.platform === "Twitter" ? inputs.twitter_geography : undefined,
+      twitter_user_type: inputs.platform === "Twitter" ? inputs.twitter_user_type : undefined,
+    };
+  };
+
   // Update brand name and profile when brand selection or inputs change
   useEffect(() => {
+    if (isCreator) {
+      if (creatorProfile?.niche) {
+        setBrandName(creatorProfile.full_name || creatorProfile.niche || "Creator");
+        setUserProfile(buildCreatorProfile(creatorProfile, inputValues));
+      } else {
+        setBrandName('');
+        setUserProfile(null);
+      }
+      return;
+    }
     if (selectedBrandId) {
       const brand = brands.find(b => b.id === selectedBrandId);
       if (brand) {
@@ -144,7 +200,7 @@ const TrendQuest = () => {
       setBrandName('');
       setUserProfile(null);
     }
-  }, [selectedBrandId, brands, inputValues]);
+  }, [selectedBrandId, brands, inputValues, isCreator, creatorProfile]);
 
   const handleFeedback = async (params: {
     outputType: "hook" | "caption" | "blueprint";
@@ -500,18 +556,28 @@ const TrendQuest = () => {
   return (
     <div className="h-full p-4 lg:p-6">
       <div className="h-full flex flex-col lg:flex-row gap-4 max-w-7xl mx-auto">
-        {/* Left: Brand Selector Panel */}
+        {/* Left: Profile Selector Panel */}
         <aside className="w-full lg:w-[360px] xl:w-[380px] flex-shrink-0">
-          <BrandSelector
-            brands={brands}
-            selectedBrandId={selectedBrandId}
-            onSelectBrand={setSelectedBrandId}
-            onGetTrends={handleGetTrends}
-            loading={trendsLoading}
-            brandsLoading={brandsLoading}
-            inputValues={inputValues}
-            onInputChange={setInputValues}
-          />
+          {isCreator ? (
+            <CreatorSelector
+              onGetTrends={handleGetTrends}
+              loading={trendsLoading}
+              inputValues={inputValues}
+              onInputChange={setInputValues}
+              onProfileLoaded={setCreatorProfile}
+            />
+          ) : (
+            <BrandSelector
+              brands={brands}
+              selectedBrandId={selectedBrandId}
+              onSelectBrand={setSelectedBrandId}
+              onGetTrends={handleGetTrends}
+              loading={trendsLoading}
+              brandsLoading={brandsLoading}
+              inputValues={inputValues}
+              onInputChange={setInputValues}
+            />
+          )}
         </aside>
 
         {/* Right: Workspace */}
