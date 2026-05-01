@@ -10,7 +10,7 @@ import { UserCircle, MapPin, Tag, Loader2, Pencil, Sparkles } from "lucide-react
 
 type CreatorProfileData = {
   full_name: string | null;
-  niche: string | null;
+  industry: string | null;
   location: string | null;
   business_summary: string | null;
 };
@@ -38,7 +38,7 @@ export const CreatorSelector = ({
     if (!user) return;
     supabase
       .from("user_profiles")
-      .select("full_name,niche,location,business_summary")
+      .select("full_name,industry,location,business_summary")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
@@ -51,7 +51,7 @@ export const CreatorSelector = ({
 
   const isTwitter = inputValues.platform === "Twitter";
   const isFormValid =
-    profile?.niche &&
+    profile?.industry &&
     inputValues.audience &&
     inputValues.primary_goal &&
     (isTwitter || inputValues.content_format);
@@ -67,7 +67,7 @@ export const CreatorSelector = ({
   }
 
   // No niche set → profile incomplete
-  if (!profile?.niche) {
+  if (!profile?.industry) {
     return (
       <Card className="h-full">
         <CardContent className="p-6 text-center">
@@ -112,10 +112,10 @@ export const CreatorSelector = ({
             </div>
 
             <div className="flex flex-wrap gap-1.5 text-xs">
-              {profile.niche && (
+              {profile.industry && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
                   <Tag className="w-3 h-3" />
-                  {profile.niche}
+                  {profile.industry}
                 </span>
               )}
               {profile.location && (

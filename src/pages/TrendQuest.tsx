@@ -40,7 +40,7 @@ const DEFAULT_INPUT_VALUES: TrendQuestInputValues = {
 
 type CreatorProfileData = {
   full_name: string | null;
-  niche: string | null;
+  industry: string | null;
   location: string | null;
   business_summary: string | null;
 };
@@ -157,10 +157,10 @@ const TrendQuest = () => {
       : inputs.content_format;
     const primaryTone = getPrimaryTone(inputs.tones);
     return {
-      brand_name: cp.full_name || cp.niche || "Creator",
+      brand_name: cp.full_name || cp.industry || "Creator",
       business_summary: cp.business_summary || "",
-      industry: cp.niche || "",
-      niche: cp.niche || "",
+      industry: cp.industry || "",
+      niche: cp.industry || "",
       audience,
       geography: cp.location || "",
       content_format: contentFormat,
@@ -181,8 +181,8 @@ const TrendQuest = () => {
   // Update brand name and profile when brand selection or inputs change
   useEffect(() => {
     if (isCreator) {
-      if (creatorProfile?.niche) {
-        setBrandName(creatorProfile.full_name || creatorProfile.niche || "Creator");
+      if (creatorProfile?.industry) {
+        setBrandName(creatorProfile.full_name || creatorProfile.industry || "Creator");
         setUserProfile(buildCreatorProfile(creatorProfile, inputValues));
       } else {
         setBrandName('');

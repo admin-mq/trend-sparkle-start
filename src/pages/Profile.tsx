@@ -92,14 +92,14 @@ function CreatorProfile() {
 
     const loadAll = async () => {
       const [profileRes, igRes, refRes] = await Promise.all([
-        supabase.from("user_profiles").select("full_name,niche,location,business_summary").eq("user_id", user.id).maybeSingle(),
+        supabase.from("user_profiles").select("full_name,industry,location,business_summary").eq("user_id", user.id).maybeSingle(),
         supabase.from("instagram_connections").select("username").eq("user_id", user.id).maybeSingle(),
         supabase.from("creator_reference_accounts").select("id,instagram_handle,display_name,profile_picture_url,tone_analysis").eq("user_id", user.id).order("created_at", { ascending: false }),
       ]);
 
       if (profileRes.data) {
         setFullName(profileRes.data.full_name || "");
-        setNiche((profileRes.data as any).niche || "");
+        setNiche((profileRes.data as any).industry || "");
         setLocation(profileRes.data.location || "");
         setBio(profileRes.data.business_summary || "");
       }
@@ -118,7 +118,7 @@ function CreatorProfile() {
     if (!user) return;
     setSaving(true);
     const { error } = await supabase.from("user_profiles").upsert(
-      { user_id: user.id, full_name: fullName, niche, location, business_summary: bio },
+      { user_id: user.id, full_name: fullName, industry: niche, location, business_summary: bio },
       { onConflict: "user_id" }
     );
     setSaving(false);
