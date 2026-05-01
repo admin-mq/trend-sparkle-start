@@ -75,6 +75,7 @@ function CreatorProfile() {
   const [niche, setNiche] = useState("");
   const [location, setLocation] = useState("");
   const [bio, setBio] = useState("");
+  const [isFaceless, setIsFaceless] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(true);
 
@@ -92,7 +93,7 @@ function CreatorProfile() {
 
     const loadAll = async () => {
       const [profileRes, igRes, refRes] = await Promise.all([
-        supabase.from("user_profiles").select("full_name,industry,location,business_summary").eq("user_id", user.id).maybeSingle(),
+        supabase.from("user_profiles").select("full_name,industry,industry_other,location,business_summary").eq("user_id", user.id).maybeSingle(),
         supabase.from("instagram_connections").select("username").eq("user_id", user.id).maybeSingle(),
         supabase.from("creator_reference_accounts").select("id,instagram_handle,display_name,profile_picture_url,tone_analysis").eq("user_id", user.id).order("created_at", { ascending: false }),
       ]);
@@ -102,6 +103,7 @@ function CreatorProfile() {
         setNiche((profileRes.data as any).industry || "");
         setLocation(profileRes.data.location || "");
         setBio(profileRes.data.business_summary || "");
+        setIsFaceless((profileRes.data as any).industry_other === "faceless");
       }
       setLoadingProfile(false);
 
@@ -118,7 +120,7 @@ function CreatorProfile() {
     if (!user) return;
     setSaving(true);
     const { error } = await supabase.from("user_profiles").upsert(
-      { user_id: user.id, full_name: fullName, industry: niche, location, business_summary: bio },
+      { user_id: user.id, full_name: fullName, industry: niche, industry_other: isFaceless ? "faceless" : null, location, business_summary: bio },
       { onConflict: "user_id" }
     );
     setSaving(false);
@@ -269,6 +271,35 @@ function CreatorProfile() {
                 placeholder="1-2 lines about your content style, audience, and what you create"
                 rows={2}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Is this a Faceless account?</Label>
+              <p className="text-xs text-muted-foreground">Faceless accounts don't show the creator's face in content.</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsFaceless(false)}
+                  className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                    !isFaceless
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border text-muted-foreground hover:border-primary/40"
+                  }`}
+                >
+                  No
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsFaceless(true)}
+                  className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                    isFaceless
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border text-muted-foreground hover:border-primary/40"
+                  }`}
+                >
+                  Yes
+                </button>
+              </div>
             </div>
 
             <Button onClick={handleSaveProfile} disabled={saving} className="gap-2">
