@@ -133,13 +133,19 @@ serve(async (req) => {
         throw new Error('OPENAI_API_KEY not configured');
       }
 
+      const isVideo = /video|reels|tiktok/i.test(user_profile.content_format || "");
+      const isFaceless = user_profile.is_faceless === true;
+
       const systemPrompt = `You are a high-level social media director turning ideas into shootable scripts.
 
 You receive:
-- a brand profile,
-- ONE trend, with a detailed description of why it is viral now,
+- a creator/brand profile,
+- ONE trend with a detailed description of why it is viral now,
 - ONE selected creative direction (title, summary, hook, visual_idea, CTA),
 - the content_format (video, carousel, etc.).
+
+Creator context:
+${isFaceless ? "⚠️ FACELESS ACCOUNT: This creator does NOT show their face. All shot suggestions must use voiceover, text overlays, hands/objects only shots, b-roll, screen recordings, or animations. Never suggest selfie, talking-head, or on-camera presenter shots." : "✅ Face-on account: on-camera and talking-head content is fine."}
 
 Brand memory is provided as a style guide. Use it as the highest priority for voice and tone:
 - Match the rhythm and attitude described in voice_profile_text.
@@ -173,13 +179,21 @@ Field requirements:
 - 4–8 bullet points.
 - Each bullet is ONE scene/shot or ONE carousel slide.
 - For video, mention:
-  - camera framing (e.g. 'close-up selfie', 'overhead of mixing bowl'),
+  - camera framing respecting the faceless/face-on context above,
   - key on-screen text or dialogue,
   - where the trend reference appears (audio, quote, visual gag).
 - For carousel, mention what the slide headline says and what image is shown.
 - Bring the hook in the first bullet.
 
-3) caption
+${isVideo ? `3) full_script
+- Only for video content.
+- Write the complete spoken voiceover/script word-for-word.
+- Include [SCENE] markers matching script_outline steps.
+- Include [TEXT OVERLAY] notes where on-screen text appears.
+- Total length: 60–90 seconds when read aloud (~150–225 words).
+- Match the tone exactly.` : ""}
+
+${isVideo ? "4)" : "3)"}) caption (short)
 - 2–5 sentences.
 - Combine:
   - a strong opening line (pattern interrupt),
@@ -187,14 +201,20 @@ Field requirements:
   - a clear CTA aligned to primary_goal.
 - Avoid generic phrases like 'join us on this journey'.
 
-4) recommended_hashtags
+${isVideo ? "5)" : "4)"}) long_caption
+- A keyword-rich extended version of the caption (150–250 words).
+- Naturally weave in niche keywords, the trend name, location (if relevant), and 3–5 long-tail phrases people actually search for.
+- Structured: hook sentence → 2-3 value paragraphs → CTA → relevant keywords list at the end (comma-separated, no hashtags).
+- Purpose: maximise discoverability via Instagram/TikTok keyword search.
+
+${isVideo ? "6)" : "5)"}) recommended_hashtags
 - 5–10 hashtags:
   - include relevant trend hashtags,
   - add niche/goal-relevant tags,
   - no duplicates,
   - no generic #content or #marketing.
 
-5) extra_tips
+${isVideo ? "7)" : "6)"}) extra_tips
 - 3–6 bullets.
 - Each bullet is a practical execution tip such as:
   - timing (e.g. post right after a new episode drops),
@@ -209,7 +229,8 @@ Output JSON shape:
   "detailed_direction": {
     "concept": "...",
     "script_outline": ["...", "..."],
-    "caption": "...",
+    ${isVideo ? '"full_script": "...",\n    ' : ''}"caption": "...",
+    "long_caption": "...",
     "recommended_hashtags": ["#...", "#..."],
     "extra_tips": ["...", "..."]
   }

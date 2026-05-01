@@ -30,6 +30,7 @@ export interface UserProfile {
   content_categories?: string[];
   twitter_geography?: string;
   twitter_user_type?: TwitterUserType;
+  is_faceless?: boolean;
 }
 
 export type TrendTiming = 'early' | 'peaking' | 'saturated';
@@ -157,7 +158,9 @@ export interface CreativeDirection {
 export interface DetailedDirection {
   concept: string;
   script_outline: string[];
+  full_script?: string | null;
   caption: string;
+  long_caption?: string | null;
   recommended_hashtags: string[];
   extra_tips: string[];
 }

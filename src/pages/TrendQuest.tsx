@@ -41,8 +41,10 @@ const DEFAULT_INPUT_VALUES: TrendQuestInputValues = {
 type CreatorProfileData = {
   full_name: string | null;
   industry: string | null;
+  industry_other: string | null;
   location: string | null;
   business_summary: string | null;
+  is_faceless: boolean;
 };
 
 const TrendQuest = () => {
@@ -175,6 +177,7 @@ const TrendQuest = () => {
       content_categories: inputs.content_categories.length > 0 ? inputs.content_categories : undefined,
       twitter_geography: inputs.platform === "Twitter" ? inputs.twitter_geography : undefined,
       twitter_user_type: inputs.platform === "Twitter" ? inputs.twitter_user_type : undefined,
+      is_faceless: cp.is_faceless,
     };
   };
 
@@ -550,7 +553,7 @@ const TrendQuest = () => {
             </div>
           );
         }
-        return <ExecutionBlueprint trendName={selectedTrendName} ideaTitle={selectedIdeaTitle} blueprint={detailedDirection} trendHashtags={trendHashtags} onBack={() => setActiveStep("directions")} onOptimizeHashtags={detailedDirection ? handleOptimizeHashtags : undefined} onFeedback={handleFeedback} />;
+        return <ExecutionBlueprint trendName={selectedTrendName} ideaTitle={selectedIdeaTitle} blueprint={detailedDirection} trendHashtags={trendHashtags} onBack={() => setActiveStep("directions")} onDeepHashtagAnalysis={detailedDirection ? handleOptimizeHashtags : undefined} userProfile={userProfile} contentFormat={inputValues.content_format} onFeedback={handleFeedback} />;
     }
   };
 

@@ -6,13 +6,15 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { TrendQuestInputs, TrendQuestInputValues } from "@/components/TrendQuestInputs";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
-import { UserCircle, MapPin, Tag, Loader2, Pencil, Sparkles } from "lucide-react";
+import { UserCircle, MapPin, Tag, Loader2, Pencil, Sparkles, EyeOff } from "lucide-react";
 
 type CreatorProfileData = {
   full_name: string | null;
   industry: string | null;
+  industry_other: string | null;
   location: string | null;
   business_summary: string | null;
+  is_faceless: boolean;
 };
 
 interface CreatorSelectorProps {
@@ -38,11 +40,14 @@ export const CreatorSelector = ({
     if (!user) return;
     supabase
       .from("user_profiles")
-      .select("full_name,industry,location,business_summary")
+      .select("full_name,industry,industry_other,location,business_summary")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
-        const p = data as CreatorProfileData | null;
+        const raw = data as Omit<CreatorProfileData, 'is_faceless'> | null;
+        const p: CreatorProfileData | null = raw
+          ? { ...raw, is_faceless: raw.industry_other === "faceless" }
+          : null;
         setProfile(p);
         onProfileLoaded(p);
         setProfileLoading(false);
@@ -122,6 +127,12 @@ export const CreatorSelector = ({
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
                   <MapPin className="w-3 h-3" />
                   {profile.location}
+                </span>
+              )}
+              {profile.is_faceless && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
+                  <EyeOff className="w-3 h-3" />
+                  Faceless
                 </span>
               )}
             </div>
