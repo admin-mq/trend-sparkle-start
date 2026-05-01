@@ -256,11 +256,18 @@ Please create a detailed execution blueprint for this idea.
 Return a JSON object with:
 - trend_id
 - idea_id
-- detailed_direction (with concept, script_outline, caption, recommended_hashtags, extra_tips)
+- detailed_direction with these fields:
+    - concept
+    - script_outline
+${isVideo ? "    - full_script  (REQUIRED — full word-for-word voiceover with [SCENE] and [TEXT OVERLAY] markers, 60–90 seconds when read aloud)\n" : ""}    - caption  (short, 2–5 sentences)
+    - long_caption  (REQUIRED — 150–250 word keyword-rich extended caption for discoverability)
+    - recommended_hashtags
+    - extra_tips
 
 Use specifics from the trend description – names, scenes, rumours, emotional beats.
 Avoid buzzwords like 'drive engagement', 'resonate', 'compelling content'.
 Make it something a creator could actually shoot today.
+${isVideo ? "Do NOT omit full_script. Write the complete voiceover dialogue.\n" : ""}Do NOT omit long_caption. Write the long-form keyword-rich version.
 `;
 
       console.log('Calling OpenAI API for execution blueprint...');

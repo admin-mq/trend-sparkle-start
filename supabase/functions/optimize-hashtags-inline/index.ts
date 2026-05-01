@@ -40,12 +40,16 @@ Rules:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-flash-1.5",
+        model: "google/gemini-3-flash-preview",
         messages: [{ role: "user", content: prompt }],
       }),
     });
 
-    if (!res.ok) throw new Error(`AI gateway error: ${res.status}`);
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => "");
+      console.error("AI gateway error", res.status, errBody);
+      throw new Error(`AI gateway error: ${res.status}`);
+    }
 
     const data = await res.json();
     const raw = data.choices?.[0]?.message?.content || "[]";
