@@ -34,6 +34,7 @@ import FreeScan from "./pages/FreeScan";
 import NotFound from "./pages/NotFound";
 import Amcue from "./pages/Amcue";
 import AmcueBrandProfile from "./pages/AmcueBrandProfile";
+import CreatorAnalysis from "./pages/CreatorAnalysis";
 import DataDeletion from "./pages/DataDeletion";
 import MasterAdmin from "./pages/MasterAdmin";
 import TrendTest from "./pages/TrendTest";
@@ -80,6 +81,7 @@ const App = () => (
               <Route path="/pr/results" element={<PRResults />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/paid-campaigns" element={<PaidCampaigns />} />
+              <Route path="/creator-analysis" element={<CreatorAnalysis />} />
               <Route path="/amcue" element={<Amcue />} />
               <Route path="/amcue/brand-profile" element={<AmcueBrandProfile />} />
               <Route path="/profile" element={<Profile />} />

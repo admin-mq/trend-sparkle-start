@@ -12,6 +12,7 @@ import {
   Users,
   Megaphone,
   BarChart3,
+  LineChart,
   Target,
   Settings,
   Shield,
@@ -22,7 +23,6 @@ import {
   X,
   Sparkles,
 } from "lucide-react";
-// Brain is still used for the Amcue nav item
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AmcueChat } from "@/components/amcue/AmcueChat";
@@ -33,32 +33,48 @@ import { MQLogo } from "@/components/MQLogo";
 
 // ── Nav structure ─────────────────────────────────────────────────────────────
 
-const navGroups = [
+const brandNavGroups = [
   {
     label: "Intelligence",
     items: [
-      { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { path: "/trend-quest", label: "Trend Quest", icon: TrendingUp },
-      { path: "/tweet-drafts", label: "My Drafts", icon: Sparkles },
-      { path: "/hashtag-analysis", label: "Hashtag Analysis", icon: Hash },
-      { path: "/hashtag-watchlist",     label: "Watchlist",     icon: Bookmark },
-      { path: "/hashtag-gap-analysis",  label: "Tag Gap Finder", icon: Layers   },
-      { path: "/trending-audios", label: "Trending Audios", icon: Music },
+      { path: "/dashboard",            label: "Dashboard",        icon: LayoutDashboard },
+      { path: "/trend-quest",          label: "Trend Quest",      icon: TrendingUp },
+      { path: "/tweet-drafts",         label: "My Drafts",        icon: Sparkles },
+      { path: "/hashtag-analysis",     label: "Hashtag Analysis", icon: Hash },
+      { path: "/hashtag-watchlist",    label: "Watchlist",        icon: Bookmark },
+      { path: "/hashtag-gap-analysis", label: "Tag Gap Finder",   icon: Layers },
+      { path: "/trending-audios",      label: "Trending Audios",  icon: Music },
     ],
   },
   {
     label: "Execution",
     items: [
-      { path: "/pr", label: "PR Campaigns", icon: Megaphone },
-      { path: "/influencers", label: "Influencers", icon: Users },
-      { path: "/paid-campaigns", label: "Paid Campaigns", icon: Target },
+      { path: "/pr",            label: "PR Campaigns",  icon: Megaphone },
+      { path: "/influencers",   label: "Influencers",   icon: Users },
+      { path: "/paid-campaigns",label: "Paid Campaigns",icon: Target },
     ],
   },
   {
     label: "Analytics",
     items: [
-      { path: "/seo", label: "SEO", icon: Search },
+      { path: "/seo",       label: "SEO",       icon: Search },
       { path: "/analytics", label: "Analytics", icon: BarChart3 },
+    ],
+  },
+];
+
+const creatorNavGroups = [
+  {
+    label: "Intelligence",
+    items: [
+      { path: "/dashboard",            label: "Dashboard",        icon: LayoutDashboard },
+      { path: "/trend-quest",          label: "Trend Quest",      icon: TrendingUp },
+      { path: "/tweet-drafts",         label: "My Drafts",        icon: Sparkles },
+      { path: "/hashtag-analysis",     label: "Hashtag Analysis", icon: Hash },
+      { path: "/hashtag-watchlist",    label: "Watchlist",        icon: Bookmark },
+      { path: "/hashtag-gap-analysis", label: "Tag Gap Finder",   icon: Layers },
+      { path: "/trending-audios",      label: "Trending Audios",  icon: Music },
+      { path: "/creator-analysis",     label: "Analysis",         icon: LineChart },
     ],
   },
 ];
@@ -95,6 +111,9 @@ export const DashboardLayout = () => {
       navigate("/auth");
     }
   };
+
+  const isCreator = profile?.account_type === "creator";
+  const navGroups = isCreator ? creatorNavGroups : brandNavGroups;
 
   const isActive = (path: string) => location.pathname === path;
   const isGroupActive = (paths: string[]) => paths.some(p => location.pathname.startsWith(p));
@@ -195,11 +214,11 @@ export const DashboardLayout = () => {
           ))}
         </nav>
 
-        {/* Bottom — Profile, Settings, Admin, Logout */}
+        {/* Bottom — Profile, Settings, [Admin for brands], Logout */}
         <div className="px-3 pb-3 pt-2 border-t border-border space-y-0.5 shrink-0">
           <NavItem path="/profile" label="Profile" icon={User} />
           <NavItem path="/settings" label="Settings" icon={Settings} />
-          <NavItem path="/admin" label="Admin" icon={Shield} />
+          {!isCreator && <NavItem path="/admin" label="Admin" icon={Shield} />}
 
           <button
             onClick={handleLogout}
