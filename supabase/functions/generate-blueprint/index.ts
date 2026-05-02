@@ -63,8 +63,8 @@ serve(async (req) => {
   }
 
   try {
-    const { user_profile, trend_id, chosen_direction, user_id } = await req.json();
-    console.log('Received request for generate-blueprint:', { user_profile, trend_id, chosen_direction, user_id: user_id || 'anonymous' });
+    const { user_profile, trend_id, chosen_direction, user_id, detailed } = await req.json();
+    console.log('Received request for generate-blueprint:', { user_profile, trend_id, chosen_direction, user_id: user_id || 'anonymous', detailed: !!detailed });
 
     if (!user_profile || !user_profile.brand_name) {
       return new Response(
@@ -135,6 +135,7 @@ serve(async (req) => {
 
       const isVideo = /video|reels|tiktok/i.test(user_profile.content_format || "");
       const isFaceless = user_profile.is_faceless === true;
+      const isDetailed = detailed === true;
 
       const systemPrompt = `You are a high-level social media director turning ideas into shootable scripts.
 
@@ -185,13 +186,33 @@ Field requirements:
 - For carousel, mention what the slide headline says and what image is shown.
 - Bring the hook in the first bullet.
 
-${isVideo ? `3) full_script
+${isVideo ? (isDetailed ? `3) full_script  ⚙️ DETAILED MODE — CINEMA-GRADE PRODUCTION DOC
+- This is the most important field in detailed mode. You MUST write 1000–1500 words.
+- It is a full shot-by-shot production document a creator hands to a videographer.
+- Structure the script as numbered SCENES. For EACH scene include EVERY one of these markers (skip a marker only when truly inapplicable, and say so):
+
+  [SCENE N — duration in seconds — one-line title]
+  [FRAME] — what is in frame, composition, foreground/background. Include any text overlay copy verbatim.
+  [CAMERA] — angle (low / eye-level / high / overhead / dutch), shot size (extreme close-up, close-up, medium, wide, drone), movement (static, pan, push-in, pull-out, tracking, handheld, gimbal). If a phone-only setup, say so.
+  [LIGHTING] — natural / golden hour / overcast / ring light / 3-point / practical / neon / harsh shadow. Note time of day if it matters.
+  [PROPS & WARDROBE] — concrete objects, outfit notes${isFaceless ? " (no on-camera presenter — faceless account)" : ""}.
+  [DIALOGUE / VOICEOVER] — every spoken line word-for-word. Use "VO:" prefix for voiceover, "ON-CAM:" for spoken on camera${isFaceless ? " — but DO NOT use ON-CAM, this is a faceless account; voiceover only" : ""}.
+  [TEXT OVERLAY] — on-screen captions verbatim, with timing.
+  [SOUND / MUSIC] — trending audio name if relevant, sfx (whoosh, ding, etc.), music mood.
+  [B-ROLL / CUTAWAY] — list any cutaway footage needed.
+  [TRANSITION] — how this scene cuts to the next (hard cut, match cut, whip pan, J-cut, freeze frame).
+  [REFERENCE] — name a specific creator, film, ad, or trending video that nails this look (be concrete, e.g. "Casey Neistat NYC b-roll energy" or "the Apple 'Shot on iPhone' product reveal style"). If unsure, omit rather than invent.
+
+- The first scene MUST contain a 3-second pattern interrupt for the hook.
+- Match the brand tone exactly. ${isFaceless ? "Every shot must work without showing the creator's face." : ""}
+- Do NOT compress to bullet points. Write paragraphs of direction inside each marker where useful.
+- Word count target: 1000–1500 words. Anything under 1000 is a failure.` : `3) full_script
 - Only for video content.
 - Write the complete spoken voiceover/script word-for-word.
 - Include [SCENE] markers matching script_outline steps.
 - Include [TEXT OVERLAY] notes where on-screen text appears.
 - Total length: 60–90 seconds when read aloud (~150–225 words).
-- Match the tone exactly.` : ""}
+- Match the tone exactly.`) : ""}
 
 ${isVideo ? "4)" : "3)"}) caption (short)
 - 2–5 sentences.
@@ -201,11 +222,17 @@ ${isVideo ? "4)" : "3)"}) caption (short)
   - a clear CTA aligned to primary_goal.
 - Avoid generic phrases like 'join us on this journey'.
 
-${isVideo ? "5)" : "4)"}) long_caption
-- A keyword-rich extended version of the caption (150–250 words).
+${isVideo ? "5)" : "4)"}) long_caption  ${isDetailed ? "⚙️ DETAILED MODE" : ""}
+${isDetailed
+  ? `- Target length: 1400–1600 characters (roughly 230–270 words). Anything under 1400 characters is a failure — count characters, not just words.
+- Structure: a 1-sentence pattern-interrupt hook → 3 substantive value paragraphs (story, insight, payoff) → an explicit CTA aligned to primary_goal → a 'You'll like this if you search for:' line followed by 8–12 long-tail search phrases (comma-separated, no hashtags).
+- Naturally weave in: niche keywords, the trend name, location (if relevant), creator pain points, and 8–12 long-tail phrases real people type into Instagram/TikTok search.
+- Sound human, not SEO-stuffed. The keywords must read as part of the prose.
+- This is for serious discoverability — treat it like an Instagram-search-optimised article.`
+  : `- A keyword-rich extended version of the caption (150–250 words).
 - Naturally weave in niche keywords, the trend name, location (if relevant), and 3–5 long-tail phrases people actually search for.
 - Structured: hook sentence → 2-3 value paragraphs → CTA → relevant keywords list at the end (comma-separated, no hashtags).
-- Purpose: maximise discoverability via Instagram/TikTok keyword search.
+- Purpose: maximise discoverability via Instagram/TikTok keyword search.`}
 
 ${isVideo ? "6)" : "5)"}) recommended_hashtags
 - 5–10 hashtags:
@@ -259,15 +286,17 @@ Return a JSON object with:
 - detailed_direction with these fields:
     - concept
     - script_outline
-${isVideo ? "    - full_script  (REQUIRED — full word-for-word voiceover with [SCENE] and [TEXT OVERLAY] markers, 60–90 seconds when read aloud)\n" : ""}    - caption  (short, 2–5 sentences)
-    - long_caption  (REQUIRED — 150–250 word keyword-rich extended caption for discoverability)
+${isVideo ? (isDetailed
+  ? "    - full_script  (REQUIRED — 1000–1500 words, full shot-by-shot production document with [SCENE] [FRAME] [CAMERA] [LIGHTING] [PROPS & WARDROBE] [DIALOGUE / VOICEOVER] [TEXT OVERLAY] [SOUND / MUSIC] [B-ROLL / CUTAWAY] [TRANSITION] [REFERENCE] markers per scene)\n"
+  : "    - full_script  (REQUIRED — full word-for-word voiceover with [SCENE] and [TEXT OVERLAY] markers, 60–90 seconds when read aloud)\n") : ""}    - caption  (short, 2–5 sentences)
+    - long_caption  (REQUIRED — ${isDetailed ? "1400–1600 character keyword-rich caption with 8–12 long-tail search phrases" : "150–250 word keyword-rich extended caption for discoverability"})
     - recommended_hashtags
     - extra_tips
 
 Use specifics from the trend description – names, scenes, rumours, emotional beats.
 Avoid buzzwords like 'drive engagement', 'resonate', 'compelling content'.
 Make it something a creator could actually shoot today.
-${isVideo ? "Do NOT omit full_script. Write the complete voiceover dialogue.\n" : ""}Do NOT omit long_caption. Write the long-form keyword-rich version.
+${isVideo ? `Do NOT omit full_script. ${isDetailed ? "Write 1000–1500 words covering EVERY marker (frame, camera angle, lighting, props, dialogue, sound, transitions, references). Anything under 1000 words is a failure." : "Write the complete voiceover dialogue."}\n` : ""}Do NOT omit long_caption. ${isDetailed ? "Write 1400–1600 characters. Count characters, not words. Under 1400 characters is a failure." : "Write the long-form keyword-rich version."}
 `;
 
       console.log('Calling OpenAI API for execution blueprint...');
@@ -278,13 +307,17 @@ ${isVideo ? "Do NOT omit full_script. Write the complete voiceover dialogue.\n" 
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          // gpt-4o-mini caps out around 16k tokens of total context and tends
+          // to compress long-form fields. For detailed mode (1000–1500 word
+          // shooting script + 1400–1600 char caption) we need the full model.
+          model: isDetailed ? 'gpt-4o' : 'gpt-4o-mini',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userMessage }
           ],
           response_format: { type: 'json_object' },
           temperature: 0.7,
+          max_tokens: isDetailed ? 4000 : 2000,
         }),
       });
 

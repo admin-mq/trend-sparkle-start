@@ -25,8 +25,10 @@ interface ExecutionBlueprintProps {
     newOutput: string;
     userFeedback: "love" | "ok" | "dislike";
   }) => void;
-  /** Re-runs generate-blueprint on the same chosen direction. */
+  /** Re-runs generate-blueprint on the same chosen direction (fast / standard quality). */
   onRegenerate?: () => void;
+  /** Re-runs generate-blueprint in DETAILED mode — 1000–1500 word shooting script + 1400–1600 char caption. Slower. */
+  onGenerateDetailed?: () => void;
   regenerating?: boolean;
 }
 
@@ -41,11 +43,20 @@ export const ExecutionBlueprint = ({
   contentFormat,
   onFeedback,
   onRegenerate,
+  onGenerateDetailed,
   regenerating = false,
 }: ExecutionBlueprintProps) => {
   const isVideo = /video|reels|tiktok/i.test(contentFormat || "");
-  const missingNewFields =
-    (isVideo && !blueprint?.full_script) || !blueprint?.long_caption;
+
+  // "Detailed-mode" thresholds — used to decide whether to show the upsell banner
+  // even after a standard regenerate has already populated the basic fields.
+  const fullScriptWordCount = (blueprint?.full_script || "").trim().split(/\s+/).filter(Boolean).length;
+  const longCaptionCharCount = (blueprint?.long_caption || "").length;
+  const hasShortScript = isVideo && fullScriptWordCount > 0 && fullScriptWordCount < 800;
+  const hasShortLongCaption = longCaptionCharCount > 0 && longCaptionCharCount < 1200;
+  const missingFields = (isVideo && !blueprint?.full_script) || !blueprint?.long_caption;
+  // Show the banner when fields are missing OR when they're present but well below detailed-mode size.
+  const needsDetailedUpgrade = missingFields || hasShortScript || hasShortLongCaption;
 
   // Caption tab: "short" | "long"
   const [captionTab, setCaptionTab] = useState<"short" | "long">("short");
@@ -129,40 +140,44 @@ export const ExecutionBlueprint = ({
         </div>
         {onRegenerate && (
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={onRegenerate}
             disabled={regenerating}
-            className="gap-1.5 text-xs h-8"
-            title="Re-run the AI to refresh script, captions and hashtags"
+            className="gap-1.5 text-xs h-8 text-muted-foreground hover:text-foreground"
+            title="Quickly re-run the standard blueprint"
           >
             {regenerating
               ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
               : <RefreshCw className="w-3.5 h-3.5" />}
-            {regenerating ? "Regenerating…" : "Regenerate"}
+            {regenerating ? "Working…" : "Refresh"}
           </Button>
         )}
       </div>
 
-      {/* Upgrade banner for older blueprints missing new fields */}
-      {onRegenerate && missingNewFields && !regenerating && (
-        <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 flex items-start gap-2.5">
-          <RefreshCw className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-          <div className="flex-1 text-sm">
-            <p className="text-foreground font-medium">New fields available</p>
-            <p className="text-muted-foreground text-xs mt-0.5">
+      {/* Detailed upgrade banner — distinct from the small Refresh in the header */}
+      {onGenerateDetailed && needsDetailedUpgrade && !regenerating && (
+        <div className="mb-4 rounded-lg border border-primary/40 bg-gradient-to-r from-primary/10 to-primary/5 p-3.5 flex items-start gap-3">
+          <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0">
+            <Mic2 className="w-4 h-4 text-primary" />
+          </div>
+          <div className="flex-1 text-sm min-w-0">
+            <p className="text-foreground font-semibold">
+              {isVideo ? "Generate cinema-grade script & long caption" : "Generate detailed long caption"}
+            </p>
+            <p className="text-muted-foreground text-xs mt-1 leading-relaxed">
               {isVideo
-                ? "This blueprint was created before the Full Script and Long Caption upgrades. Click Regenerate to add them."
-                : "This blueprint was created before the Long Caption upgrade. Click Regenerate to add it."}
+                ? <>Produces a <span className="text-foreground font-medium">1000–1500 word shooting script</span> with frames, camera angles, lighting, props, dialogue, sound design, transitions and references — plus a <span className="text-foreground font-medium">~1500-character keyword-rich caption</span>. Uses GPT-4o, takes 30–60 s.</>
+                : <>Produces a <span className="text-foreground font-medium">~1500-character keyword-rich caption</span> with 8–12 long-tail search phrases. Uses GPT-4o, takes 20–40 s.</>}
             </p>
           </div>
           <Button
             size="sm"
-            onClick={onRegenerate}
-            className="gap-1.5 text-xs h-7"
+            onClick={onGenerateDetailed}
+            className="gap-1.5 text-xs h-8 flex-shrink-0"
           >
-            <RefreshCw className="w-3 h-3" />
-            Regenerate
+            <Mic2 className="w-3.5 h-3.5" />
+            {isVideo ? "Generate Detailed Script" : "Generate Detailed Caption"}
           </Button>
         </div>
       )}
@@ -207,21 +222,25 @@ export const ExecutionBlueprint = ({
               <div className="flex items-center gap-2">
                 <Mic2 className="w-4 h-4 text-primary" />
                 <h4 className="font-semibold text-foreground text-sm uppercase tracking-wider">Full Script</h4>
-                <span className="text-xs text-muted-foreground font-normal">(voiceover / dialogue)</span>
+                <span className="text-xs text-muted-foreground font-normal">
+                  ({fullScriptWordCount.toLocaleString()} words{fullScriptWordCount >= 800 ? " · cinema-grade" : ""})
+                </span>
               </div>
               {scriptExpanded
                 ? <ChevronUp className="w-4 h-4 text-muted-foreground" />
                 : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
             </button>
             {scriptExpanded && (
-              <div className="mt-3 bg-secondary/50 rounded-lg p-3">
-                <pre className="text-sm text-secondary-foreground whitespace-pre-wrap font-sans">
+              <div className="mt-3 bg-secondary/50 rounded-lg p-3 max-h-[600px] overflow-y-auto">
+                <pre className="text-sm text-secondary-foreground whitespace-pre-wrap font-sans leading-relaxed">
                   {blueprint.full_script}
                 </pre>
               </div>
             )}
             {!scriptExpanded && (
-              <p className="text-xs text-muted-foreground mt-1">Click to expand the full word-for-word script</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Click to expand the {fullScriptWordCount >= 800 ? "full shot-by-shot production document" : "word-for-word script"}
+              </p>
             )}
           </div>
         )}

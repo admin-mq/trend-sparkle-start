@@ -435,7 +435,7 @@ const TrendQuest = () => {
     }
   };
 
-  const handleViewBlueprint = async (direction: CreativeDirection) => {
+  const handleViewBlueprint = async (direction: CreativeDirection, opts?: { detailed?: boolean }) => {
     if (!userProfile) {
       setBlueprintError('User profile is required');
       return;
@@ -451,7 +451,8 @@ const TrendQuest = () => {
           user_profile: userProfile,
           trend_id: selectedTrendId,
           chosen_direction: direction,
-          user_id: user?.id || null
+          user_id: user?.id || null,
+          detailed: opts?.detailed === true,
         }
       });
       if (error) throw new Error('Failed to generate execution blueprint');
@@ -467,6 +468,11 @@ const TrendQuest = () => {
   const handleRegenerateBlueprint = async () => {
     if (!selectedDirection) return;
     await handleViewBlueprint(selectedDirection);
+  };
+
+  const handleGenerateDetailed = async () => {
+    if (!selectedDirection) return;
+    await handleViewBlueprint(selectedDirection, { detailed: true });
   };
 
   const isLoading = trendsLoading || directionsLoading || blueprintLoading || tweetsLoading;
@@ -560,7 +566,7 @@ const TrendQuest = () => {
             </div>
           );
         }
-        return <ExecutionBlueprint trendName={selectedTrendName} ideaTitle={selectedIdeaTitle} blueprint={detailedDirection} trendHashtags={trendHashtags} onBack={() => setActiveStep("directions")} onDeepHashtagAnalysis={detailedDirection ? handleOptimizeHashtags : undefined} userProfile={userProfile} contentFormat={inputValues.content_format} onFeedback={handleFeedback} onRegenerate={selectedDirection ? handleRegenerateBlueprint : undefined} regenerating={blueprintLoading} />;
+        return <ExecutionBlueprint trendName={selectedTrendName} ideaTitle={selectedIdeaTitle} blueprint={detailedDirection} trendHashtags={trendHashtags} onBack={() => setActiveStep("directions")} onDeepHashtagAnalysis={detailedDirection ? handleOptimizeHashtags : undefined} userProfile={userProfile} contentFormat={inputValues.content_format} onFeedback={handleFeedback} onRegenerate={selectedDirection ? handleRegenerateBlueprint : undefined} onGenerateDetailed={selectedDirection ? handleGenerateDetailed : undefined} regenerating={blueprintLoading} />;
     }
   };
 
