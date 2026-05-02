@@ -74,18 +74,32 @@ export const ExecutionBlueprint = ({
   const handleOptimizeInline = async () => {
     setOptimizing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("optimize-hashtags-inline", {
+      // Route through the already-deployed analyze-hashtags function and
+      // flatten its safe + experimental sets into a single inline list.
+      const { data, error } = await supabase.functions.invoke("analyze-hashtags", {
         body: {
-          caption: blueprint.caption,
-          current_hashtags: blueprint.recommended_hashtags,
-          niche: userProfile?.niche || userProfile?.industry || "",
-          platform: userProfile?.platform || "Instagram",
-          trend_name: trendName,
+          caption: blueprint.caption || "",
+          platform: (userProfile?.platform || "instagram").toString().toLowerCase(),
+          region: "global",
+          goal_type: "reach",
+          brand_profile: userProfile ?? null,
+          from_trend_quest: {
+            trend_name: trendName,
+            trend_hashtags: trendHashtags,
+          },
         },
       });
-      if (error || data?.error) throw new Error(data?.error || error?.message);
-      setOptimizedHashtags(data.hashtags || []);
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+
+      const safeTags = (data?.safe?.hashtags ?? []).map((h: { tag: string }) => h.tag);
+      const expTags  = (data?.experimental?.hashtags ?? []).map((h: { tag: string }) => h.tag);
+      const merged = Array.from(new Set([...safeTags, ...expTags])).filter(Boolean);
+
+      if (merged.length === 0) throw new Error("No hashtags returned");
+      setOptimizedHashtags(merged);
     } catch (e) {
+      console.error("optimise hashtags failed:", e);
       toast.error("Could not optimise hashtags. Try again.");
     } finally {
       setOptimizing(false);

@@ -39,3 +39,9 @@ verify_jwt = false
 
 [functions.analyze-hashtag-gaps]
 verify_jwt = false
+
+[functions.analyze-reference-account]
+verify_jwt = false
+
+[functions.optimize-hashtags-inline]
+verify_jwt = false
