@@ -6,7 +6,7 @@ import {
   Globe, RefreshCw, ArrowLeft, Zap, Eye, Play, MessageSquare,
   Bell, TrendingDown, ChevronUp, ChevronDown, Clock,
   Link2, ExternalLink, Plus, Trash2, Quote, Swords, Crown, ShieldAlert,
-  Download, Minus, BarChart2,
+  Download, Minus, BarChart2, ListChecks,
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar,
@@ -1683,6 +1683,18 @@ const PRResults = () => {
 
         {/* ── Actions ─────────────────────────────────────────────────────── */}
         <TabsContent value="actions" className="space-y-3 mt-4">
+          {result.recommended_actions.length > 0 && (
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                onClick={() => navigate("/pr/todo")}
+                className="gap-2"
+              >
+                <ListChecks className="w-4 h-4" />
+                What Next?
+              </Button>
+            </div>
+          )}
           {result.recommended_actions.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center">
