@@ -20,7 +20,7 @@ verify_jwt = false
 
 [functions.pr-scheduler]
 verify_jwt = false
-schedule = "0 6 * * *"
+# schedule = "0 6 * * *"  # not supported by this CLI version; managed via dashboard
 
 [functions.fetch-trends]
 verify_jwt = false
