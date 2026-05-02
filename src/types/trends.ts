@@ -159,6 +159,8 @@ export interface DetailedDirection {
   concept: string;
   script_outline: string[];
   full_script?: string | null;
+  /** Cinematic-grade visual brief used when content_format is image / carousel / static. */
+  visual_brief?: string | null;
   caption: string;
   long_caption?: string | null;
   recommended_hashtags: string[];

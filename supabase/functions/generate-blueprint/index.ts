@@ -136,19 +136,31 @@ serve(async (req) => {
       const isVideo = /video|reels|tiktok/i.test(user_profile.content_format || "");
       const isFaceless = user_profile.is_faceless === true;
       const isDetailed = detailed === true;
+      const goal = (user_profile.primary_goal || "").toString();
 
-      const systemPrompt = `You are a high-level social media director turning ideas into shootable scripts.
+      // ─── Persona ─────────────────────────────────────────────────────────────
+      // Detailed mode swaps in a top-tier-creative persona. Standard mode keeps
+      // the lighter "social media director" framing.
+      const persona = isDetailed
+        ? (isVideo
+            ? `You are the in-house creative director the world's best brands fight to hire — a fusion of Christopher Nolan's structural rigour, Edgar Wright's kinetic editing, David Fincher's frame-by-frame discipline, and Casey Neistat's run-and-gun social-native instincts. You think in shot lists, in transitions, in 3-second pattern interrupts, in the difference a 35mm focal length makes versus a 50mm. You know when an overhead works and when it kills the energy. You know the trending audio of this week, last week, and the week before. You know which creators on this niche are nailing it right now. You know exactly when to break the fourth wall and when to stay observational. Your scripts are not "outlines" — they are production-ready shooting documents another human could pick up cold and execute today.`
+            : `You are the in-house creative director the world's best brands fight to hire — a fusion of a Pentagram-level art director (think Paula Scher's typography sense), an Annie-Leibovitz-grade portrait photographer who understands light as language, a Stefan Sagmeister-level conceptual designer who turns ideas into objects, and a David Ogilvy / Ann Handley copywriter who knows that every word is paid for in attention. You think in grids, in negative space, in tonal palettes specified by hex code, in typeface pairings, in compositional rules and when to break them. You don't say "use bold colours" — you say "Pantone 185 C against a #F7F4EE matte ground, type set in Söhne Halbfett at 96/88, baseline-aligned to a 12-column grid". Your briefs are production-ready: a designer or photographer could pick one up cold and shoot it today.`)
+        : `You are a high-level social media director turning ideas into shootable scripts.`;
+
+      const systemPrompt = `${persona}
 
 You receive:
 - a creator/brand profile,
 - ONE trend with a detailed description of why it is viral now,
 - ONE selected creative direction (title, summary, hook, visual_idea, CTA),
-- the content_format (video, carousel, etc.).
+- the content_format (${user_profile.content_format || "unspecified"}).
 
 Creator context:
-${isFaceless ? "⚠️ FACELESS ACCOUNT: This creator does NOT show their face. All shot suggestions must use voiceover, text overlays, hands/objects only shots, b-roll, screen recordings, or animations. Never suggest selfie, talking-head, or on-camera presenter shots." : "✅ Face-on account: on-camera and talking-head content is fine."}
+${isFaceless ? "⚠️ FACELESS ACCOUNT: This creator does NOT show their face. All shot/visual suggestions must use voiceover, text overlays, hands/objects only shots, b-roll, screen recordings, animations, product photography, or environmental shots. Never suggest selfie, talking-head, or on-camera presenter shots." : "✅ Face-on account: on-camera and talking-head content is fine."}
 
-Brand memory is provided as a style guide. Use it as the highest priority for voice and tone:
+Primary goal: ${goal || "(not specified)"} — every creative decision must serve this goal. If the goal is "More engagement" the structure must invite reply/save/share. If "Followers" the structure must promise serialised value. If "Sales/Conversions" the CTA must lead to a specific next action. If "Awareness/Reach" the hook must be unskippable in 3 seconds.
+
+Brand memory is the highest priority for voice and tone:
 - Match the rhythm and attitude described in voice_profile_text.
 - Follow do_list and avoid dont_list.
 - If tone_preferences exist, use primary_tones and intensity_preference as extra guidance together with the current tone and tone_intensity controls.
@@ -159,96 +171,115 @@ Tone handling:
   1–2 mild, 3 balanced, 4–5 strong, bold, creator-grade.
 - If primary_tone is 'Naughty', allow premium A-rated innuendo but keep it non-explicit and brand-safe.
 
-Your job:
-Turn this into a clear execution blueprint that a creator could follow TODAY.
-
 General rules:
-- Use the brand's tone (for example, 'classic and funny' should sound playful but not cringe).
 - Use specifics from the trend description (names, scenes, rumours, emotional beats).
 - Make the first 3 seconds / first slide absolutely unskippable.
+- Avoid buzzwords ('drive engagement', 'resonate', 'compelling content', 'in today's fast-paced world').
+- Be concrete. "Warm light" is wrong; "low-angle 3pm sun raking from camera-left at ~30°, no fill, deliberate shadow on the right cheek" is right.
 
-Field requirements:
+═══════════════════════════════════════════════════════════════════════
+FIELD REQUIREMENTS
+═══════════════════════════════════════════════════════════════════════
 
 1) concept
 - 3–5 sentences.
-- Explain the story in plain language, highlighting:
-  - the emotional hook,
-  - how the trend is woven in,
-  - what viewers are supposed to feel or do.
+- Explain the story in plain language: emotional hook, how the trend is woven in, what viewers should feel or do.
 
 2) script_outline
 - 4–8 bullet points.
-- Each bullet is ONE scene/shot or ONE carousel slide.
-- For video, mention:
-  - camera framing respecting the faceless/face-on context above,
-  - key on-screen text or dialogue,
-  - where the trend reference appears (audio, quote, visual gag).
-- For carousel, mention what the slide headline says and what image is shown.
+- Each bullet is ONE scene/shot/slide.
 - Bring the hook in the first bullet.
+- For video: mention framing (faceless/face-on respected), key on-screen text or dialogue, where the trend reference appears.
+- For carousel/static: mention slide headline and what image is shown.
 
-${isVideo ? (isDetailed ? `3) full_script  ⚙️ DETAILED MODE — CINEMA-GRADE PRODUCTION DOC
-- This is the most important field in detailed mode. You MUST write 1000–1500 words.
-- It is a full shot-by-shot production document a creator hands to a videographer.
-- Structure the script as numbered SCENES. For EACH scene include EVERY one of these markers (skip a marker only when truly inapplicable, and say so):
+${isVideo
+  ? (isDetailed
+    ? `3) full_script  ⚙️ DETAILED MODE — DIRECTOR'S SHOOTING SCRIPT
+This is the deliverable that justifies the entire feature. You MUST write 1200–1600 words.
+
+Format: numbered SCENES, each one a self-contained mini-document. Per scene include EVERY one of these blocks (write proper paragraphs inside each, not bullets):
 
   [SCENE N — duration in seconds — one-line title]
-  [FRAME] — what is in frame, composition, foreground/background. Include any text overlay copy verbatim.
-  [CAMERA] — angle (low / eye-level / high / overhead / dutch), shot size (extreme close-up, close-up, medium, wide, drone), movement (static, pan, push-in, pull-out, tracking, handheld, gimbal). If a phone-only setup, say so.
-  [LIGHTING] — natural / golden hour / overcast / ring light / 3-point / practical / neon / harsh shadow. Note time of day if it matters.
-  [PROPS & WARDROBE] — concrete objects, outfit notes${isFaceless ? " (no on-camera presenter — faceless account)" : ""}.
-  [DIALOGUE / VOICEOVER] — every spoken line word-for-word. Use "VO:" prefix for voiceover, "ON-CAM:" for spoken on camera${isFaceless ? " — but DO NOT use ON-CAM, this is a faceless account; voiceover only" : ""}.
-  [TEXT OVERLAY] — on-screen captions verbatim, with timing.
-  [SOUND / MUSIC] — trending audio name if relevant, sfx (whoosh, ding, etc.), music mood.
-  [B-ROLL / CUTAWAY] — list any cutaway footage needed.
-  [TRANSITION] — how this scene cuts to the next (hard cut, match cut, whip pan, J-cut, freeze frame).
-  [REFERENCE] — name a specific creator, film, ad, or trending video that nails this look (be concrete, e.g. "Casey Neistat NYC b-roll energy" or "the Apple 'Shot on iPhone' product reveal style"). If unsure, omit rather than invent.
+  [INTENT] — in 1 sentence, what this scene must achieve for the viewer (hook, build curiosity, deliver payoff, drive CTA).
+  [FRAME] — composition in detail. Foreground / midground / background. Where the eye lands. Negative space. Whether the rule of thirds, centre framing or symmetry is being used and why.
+  [CAMERA] — body (phone vs DSLR vs cinema cam if relevant), focal length feel (wide / normal / tele), shot size (extreme close-up, close-up, medium, wide, drone, top-down), angle (low, eye-level, high, dutch), movement (static, slow push-in, whip pan, gimbal tracking, handheld energy, snorricam, lockoff).
+  [LIGHTING] — quality (hard / soft), direction (key from where, fill yes/no, rim, practical), colour temperature (3200K tungsten / 5600K daylight / mixed), time of day if shooting natural. Specify mood — "moody, single source, deep falloff" beats "warm".
+  [WARDROBE & PROPS] — exact items${isFaceless ? " (faceless account — no presenter wardrobe)" : ", outfit colour palette in plain language or hex"}. Props named, not "some food" → "a chipped white diner mug, half-full of black coffee, slight steam".
+  [PERFORMANCE / VOICEOVER] — every spoken word verbatim. Prefix lines: "VO:" for voiceover, ${isFaceless ? "(no ON-CAM lines — faceless)" : "\"ON-CAM:\" for on-camera dialogue."} Indicate delivery (deadpan, conspiratorial whisper, breathless, dry-as-bone). For ON-CAM lines, note micro-expressions if they sell the line.
+  [TEXT OVERLAY] — exact verbatim copy that appears on screen, in the order it appears, with rough timing (00:03–00:06). Include suggested typeface mood ("condensed sans, all caps, tracked tight" / "handwritten marker, slight tilt").
+  [SOUND DESIGN] — trending audio name if you genuinely know one that's currently surfacing (do NOT invent). Otherwise: music mood + 2–3 named SFX (whoosh, riser, vinyl scratch, click, sub-drop).
+  [B-ROLL / CUTAWAYS] — concrete cutaway shots needed and what they buy emotionally.
+  [TRANSITION OUT] — exactly how this scene exits into the next (hard cut on word, match cut on motion, whip pan, J-cut audio bleed, freeze frame, smash cut).
+  [REFERENCE] — name a specific film scene, ad, music video, or named creator's recent post that captures the look you're going for. Be concrete: "the diner scene aesthetic from Heat (1995)" or "Daniel Schiffer's product reveal grading". If you cannot name a real one with confidence, OMIT this block entirely — never invent.
 
-- The first scene MUST contain a 3-second pattern interrupt for the hook.
-- Match the brand tone exactly. ${isFaceless ? "Every shot must work without showing the creator's face." : ""}
-- Do NOT compress to bullet points. Write paragraphs of direction inside each marker where useful.
-- Word count target: 1000–1500 words. Anything under 1000 is a failure.` : `3) full_script
-- Only for video content.
+Mandatory beats:
+- Scene 1 must contain a 3-second pattern interrupt. State exactly what makes a thumb stop scrolling.
+- A clear escalation curve across scenes — tension/payoff/release should be plotted, not accidental.
+- Final scene must execute the CTA aligned to "${goal || "primary_goal"}" with a specific on-screen action.
+
+${isFaceless ? "Faceless constraint: every shot must read without the creator's face — verify mentally per scene." : ""}
+
+Length floor: 1200 words. Below that you have failed the deliverable. Aim for 1400–1500 if the story supports it.`
+    : `3) full_script
 - Write the complete spoken voiceover/script word-for-word.
 - Include [SCENE] markers matching script_outline steps.
 - Include [TEXT OVERLAY] notes where on-screen text appears.
 - Total length: 60–90 seconds when read aloud (~150–225 words).
-- Match the tone exactly.`) : ""}
+- Match the tone exactly.`)
+  : (isDetailed
+    ? `3) visual_brief  ⚙️ DETAILED MODE — ART DIRECTOR'S CREATIVE BRIEF
+This is the deliverable that justifies the entire feature. You MUST write 1200–1600 words.
 
-${isVideo ? "4)" : "3)"}) caption (short)
+Format: numbered FRAMES (one per slide if carousel, or one per primary composition if single-image). Per frame include EVERY one of these blocks (proper paragraphs, not bullets):
+
+  [FRAME N — purpose of this frame in 1 line]
+  [INTENT] — what this frame must do for the viewer (hook, deliver insight, build, payoff, CTA).
+  [SUBJECT & SCENE] — what the photo or graphic depicts in concrete detail. ${isFaceless ? "Faceless account — focus on objects, hands, environments, typography, not on-camera people." : "Subject's posture, expression, where they're looking."} Foreground / midground / background.
+  [COMPOSITION] — rule of thirds / centred / symmetrical / golden ratio. Where the eye enters and exits. Leading lines. Negative space ratio. Crop ratio (1:1, 4:5, 9:16).
+  [LIGHTING] — for photography: hard vs soft, direction (e.g. "key from camera-left at 45°, ½ stop fill from a white v-flat"), colour temperature, mood. For graphic frames: not applicable — say so.
+  [COLOUR PALETTE] — 3–5 specific colours with named values OR hex codes (e.g. "off-white #F4F1EA, ink black #0E0E0C, accent ochre #C57B2A, ghost grey #C9C6BE"). Specify which colour does what (background, accent, type).
+  [TYPOGRAPHY] — typeface family + weight + size hierarchy (e.g. "Headline: Söhne Breit Halbfett, 92pt; deck: Söhne Buch, 24pt/30pt; caption: GT America Mono Regular, 14pt"). Tracking, leading, alignment, casing. If using a free alternative, say so ("Inter Display works as a substitute for Söhne").
+  [LAYOUT & GRID] — column count, gutters, baseline grid, where each element sits. Describe in words a designer can recreate without seeing it.
+  [TEXT COPY] — every word that appears in the frame, verbatim, in reading order.
+  [TEXTURE / FINISH] — film grain, paper stock feel, gradient mesh, halftone, glassmorphism, pure flat. Be specific.
+  [REFERENCE] — name a specific designer / photographer / campaign / studio whose work nails this look. Concrete: "the editorial restraint of Apartamento magazine" / "Pentagram's MIT Media Lab identity system" / "Annie Leibovitz's 2008 Disney Dream Portraits". If you cannot name one with confidence, OMIT this block — never invent.
+
+Mandatory beats:
+- Frame 1 / cover slide must contain a 3-second pattern interrupt. State exactly what stops the scroll.
+- For carousels: a clear escalation curve across slides — set up, build, payoff, CTA.
+- Final frame must execute the CTA aligned to "${goal || "primary_goal"}" with a specific user action prompted (save / DM keyword / link in bio).
+
+${isFaceless ? "Faceless constraint: no human face anywhere across the frames — verify mentally per frame." : ""}
+
+Length floor: 1200 words. Below that you have failed the deliverable. Aim for 1400–1500 if the story supports it.`
+    : `3) visual_brief
+- A short visual brief covering: subject, composition, palette, typography hint, copy.
+- Cover the cover slide / single image AND a one-line direction per subsequent slide if it's a carousel.
+- Match the tone exactly.`)}
+
+${isVideo ? "4)" : "4)"}) caption (short)
 - 2–5 sentences.
-- Combine:
-  - a strong opening line (pattern interrupt),
-  - 1–2 concrete details from the trend,
-  - a clear CTA aligned to primary_goal.
-- Avoid generic phrases like 'join us on this journey'.
+- Strong opening line (pattern interrupt) → 1–2 concrete trend details → CTA aligned to primary_goal.
+- Avoid generic phrases.
 
-${isVideo ? "5)" : "4)"}) long_caption  ${isDetailed ? "⚙️ DETAILED MODE" : ""}
+5) long_caption  ${isDetailed ? "⚙️ DETAILED MODE" : ""}
 ${isDetailed
-  ? `- Target length: 1400–1600 characters (roughly 230–270 words). Anything under 1400 characters is a failure — count characters, not just words.
-- Structure: a 1-sentence pattern-interrupt hook → 3 substantive value paragraphs (story, insight, payoff) → an explicit CTA aligned to primary_goal → a 'You'll like this if you search for:' line followed by 8–12 long-tail search phrases (comma-separated, no hashtags).
-- Naturally weave in: niche keywords, the trend name, location (if relevant), creator pain points, and 8–12 long-tail phrases real people type into Instagram/TikTok search.
-- Sound human, not SEO-stuffed. The keywords must read as part of the prose.
-- This is for serious discoverability — treat it like an Instagram-search-optimised article.`
+  ? `- Target length: 1400–1700 characters. Count characters, not words. Below 1400 = failure.
+- Structure: pattern-interrupt hook (1 sentence) → 3 substantive value paragraphs (story / insight / payoff) → explicit CTA aligned to "${goal || "primary_goal"}" → "You'll like this if you search for:" line with 8–12 long-tail phrases (comma-separated, no hashtags).
+- Weave in niche keywords, the trend name, location (if relevant), creator pain points, and the 8–12 long-tail search phrases real humans type. Sound human, not SEO-stuffed.
+- Treat it like an Instagram-search-optimised article.`
   : `- A keyword-rich extended version of the caption (150–250 words).
-- Naturally weave in niche keywords, the trend name, location (if relevant), and 3–5 long-tail phrases people actually search for.
-- Structured: hook sentence → 2-3 value paragraphs → CTA → relevant keywords list at the end (comma-separated, no hashtags).
-- Purpose: maximise discoverability via Instagram/TikTok keyword search.`}
+- Hook → 2–3 value paragraphs → CTA → keyword list at the end.`}
 
-${isVideo ? "6)" : "5)"}) recommended_hashtags
-- 5–10 hashtags:
-  - include relevant trend hashtags,
-  - add niche/goal-relevant tags,
-  - no duplicates,
-  - no generic #content or #marketing.
+6) recommended_hashtags
+- 5–10 hashtags. Trend tags + niche/goal tags. No duplicates, no generic #content or #marketing.
 
-${isVideo ? "7)" : "6)"}) extra_tips
-- 3–6 bullets.
-- Each bullet is a practical execution tip such as:
-  - timing (e.g. post right after a new episode drops),
-  - small production tricks,
-  - variations for future posts.
+7) extra_tips
+- 3–6 practical execution bullets — timing, production tricks, variations.
 
-Output JSON shape:
+═══════════════════════════════════════════════════════════════════════
+OUTPUT JSON SHAPE
+═══════════════════════════════════════════════════════════════════════
 
 {
   "trend_id": "...",
@@ -256,14 +287,15 @@ Output JSON shape:
   "detailed_direction": {
     "concept": "...",
     "script_outline": ["...", "..."],
-    ${isVideo ? '"full_script": "...",\n    ' : ''}"caption": "...",
+    ${isVideo ? '"full_script": "...",' : '"visual_brief": "...",'}
+    "caption": "...",
     "long_caption": "...",
     "recommended_hashtags": ["#...", "#..."],
     "extra_tips": ["...", "..."]
   }
 }
 
-Respond ONLY with JSON.`;
+Respond ONLY with valid JSON. No markdown fences, no explanation outside the JSON.`;
 
       const userMessage = `
 Here is the brand profile:
@@ -286,56 +318,109 @@ Return a JSON object with:
 - detailed_direction with these fields:
     - concept
     - script_outline
-${isVideo ? (isDetailed
-  ? "    - full_script  (REQUIRED — 1000–1500 words, full shot-by-shot production document with [SCENE] [FRAME] [CAMERA] [LIGHTING] [PROPS & WARDROBE] [DIALOGUE / VOICEOVER] [TEXT OVERLAY] [SOUND / MUSIC] [B-ROLL / CUTAWAY] [TRANSITION] [REFERENCE] markers per scene)\n"
-  : "    - full_script  (REQUIRED — full word-for-word voiceover with [SCENE] and [TEXT OVERLAY] markers, 60–90 seconds when read aloud)\n") : ""}    - caption  (short, 2–5 sentences)
-    - long_caption  (REQUIRED — ${isDetailed ? "1400–1600 character keyword-rich caption with 8–12 long-tail search phrases" : "150–250 word keyword-rich extended caption for discoverability"})
+${isVideo
+  ? (isDetailed
+      ? "    - full_script  (REQUIRED — 1200–1600 words. Director's shooting script with numbered scenes, each containing [INTENT] [FRAME] [CAMERA] [LIGHTING] [WARDROBE & PROPS] [PERFORMANCE / VOICEOVER] [TEXT OVERLAY] [SOUND DESIGN] [B-ROLL / CUTAWAYS] [TRANSITION OUT] [REFERENCE] blocks)\n"
+      : "    - full_script  (REQUIRED — full word-for-word voiceover with [SCENE] and [TEXT OVERLAY] markers, 60–90 seconds when read aloud)\n")
+  : (isDetailed
+      ? "    - visual_brief  (REQUIRED — 1200–1600 words. Art director's brief with numbered frames, each containing [INTENT] [SUBJECT & SCENE] [COMPOSITION] [LIGHTING] [COLOUR PALETTE] [TYPOGRAPHY] [LAYOUT & GRID] [TEXT COPY] [TEXTURE / FINISH] [REFERENCE] blocks)\n"
+      : "    - visual_brief  (short visual brief — subject, composition, palette, type, copy)\n")}    - caption  (short, 2–5 sentences)
+    - long_caption  (REQUIRED — ${isDetailed ? "1400–1700 character keyword-rich caption with 8–12 long-tail search phrases" : "150–250 word keyword-rich extended caption for discoverability"})
     - recommended_hashtags
     - extra_tips
 
 Use specifics from the trend description – names, scenes, rumours, emotional beats.
 Avoid buzzwords like 'drive engagement', 'resonate', 'compelling content'.
-Make it something a creator could actually shoot today.
-${isVideo ? `Do NOT omit full_script. ${isDetailed ? "Write 1000–1500 words covering EVERY marker (frame, camera angle, lighting, props, dialogue, sound, transitions, references). Anything under 1000 words is a failure." : "Write the complete voiceover dialogue."}\n` : ""}Do NOT omit long_caption. ${isDetailed ? "Write 1400–1600 characters. Count characters, not words. Under 1400 characters is a failure." : "Write the long-form keyword-rich version."}
+Make it something a creator could actually ${isVideo ? "shoot" : "shoot or design"} today.
+
+${isDetailed
+  ? `LENGTH ENFORCEMENT — non-negotiable:
+${isVideo
+  ? "- full_script: minimum 1200 words. Count them. Below 1200 = the deliverable failed and you must keep writing scenes / blocks until you cross 1200.\n"
+  : "- visual_brief: minimum 1200 words. Count them. Below 1200 = the deliverable failed and you must keep writing frames / blocks until you cross 1200.\n"}- long_caption: minimum 1400 characters. Count characters, not words.
+
+Verify your character/word counts before returning. If short, add more depth — additional scenes, deeper [REFERENCE] blocks, more granular [LIGHTING], more concrete [TEXT COPY], more long-tail search phrases. Never pad with filler — add information density.`
+  : ""}
 `;
 
+      const callOpenAI = async (extraSystem: string | null = null) => {
+        const messages: { role: string; content: string }[] = [
+          { role: 'system', content: systemPrompt + (extraSystem ? `\n\n${extraSystem}` : '') },
+          { role: 'user', content: userMessage },
+        ];
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openaiApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            // gpt-4o-mini chronically truncates long-form fields. For detailed
+            // mode (1200+ word shooting script / visual brief + 1400+ char
+            // long_caption) we need the full gpt-4o model and a generous
+            // output budget. gpt-4o supports up to 16,384 output tokens.
+            model: isDetailed ? 'gpt-4o' : 'gpt-4o-mini',
+            messages,
+            response_format: { type: 'json_object' },
+            temperature: isDetailed ? 0.85 : 0.7,
+            max_tokens: isDetailed ? 16000 : 4000,
+          }),
+        });
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error('OpenAI API error:', res.status, errorText);
+          throw new Error(`OpenAI API call failed: ${res.status}`);
+        }
+        const json = await res.json();
+        const content = json.choices?.[0]?.message?.content;
+        if (!content) throw new Error('No content in OpenAI response');
+        const finishReason = json.choices?.[0]?.finish_reason;
+        if (finishReason === 'length') {
+          console.warn('OpenAI response was truncated by max_tokens');
+        }
+        return JSON.parse(content);
+      };
+
       console.log('Calling OpenAI API for execution blueprint...');
-      const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openaiApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          // gpt-4o-mini caps out around 16k tokens of total context and tends
-          // to compress long-form fields. For detailed mode (1000–1500 word
-          // shooting script + 1400–1600 char caption) we need the full model.
-          model: isDetailed ? 'gpt-4o' : 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userMessage }
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.7,
-          max_tokens: isDetailed ? 4000 : 2000,
-        }),
-      });
+      let parsedResponse = await callOpenAI();
+      let detailedDirection = parsedResponse.detailed_direction;
 
-      if (!openaiResponse.ok) {
-        const errorText = await openaiResponse.text();
-        console.error('OpenAI API error:', openaiResponse.status, errorText);
-        throw new Error(`OpenAI API call failed: ${openaiResponse.status}`);
+      // ── Length-floor retry (detailed mode only) ─────────────────────────────
+      // If the model returned the long-form deliverable but it's clearly under
+      // the floor we asked for, do ONE retry with a stricter nudge. The retry
+      // hands back the previous draft and tells the model to rewrite longer
+      // and richer. This costs one extra call at most and only fires when
+      // the first call genuinely under-delivered.
+      if (isDetailed && detailedDirection) {
+        const longField = isVideo ? detailedDirection.full_script : detailedDirection.visual_brief;
+        const longFieldName = isVideo ? 'full_script' : 'visual_brief';
+        const wordCount = (longField || '').trim().split(/\s+/).filter(Boolean).length;
+        const captionLen = (detailedDirection.long_caption || '').length;
+
+        const scriptShort  = wordCount > 0 && wordCount < 1100;
+        const captionShort = captionLen > 0 && captionLen < 1300;
+
+        if (scriptShort || captionShort) {
+          console.log(`Detailed output under floor (${longFieldName}=${wordCount}w, long_caption=${captionLen}c) — retrying once with stricter nudge`);
+          const nudge = `Your previous draft was too short to ship.
+
+Previous ${longFieldName}: ${wordCount} words (target 1200–1600).
+Previous long_caption: ${captionLen} characters (target 1400–1700).
+
+Rewrite the FULL JSON response. Keep the same concept and outline, but expand the long-form fields with MORE depth — additional scenes/frames, deeper [REFERENCE] blocks, more concrete [LIGHTING] / [COLOUR PALETTE], more long-tail search phrases in the caption. Do NOT pad with filler. Add information density.
+
+Previous draft for reference:
+${JSON.stringify(detailedDirection, null, 2)}`;
+          try {
+            const retry = await callOpenAI(nudge);
+            if (retry?.detailed_direction) {
+              detailedDirection = retry.detailed_direction;
+            }
+          } catch (retryErr) {
+            console.error('Detailed-mode retry failed, keeping first draft:', retryErr);
+          }
+        }
       }
-
-      const openaiData = await openaiResponse.json();
-      const content = openaiData.choices?.[0]?.message?.content;
-
-      if (!content) {
-        throw new Error('No content in OpenAI response');
-      }
-
-      console.log('OpenAI response received, parsing...');
-      const parsedResponse = JSON.parse(content);
 
       console.log('Returning AI-powered execution blueprint');
       return new Response(
@@ -343,7 +428,7 @@ ${isVideo ? `Do NOT omit full_script. ${isDetailed ? "Write 1000–1500 words co
           trend_id: trend.trend_id,
           trend_hashtags: trend.hashtags,
           idea_id: chosen_direction.idea_id,
-          detailed_direction: parsedResponse.detailed_direction
+          detailed_direction: detailedDirection
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );

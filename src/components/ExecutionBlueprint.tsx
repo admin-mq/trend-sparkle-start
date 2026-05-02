@@ -5,7 +5,7 @@ import { DetailedDirection, UserProfile } from "@/types/trends";
 import {
   ArrowLeft, FileText, Hash, Lightbulb, Play, MessageSquare,
   Heart, Meh, ThumbsDown, Zap, Loader2, ExternalLink, Mic2,
-  AlignLeft, AlignJustify, ChevronDown, ChevronUp, RefreshCw,
+  AlignLeft, AlignJustify, ChevronDown, ChevronUp, RefreshCw, Camera,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
@@ -50,13 +50,14 @@ export const ExecutionBlueprint = ({
 
   // "Detailed-mode" thresholds — used to decide whether to show the upsell banner
   // even after a standard regenerate has already populated the basic fields.
-  const fullScriptWordCount = (blueprint?.full_script || "").trim().split(/\s+/).filter(Boolean).length;
+  const longFormText = isVideo ? (blueprint?.full_script || "") : (blueprint?.visual_brief || "");
+  const longFormWordCount = longFormText.trim().split(/\s+/).filter(Boolean).length;
   const longCaptionCharCount = (blueprint?.long_caption || "").length;
-  const hasShortScript = isVideo && fullScriptWordCount > 0 && fullScriptWordCount < 800;
+  const hasShortLongForm = longFormWordCount > 0 && longFormWordCount < 1000;
   const hasShortLongCaption = longCaptionCharCount > 0 && longCaptionCharCount < 1200;
-  const missingFields = (isVideo && !blueprint?.full_script) || !blueprint?.long_caption;
+  const missingFields = (isVideo ? !blueprint?.full_script : !blueprint?.visual_brief) || !blueprint?.long_caption;
   // Show the banner when fields are missing OR when they're present but well below detailed-mode size.
-  const needsDetailedUpgrade = missingFields || hasShortScript || hasShortLongCaption;
+  const needsDetailedUpgrade = missingFields || hasShortLongForm || hasShortLongCaption;
 
   // Caption tab: "short" | "long"
   const [captionTab, setCaptionTab] = useState<"short" | "long">("short");
@@ -159,16 +160,20 @@ export const ExecutionBlueprint = ({
       {onGenerateDetailed && needsDetailedUpgrade && !regenerating && (
         <div className="mb-4 rounded-lg border border-primary/40 bg-gradient-to-r from-primary/10 to-primary/5 p-3.5 flex items-start gap-3">
           <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0">
-            <Mic2 className="w-4 h-4 text-primary" />
+            {isVideo
+              ? <Mic2 className="w-4 h-4 text-primary" />
+              : <Camera className="w-4 h-4 text-primary" />}
           </div>
           <div className="flex-1 text-sm min-w-0">
             <p className="text-foreground font-semibold">
-              {isVideo ? "Generate cinema-grade script & long caption" : "Generate detailed long caption"}
+              {isVideo
+                ? "Generate director-grade shooting script & long caption"
+                : "Generate art-director-grade visual brief & long caption"}
             </p>
             <p className="text-muted-foreground text-xs mt-1 leading-relaxed">
               {isVideo
-                ? <>Produces a <span className="text-foreground font-medium">1000–1500 word shooting script</span> with frames, camera angles, lighting, props, dialogue, sound design, transitions and references — plus a <span className="text-foreground font-medium">~1500-character keyword-rich caption</span>. Uses GPT-4o, takes 30–60 s.</>
-                : <>Produces a <span className="text-foreground font-medium">~1500-character keyword-rich caption</span> with 8–12 long-tail search phrases. Uses GPT-4o, takes 20–40 s.</>}
+                ? <>A <span className="text-foreground font-medium">1200–1600 word shooting script</span> at the level of a top-tier creative director — numbered scenes with frame, camera, lighting, wardrobe, performance, text overlays, sound design, b-roll, transitions and concrete film/creator references — plus a <span className="text-foreground font-medium">~1500-character keyword-rich caption</span>. Uses GPT-4o, takes 60–90 s.</>
+                : <>A <span className="text-foreground font-medium">1200–1600 word visual brief</span> at the level of a Pentagram art director — numbered frames with subject, composition, lighting, hex-coded colour palette, typography hierarchy, layout grid and concrete designer/photographer references — plus a <span className="text-foreground font-medium">~1500-character keyword-rich caption</span>. Uses GPT-4o, takes 60–90 s.</>}
             </p>
           </div>
           <Button
@@ -176,8 +181,10 @@ export const ExecutionBlueprint = ({
             onClick={onGenerateDetailed}
             className="gap-1.5 text-xs h-8 flex-shrink-0"
           >
-            <Mic2 className="w-3.5 h-3.5" />
-            {isVideo ? "Generate Detailed Script" : "Generate Detailed Caption"}
+            {isVideo
+              ? <Mic2 className="w-3.5 h-3.5" />
+              : <Camera className="w-3.5 h-3.5" />}
+            {isVideo ? "Generate Director's Cut" : "Generate Visual Brief"}
           </Button>
         </div>
       )}
@@ -211,8 +218,8 @@ export const ExecutionBlueprint = ({
           </ul>
         </div>
 
-        {/* ── Full Script (video only) ── */}
-        {isVideo && blueprint.full_script && (
+        {/* ── Full Script (video) / Visual Brief (image+carousel) ── */}
+        {longFormText && (
           <div className="post-card p-4">
             <button
               type="button"
@@ -220,10 +227,14 @@ export const ExecutionBlueprint = ({
               className="w-full flex items-center justify-between gap-2 mb-1"
             >
               <div className="flex items-center gap-2">
-                <Mic2 className="w-4 h-4 text-primary" />
-                <h4 className="font-semibold text-foreground text-sm uppercase tracking-wider">Full Script</h4>
+                {isVideo
+                  ? <Mic2 className="w-4 h-4 text-primary" />
+                  : <Camera className="w-4 h-4 text-primary" />}
+                <h4 className="font-semibold text-foreground text-sm uppercase tracking-wider">
+                  {isVideo ? "Full Script" : "Visual Brief"}
+                </h4>
                 <span className="text-xs text-muted-foreground font-normal">
-                  ({fullScriptWordCount.toLocaleString()} words{fullScriptWordCount >= 800 ? " · cinema-grade" : ""})
+                  ({longFormWordCount.toLocaleString()} words{longFormWordCount >= 1000 ? (isVideo ? " · director's cut" : " · art-director grade") : ""})
                 </span>
               </div>
               {scriptExpanded
@@ -233,13 +244,15 @@ export const ExecutionBlueprint = ({
             {scriptExpanded && (
               <div className="mt-3 bg-secondary/50 rounded-lg p-3 max-h-[600px] overflow-y-auto">
                 <pre className="text-sm text-secondary-foreground whitespace-pre-wrap font-sans leading-relaxed">
-                  {blueprint.full_script}
+                  {longFormText}
                 </pre>
               </div>
             )}
             {!scriptExpanded && (
               <p className="text-xs text-muted-foreground mt-1">
-                Click to expand the {fullScriptWordCount >= 800 ? "full shot-by-shot production document" : "word-for-word script"}
+                Click to expand the {longFormWordCount >= 1000
+                  ? (isVideo ? "full shot-by-shot shooting script" : "art-director's frame-by-frame brief")
+                  : (isVideo ? "word-for-word script" : "visual brief")}
               </p>
             )}
           </div>
