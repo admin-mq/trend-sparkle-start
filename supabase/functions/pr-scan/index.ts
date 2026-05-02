@@ -683,23 +683,89 @@ Deno.serve(async (req: Request) => {
       .update({ progress_step: "Storing results…" })
       .eq("id", scan_job_id);
 
-    const { error: insertErr } = await supabase.from("pr_narrative_results").insert({
-      project_id,
-      scan_job_id,
-      narrative_score: analysis.narrative_score ?? null,
-      authority_score: analysis.authority_score ?? null,
-      proof_density_score: analysis.proof_density_score ?? null,
-      risk_score: analysis.risk_score ?? null,
-      opportunity_score: analysis.opportunity_score ?? null,
-      brand_narratives: analysis.brand_narratives ?? [],
-      competitor_narratives: analysis.competitor_narratives ?? {},
-      proof_gaps: analysis.proof_gaps ?? [],
-      recommended_actions: analysis.recommended_actions ?? [],
-      executive_summary: analysis.executive_summary ?? null,
-      pages_analyzed: totalPages,
-    });
+    const { data: insertedNarrative, error: insertErr } = await supabase
+      .from("pr_narrative_results")
+      .insert({
+        project_id,
+        scan_job_id,
+        narrative_score: analysis.narrative_score ?? null,
+        authority_score: analysis.authority_score ?? null,
+        proof_density_score: analysis.proof_density_score ?? null,
+        risk_score: analysis.risk_score ?? null,
+        opportunity_score: analysis.opportunity_score ?? null,
+        brand_narratives: analysis.brand_narratives ?? [],
+        competitor_narratives: analysis.competitor_narratives ?? {},
+        proof_gaps: analysis.proof_gaps ?? [],
+        recommended_actions: analysis.recommended_actions ?? [],
+        executive_summary: analysis.executive_summary ?? null,
+        pages_analyzed: totalPages,
+      })
+      .select("id")
+      .single();
 
     if (insertErr) throw new Error(`Failed to store results: ${insertErr.message}`);
+
+    // ── Step 5b: Seed pr_actions queue ────────────────────────────────────────
+    // Each recommended_action becomes a row in pr_actions with status='todo'.
+    // Stale 'todo' actions from previous scans (not yet touched by the user)
+    // are archived so the queue reflects the latest synthesis. Actions with
+    // user-applied state (in_progress/done/dismissed) and any with notes are
+    // preserved untouched. Dedup_key keeps repeat actions across scans stable
+    // (so a user's notes on "Launch quarterly data drops" survive re-runs).
+    try {
+      // Archive stale 'todo' actions from this project that have no user notes
+      // and weren't created in this scan. (Done before insert so re-runs of the
+      // same scan_job_id don't archive their own newly-created rows.)
+      await supabase
+        .from("pr_actions")
+        .update({ status: "archived" })
+        .eq("project_id", project_id)
+        .eq("status", "todo")
+        .is("notes", null)
+        .neq("scan_job_id", scan_job_id);
+
+      const actions = (analysis.recommended_actions ?? []) as any[];
+      if (actions.length > 0 && insertedNarrative?.id) {
+        const enc = new TextEncoder();
+        const rows = await Promise.all(
+          actions.map(async (a, idx) => {
+            const title = String(a.title || "").trim();
+            // Dedup key: stable hash of project + lowercased title
+            const hashInput = `${project_id}|${title.toLowerCase()}`;
+            const hashBuf = await crypto.subtle.digest("SHA-256", enc.encode(hashInput));
+            const dedupKey = Array.from(new Uint8Array(hashBuf))
+              .slice(0, 16)
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join("");
+            return {
+              project_id,
+              scan_job_id,
+              narrative_result_id: insertedNarrative.id,
+              title: title || `Action ${idx + 1}`,
+              action_type: a.action_type ?? null,
+              effort: a.effort ?? null,
+              priority: typeof a.priority === "number" ? a.priority : idx + 1,
+              expected_impact: a.expected_impact ?? null,
+              what_to_do: a.what_to_do ?? null,
+              why_it_matters: a.why_it_matters ?? null,
+              status: "todo" as const,
+              dedup_key: dedupKey,
+            };
+          })
+        );
+
+        // Upsert by (project_id, dedup_key) — refreshes scan_job_id, narrative_result_id,
+        // and any fields that may have changed in the new synthesis.
+        const { error: actionsErr } = await supabase
+          .from("pr_actions")
+          .upsert(rows, { onConflict: "project_id,dedup_key", ignoreDuplicates: false });
+        if (actionsErr) console.error("[pr-scan] pr_actions upsert failed:", actionsErr);
+        else console.log(`[pr-scan] Seeded ${rows.length} actions to pr_actions queue`);
+      }
+    } catch (e) {
+      // Non-fatal: scan still succeeds even if pr_actions seeding fails
+      console.error("[pr-scan] pr_actions seeding failed (non-fatal):", e);
+    }
 
     // ── Store score snapshot ──────────────────────────────────────────────────
     await supabase.from("pr_score_history").insert({

@@ -23,6 +23,7 @@ import Influencers from "./pages/Influencers";
 import PR from "./pages/PR";
 import PRResults from "./pages/PRResults";
 import PRPrint from "./pages/PRPrint";
+import PRTodo from "./pages/PRTodo";
 import Analytics from "./pages/Analytics";
 import PaidCampaigns from "./pages/PaidCampaigns";
 import Settings from "./pages/Settings";
@@ -81,6 +82,7 @@ const App = () => (
               <Route path="/influencers" element={<BrandOnlyRoute><Influencers /></BrandOnlyRoute>} />
               <Route path="/pr" element={<BrandOnlyRoute><PR /></BrandOnlyRoute>} />
               <Route path="/pr/results" element={<BrandOnlyRoute><PRResults /></BrandOnlyRoute>} />
+              <Route path="/pr/todo" element={<BrandOnlyRoute><PRTodo /></BrandOnlyRoute>} />
               <Route path="/analytics" element={<BrandOnlyRoute><Analytics /></BrandOnlyRoute>} />
               <Route path="/paid-campaigns" element={<BrandOnlyRoute><PaidCampaigns /></BrandOnlyRoute>} />
               <Route path="/admin" element={<BrandOnlyRoute><Admin /></BrandOnlyRoute>} />

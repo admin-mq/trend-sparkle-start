@@ -22,6 +22,7 @@ import {
   Brain,
   X,
   Sparkles,
+  ListChecks,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -50,6 +51,7 @@ const brandNavGroups = [
     label: "Execution",
     items: [
       { path: "/pr",            label: "PR Campaigns",  icon: Megaphone },
+      { path: "/pr/todo",       label: "PR To-Do",      icon: ListChecks },
       { path: "/influencers",   label: "Influencers",   icon: Users },
       { path: "/paid-campaigns",label: "Paid Campaigns",icon: Target },
     ],
