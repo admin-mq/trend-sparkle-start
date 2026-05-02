@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { RecommendedTrend, TrendTiming, TrendCategory } from "@/types/trends";
-import { TrendingUp, Eye, ArrowRight, RefreshCw, Zap, Clock, Flame } from "lucide-react";
+import { TrendingUp, ArrowRight, RefreshCw, Zap, Clock, Flame } from "lucide-react";
 
 interface RecommendedTrendsProps {
   recommendations: RecommendedTrend[];
@@ -255,22 +255,14 @@ export const RecommendedTrends = ({
                   <CategoryBadge category={trend.category} />
                 </div>
 
-                {/* Views + virality */}
-                <div className="flex items-center gap-3 mt-1.5">
-                  {trend.views_last_60h_millions != null && (
-                    <div className="flex items-center gap-1">
-                      <Eye className="w-3 h-3 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground">
-                        {trend.views_last_60h_millions}M views in 60h
-                      </span>
-                    </div>
-                  )}
-                  {trend.ig_confirmed === false && trend.timing === 'early' && (
+                {/* Signal row — only render real signals; we don't fake view counts */}
+                {trend.ig_confirmed === false && trend.timing === 'early' && (
+                  <div className="flex items-center gap-3 mt-1.5">
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
                       Not on IG yet — post first
                     </span>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {/* Virality score bar */}
                 {trend.virality_score != null && (

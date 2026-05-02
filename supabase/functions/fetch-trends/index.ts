@@ -514,7 +514,6 @@ Return ONLY valid JSON:
       "trend_name": "Specific descriptive name (2-5 words)",
       "hashtag": "primaryhashtag",
       "extra_hashtags": "#tag1 #tag2 #tag3 #tag4",
-      "views_last_60h_millions": 14.0,
       "description": "3-5 sentences explaining what it is, why it's trending now, what people are posting, and the emotional hook.",
       "region": "UK",
       "premium_only": false,
@@ -574,7 +573,10 @@ Rules:
           trend_name:              trend.trend_name,
           description:             trend.description,
           hashtags,
-          views_last_60h_millions: trend.views_last_60h_millions,
+          // We don't have a real view-count signal source, so leave NULL.
+          // The UI hides this field entirely; virality_score / timing /
+          // ig_confirmed / source_signals are the real signals we surface.
+          views_last_60h_millions: null,
           region:                  trend.region || 'Global',
           premium_only:            trend.premium_only ?? false,
           active:                  true,
