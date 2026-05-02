@@ -13,7 +13,7 @@ import {
 
 const statsCards = [
   {
-    title: "OpenAI Usage (Month)",
+    title: "Marketers Quest Usage (Month)",
     value: "12,847",
     subtitle: "API calls",
     icon: Activity,

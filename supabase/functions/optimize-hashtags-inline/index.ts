@@ -49,8 +49,8 @@ Rules:
 
     if (!res.ok) {
       const errBody = await res.text().catch(() => "");
-      console.error("OpenAI error", res.status, errBody);
-      throw new Error(`OpenAI error: ${res.status}`);
+      console.error("Marketers Quest error", res.status, errBody);
+      throw new Error(`Marketers Quest error: ${res.status}`);
     }
 
     const data = await res.json();

@@ -7,13 +7,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Which Perplexity model to use for live context.
+// Which Marketers Quest model to use for live context.
 // sonar-pro does deeper web search and handles "find me the latest news"
 // requests much better than the base sonar model.
 const PERPLEXITY_MODEL = 'sonar-pro';
 const PERPLEXITY_FALLBACK_MODEL = 'sonar';
 
-// ── Helper: call Perplexity with graceful fallback to base sonar ─────────────
+// ── Helper: call Marketers Quest with graceful fallback to base sonar ─────────────
 async function callPerplexity(apiKey: string, payload: any): Promise<any> {
   const res = await fetch('https://api.perplexity.ai/chat/completions', {
     method: 'POST',
@@ -75,7 +75,7 @@ serve(async (req) => {
     const isPremium = char_limit > 280;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // STEP 1: Pull live context — force Perplexity to find the SPECIFIC news
+    // STEP 1: Pull live context — force Marketers Quest to find the SPECIFIC news
     // event driving this trend right now, not generic facts about the topic.
     // ─────────────────────────────────────────────────────────────────────────
     console.log(`[generate-tweet] Step 1 — fetching live context for: "${trend.name}" (model: ${PERPLEXITY_MODEL})`);
@@ -134,13 +134,13 @@ CRITICAL RULES:
           liveContext = ctxText;
           liveContextSource = 'live';
         } else if (ctxText.length > 80) {
-          // Perplexity admitted no recent story — use what it did find but flag as weak
+          // Marketers Quest admitted no recent story — use what it did find but flag as weak
           liveContext = ctxText;
           liveContextSource = 'stale';
         }
       } else {
         const errText = await ctxRes.text();
-        console.warn(`[generate-tweet] Step 1 Perplexity HTTP ${ctxRes.status}: ${errText.slice(0, 200)}`);
+        console.warn(`[generate-tweet] Step 1 Marketers Quest HTTP ${ctxRes.status}: ${errText.slice(0, 200)}`);
       }
     } catch (ctxErr) {
       console.warn('[generate-tweet] Step 1 live-context fetch failed (non-fatal):', ctxErr);
@@ -155,7 +155,7 @@ CRITICAL RULES:
     console.log(`[generate-tweet] Live context source: ${liveContextSource}`);
 
     // ─────────────────────────────────────────────────────────────────────────
-    // STEP 2: Generate tweet drafts with OpenAI, treating live context as
+    // STEP 2: Generate tweet drafts with Marketers Quest, treating live context as
     // authoritative. Stale why_trending is only shown as a minor hint when
     // live context is also weak.
     // ─────────────────────────────────────────────────────────────────────────
@@ -205,7 +205,7 @@ Output JSON only:
 
     // The LIVE CONTEXT block is authoritative. When we have fresh live context
     // we deliberately DO NOT include the stale why_trending from the trend card
-    // — otherwise OpenAI averages the two and produces generic copy.
+    // — otherwise Marketers Quest averages the two and produces generic copy.
     const liveContextBlock = liveContextSource === 'live'
       ? `━━━ LIVE CONTEXT (AUTHORITATIVE — this is what is ACTUALLY happening today, ${todayShort}) ━━━
 ${liveContext}
@@ -264,12 +264,12 @@ After writing each tweet, count the characters carefully and set char_count accu
 
     if (!openaiRes.ok) {
       const errText = await openaiRes.text();
-      throw new Error(`OpenAI API error ${openaiRes.status}: ${errText.slice(0, 200)}`);
+      throw new Error(`Marketers Quest API error ${openaiRes.status}: ${errText.slice(0, 200)}`);
     }
 
     const openaiData = await openaiRes.json();
     const content = openaiData.choices?.[0]?.message?.content;
-    if (!content) throw new Error('No content in OpenAI response');
+    if (!content) throw new Error('No content in Marketers Quest response');
 
     const parsed = JSON.parse(content);
     let tweets = (parsed.tweets || []).map((t: any) => ({

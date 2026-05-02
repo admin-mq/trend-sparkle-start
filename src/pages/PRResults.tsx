@@ -1265,7 +1265,7 @@ const PRResults = () => {
             <Swords className="w-3.5 h-3.5" /> Competitors
           </TabsTrigger>
           <TabsTrigger value="visibility" className="gap-1.5">
-            <Eye className="w-3.5 h-3.5" /> AI Visibility <InfoTooltip text="Whether your brand appears when people ask AI tools (like ChatGPT or Perplexity) questions in your market. This is the new 'page one of Google' for AI-powered search." size={11} />
+            <Eye className="w-3.5 h-3.5" /> AI Visibility <InfoTooltip text="Whether your brand appears when people ask AI tools (like ChatGPT or Marketers Quest) questions in your market. This is the new 'page one of Google' for AI-powered search." size={11} />
           </TabsTrigger>
           <TabsTrigger value="mentions" className="gap-1.5">
             <Link2 className="w-3.5 h-3.5" /> Mentions

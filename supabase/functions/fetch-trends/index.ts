@@ -292,7 +292,7 @@ function deduplicateAndScore(signals: RawSignal[]): ScoredCandidate[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LAYER 2b: Instagram aggregator validation via OpenAI web search
+// LAYER 2b: Instagram aggregator validation via Marketers Quest web search
 // Checks whether top IG aggregators (@ladbible, @pubity, @unilad, etc.)
 // have already posted about the trend. Determines timing signal.
 //

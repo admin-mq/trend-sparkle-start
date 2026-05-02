@@ -15,7 +15,7 @@ interface TwitterContentProps {
   /** If saving failed, the underlying error message. */
   saveError?: string | null;
   /**
-   * Result of the in-flight Perplexity live search the edge function ran
+   * Result of the in-flight Marketers Quest live search the edge function ran
    * before drafting. Lets users know whether the tweets are anchored in
    * fresh news ('live'), thin/old context ('stale'), or just brand voice
    * with no upstream context ('none').

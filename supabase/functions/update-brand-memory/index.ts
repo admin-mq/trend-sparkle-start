@@ -149,7 +149,7 @@ serve(async (req) => {
     const latestMemory = await getBrandMemory(externalSupabase, userId, brandName);
     console.log('Current memory:', latestMemory ? 'found' : 'not found');
 
-    // Call OpenAI to update memory
+    // Call Marketers Quest to update memory
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openaiApiKey) {
       throw new Error('OPENAI_API_KEY not configured');
@@ -198,7 +198,7 @@ Respond ONLY with JSON in this exact shape:
       user_note
     });
 
-    console.log('Calling OpenAI API for memory update...');
+    console.log('Calling Marketers Quest API for memory update...');
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -218,18 +218,18 @@ Respond ONLY with JSON in this exact shape:
 
     if (!openaiResponse.ok) {
       const errorText = await openaiResponse.text();
-      console.error('OpenAI API error:', openaiResponse.status, errorText);
-      throw new Error(`OpenAI API call failed: ${openaiResponse.status}`);
+      console.error('Marketers Quest API error:', openaiResponse.status, errorText);
+      throw new Error(`Marketers Quest API call failed: ${openaiResponse.status}`);
     }
 
     const openaiData = await openaiResponse.json();
     const content = openaiData.choices?.[0]?.message?.content;
 
     if (!content) {
-      throw new Error('No content in OpenAI response');
+      throw new Error('No content in Marketers Quest response');
     }
 
-    console.log('OpenAI response received, parsing...');
+    console.log('Marketers Quest response received, parsing...');
     const parsedResponse = JSON.parse(content);
 
     // Build the BrandMemory object

@@ -504,7 +504,7 @@ Be brutally specific about ${project.brand_name}. Reference real things. Make it
 
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`OpenAI synthesis error ${response.status}: ${err}`);
+    throw new Error(`Marketers Quest synthesis error ${response.status}: ${err}`);
   }
 
   const data = await response.json();
@@ -610,7 +610,7 @@ Deno.serve(async (req: Request) => {
     // ── Step 3.6: Ensure brand_context is fresh (auto-derive if missing) ─────
     let brandContext = project.brand_context ?? null;
     if (!brandContext) {
-      console.log(`[pr-scan] No brand_context found — deriving via Perplexity sonar`);
+      console.log(`[pr-scan] No brand_context found — deriving via Marketers Quest sonar`);
       await supabase
         .from("pr_scan_jobs")
         .update({ progress_step: "Pulling live brand intelligence (web search)…" })

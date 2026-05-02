@@ -38,7 +38,7 @@ serve(async (req) => {
     const industryLabel = industry || 'their industry';
     const audienceLabel = audience || 'general consumers';
 
-    const prompt = `You are a PR and search visibility strategist. A brand wants to know which AI search prompts they should track — these are the queries their target buyers type into ChatGPT, Perplexity, or Google AI Overviews when looking for products or services like theirs.
+    const prompt = `You are a PR and search visibility strategist. A brand wants to know which AI search prompts they should track — these are the queries their target buyers type into ChatGPT, Marketers Quest, or Google AI Overviews when looking for products or services like theirs.
 
 Brand: ${brand_name}
 Website: ${domain || 'unknown'}
@@ -89,7 +89,7 @@ Return ONLY this JSON, no markdown, no explanation:
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Perplexity API error ${response.status}: ${errorText}`);
+      throw new Error(`Marketers Quest API error ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();

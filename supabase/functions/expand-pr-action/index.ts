@@ -2,7 +2,7 @@
 //
 // Triggered when the user clicks an action card. Looks up the action,
 // loads project + brand_context for tier-aware specificity, then calls
-// Perplexity `sonar` for LIVE web intel (named journalists, current beats,
+// Marketers Quest `sonar` for LIVE web intel (named journalists, current beats,
 // recent comparable plays, real outlet contact patterns).
 //
 // Returns a 7-section playbook:
@@ -144,7 +144,7 @@ CRITICAL RULES:
 Return ONLY the JSON. No prose, no markdown fences.`;
 }
 
-// ── Perplexity call ───────────────────────────────────────────────────────────
+// ── Marketers Quest call ───────────────────────────────────────────────────────────
 
 async function callPerplexity(args: Parameters<typeof buildUserPrompt>[0]): Promise<Playbook> {
   const res = await fetch("https://api.perplexity.ai/chat/completions", {
@@ -166,7 +166,7 @@ async function callPerplexity(args: Parameters<typeof buildUserPrompt>[0]): Prom
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Perplexity error ${res.status}: ${errText}`);
+    throw new Error(`Marketers Quest error ${res.status}: ${errText}`);
   }
 
   const data = await res.json();
@@ -182,7 +182,7 @@ async function callPerplexity(args: Parameters<typeof buildUserPrompt>[0]): Prom
     parsed = JSON.parse(cleaned);
   } catch {
     const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("Perplexity returned non-JSON content");
+    if (!match) throw new Error("Marketers Quest returned non-JSON content");
     parsed = JSON.parse(match[0]);
   }
 

@@ -169,12 +169,12 @@ serve(async (req) => {
 
     if (!openaiResponse.ok) {
       const errorText = await openaiResponse.text();
-      throw new Error(`OpenAI API error: ${openaiResponse.status} — ${errorText}`);
+      throw new Error(`Marketers Quest API error: ${openaiResponse.status} — ${errorText}`);
     }
 
     const openaiData = await openaiResponse.json();
     const content = openaiData.choices?.[0]?.message?.content;
-    if (!content) throw new Error('No content from OpenAI');
+    if (!content) throw new Error('No content from Marketers Quest');
 
     const parsed = JSON.parse(content);
 

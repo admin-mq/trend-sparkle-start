@@ -678,7 +678,7 @@ function CreateProjectDialog({
               <div className="flex items-center justify-between">
                 <Label className="flex items-center gap-1.5">
                   <Target className="w-4 h-4" /> AI Search Queries
-                  <InfoTooltip text="Questions your target buyers type into AI tools like ChatGPT or Perplexity. We check whether your brand appears in the AI's answer — the new 'page one of Google'." size={12} />
+                  <InfoTooltip text="Questions your target buyers type into AI tools like ChatGPT or Marketers Quest. We check whether your brand appears in the AI's answer — the new 'page one of Google'." size={12} />
                 </Label>
                 {!suggesting && (
                   <button

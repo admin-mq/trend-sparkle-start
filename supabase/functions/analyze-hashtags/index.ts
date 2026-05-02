@@ -268,7 +268,7 @@ serve(async (req) => {
       content_description ? `\nAdditional context: ${content_description}` : null,
     ].filter(Boolean).join('\n');
 
-    console.log('Calling OpenAI for hashtag + positioning analysis. Platform:', platform, 'Region:', region, 'Goal:', goal_type);
+    console.log('Calling Marketers Quest for hashtag + positioning analysis. Platform:', platform, 'Region:', region, 'Goal:', goal_type);
 
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -289,12 +289,12 @@ serve(async (req) => {
 
     if (!openaiResponse.ok) {
       const errorText = await openaiResponse.text();
-      throw new Error(`OpenAI API error: ${openaiResponse.status} — ${errorText}`);
+      throw new Error(`Marketers Quest API error: ${openaiResponse.status} — ${errorText}`);
     }
 
     const openaiData = await openaiResponse.json();
     const content = openaiData.choices?.[0]?.message?.content;
-    if (!content) throw new Error('No content returned from OpenAI');
+    if (!content) throw new Error('No content returned from Marketers Quest');
 
     const parsed         = JSON.parse(content);
     const safeSet        = parsed.safe;

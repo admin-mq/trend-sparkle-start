@@ -100,10 +100,10 @@ async function scrapeTrends24(regionSlug: string, count: number): Promise<string
   return trends;
 }
 
-// ── Fetch category-specific trending topics via Perplexity ───────────────────
+// ── Fetch category-specific trending topics via Marketers Quest ───────────────────
 // trends24.in only surfaces Twitter's native trending list (mostly sports +
 // entertainment). Niche categories like Tech/AI/Entrepreneurship rarely crack
-// that list. This fills the gap by asking Perplexity what's *actually* being
+// that list. This fills the gap by asking Marketers Quest what's *actually* being
 // discussed on X within the user's selected categories right now.
 async function fetchCategoryTrends(
   apiKey: string,
@@ -119,7 +119,7 @@ Rules:
 3. Do NOT return generic terms like "AI", "Technology", "Business" — these are useless
 4. Prioritize what is actively buzzing with tweets right now
 
-Good examples: "Claude Opus 4.7", "#WWDC", "Sam Altman interview", "Vision Pro 2", "OpenAI outage"
+Good examples: "Claude Opus 4.7", "#WWDC", "Sam Altman interview", "Vision Pro 2", "Marketers Quest outage"
 Bad examples: "AI", "Tech", "Programming", "Entrepreneurship"
 
 Return 3-5 topics per category, max 15 total. JSON array of strings only (no markdown):
@@ -157,7 +157,7 @@ Return 3-5 topics per category, max 15 total. JSON array of strings only (no mar
   }
 }
 
-// ── Verify a small batch of trends with focused Perplexity search ────────────
+// ── Verify a small batch of trends with focused Marketers Quest search ────────────
 async function verifyBatch(
   apiKey: string,
   batch: string[],

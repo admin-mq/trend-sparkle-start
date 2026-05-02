@@ -126,7 +126,7 @@ serve(async (req) => {
       views_last_60h_millions: trendData.views_last_60h_millions
     };
 
-    // Try to get OpenAI blueprint
+    // Try to get Marketers Quest blueprint
     try {
       const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
       if (!openaiApiKey) {
@@ -368,20 +368,20 @@ Verify your character/word counts before returning. If short, add more depth —
         });
         if (!res.ok) {
           const errorText = await res.text();
-          console.error('OpenAI API error:', res.status, errorText);
-          throw new Error(`OpenAI API call failed: ${res.status}`);
+          console.error('Marketers Quest API error:', res.status, errorText);
+          throw new Error(`Marketers Quest API call failed: ${res.status}`);
         }
         const json = await res.json();
         const content = json.choices?.[0]?.message?.content;
-        if (!content) throw new Error('No content in OpenAI response');
+        if (!content) throw new Error('No content in Marketers Quest response');
         const finishReason = json.choices?.[0]?.finish_reason;
         if (finishReason === 'length') {
-          console.warn('OpenAI response was truncated by max_tokens');
+          console.warn('Marketers Quest response was truncated by max_tokens');
         }
         return JSON.parse(content);
       };
 
-      console.log('Calling OpenAI API for execution blueprint...');
+      console.log('Calling Marketers Quest API for execution blueprint...');
       let parsedResponse = await callOpenAI();
       let detailedDirection = parsedResponse.detailed_direction;
 
@@ -421,6 +421,7 @@ ${JSON.stringify(detailedDirection, null, 2)}`;
           }
         }
       }
+
 
       console.log('Returning AI-powered execution blueprint');
       return new Response(

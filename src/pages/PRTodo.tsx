@@ -581,7 +581,7 @@ function PlaybookDrawer({
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground flex items-center gap-2">
             <Loader2 className="w-4 h-4 animate-spin" />
-            Generating playbook with live web intelligence (Perplexity)...
+            Generating playbook with live web intelligence (Marketers Quest)...
           </p>
           {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}
         </div>

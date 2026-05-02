@@ -90,7 +90,7 @@ Return ONLY this JSON, no markdown, no explanation:
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Perplexity API error ${response.status}: ${errorText}`);
+      throw new Error(`Marketers Quest API error ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();

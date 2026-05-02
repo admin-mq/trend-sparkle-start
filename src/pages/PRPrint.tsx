@@ -499,7 +499,7 @@ const PRPrint = () => {
             <div className="page-break-before" style={{ marginBottom: 36 }}>
               <SectionLabel>AI Search Visibility</SectionLabel>
               <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 14, lineHeight: 1.6 }}>
-                Whether <strong>{project.brand_name}</strong> appears when buyers ask AI tools (ChatGPT, Perplexity, Google AI) the queries below.
+                Whether <strong>{project.brand_name}</strong> appears when buyers ask AI tools (ChatGPT, Marketers Quest, Google AI) the queries below.
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {visibility.map((v, i) => {

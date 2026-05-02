@@ -38,7 +38,7 @@ async function checkPromptVisibility(
   const system = `You are an AI answer engine and brand visibility analyst.
 
 When given a search query, you will:
-1. Answer it naturally, as a helpful AI assistant would — the kind of answer that would appear in ChatGPT, Perplexity, or Google's AI Overview
+1. Answer it naturally, as a helpful AI assistant would — the kind of answer that would appear in ChatGPT, Marketers Quest, or Google's AI Overview
 2. Analyze that answer for specific brand and competitor presence
 
 Your natural answer should reflect what an AI system trained on public web data would actually say — mentioning real, well-known players in the space when relevant. Do not force mentions of unknown brands.
@@ -90,7 +90,7 @@ Then analyze your own answer and return this JSON:
 
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`OpenAI error ${response.status}: ${err}`);
+    throw new Error(`Marketers Quest error ${response.status}: ${err}`);
   }
 
   const data = await response.json();

@@ -123,7 +123,7 @@ Rules:
     }),
   });
 
-  if (!res.ok) throw new Error(`OpenAI error: ${res.status}`);
+  if (!res.ok) throw new Error(`Marketers Quest error: ${res.status}`);
   const data = await res.json();
   const parsed = JSON.parse(data.choices[0].message.content);
 

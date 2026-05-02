@@ -1,6 +1,6 @@
 // derive-brand-context — pulls live web intelligence about a brand to enrich PR scans.
 //
-// Uses Perplexity `sonar` (live web search + reasoning) to derive:
+// Uses Marketers Quest `sonar` (live web search + reasoning) to derive:
 // • Tier classification (startup / growth / enterprise / mega)
 // • Scale signals (revenue, employees, public/private, ticker, founded, HQ)
 // • Market position
@@ -82,7 +82,7 @@ Return ONLY valid JSON with this exact shape. For any field you cannot verify fr
   "recent_press_themes": ["<3-6 dominant themes in PRESS COVERAGE from the LAST 90 DAYS — be SPECIFIC. e.g. 'wage transparency push following walkouts', 'Marketplace expansion vs Amazon Prime', 'AI-driven supply chain pivot'. NOT 'innovation' or 'growth'.>"],
   "active_pr_risks": ["<3-6 specific narrative risks this brand is currently exposed to or managing in 2026 — e.g. 'China supplier human-rights scrutiny', 'CEO succession ambiguity', 'class-action over algorithmic pricing', 'union drives at flagship locations'. Be brutally honest.>"],
   "open_narrative_whitespaces": ["<3-5 specific narrative spaces in this brand's category that NO competitor strongly owns yet — e.g. 'value-led design (Target owns design, no one owns value × design)', 'AI for blue-collar workers (Amazon owns AI for businesses, whitespace exists for consumer)'.>"],
-  "ai_search_landscape_note": "<2-3 sentences: which brands DOMINATE AI search responses (ChatGPT, Perplexity, Google AI) for this brand's category in 2026; where this brand currently sits; what's at stake.>",
+  "ai_search_landscape_note": "<2-3 sentences: which brands DOMINATE AI search responses (ChatGPT, Marketers Quest, Google AI) for this brand's category in 2026; where this brand currently sits; what's at stake.>",
   "tier_rationale": "<1 sentence justifying tier — e.g. 'Fortune 1 mass retailer, $640B revenue, 2.1M employees → mega.'>"
 }
 
@@ -103,7 +103,7 @@ CRITICAL:
 Return ONLY the JSON object. No prose, no markdown fences, no commentary.`;
 }
 
-// ── Perplexity call ───────────────────────────────────────────────────────────
+// ── Marketers Quest call ───────────────────────────────────────────────────────────
 
 async function callPerplexity(brand: { name: string; domain: string; industry?: string | null; geography?: string | null }): Promise<BrandContext> {
   const res = await fetch("https://api.perplexity.ai/chat/completions", {
@@ -125,7 +125,7 @@ async function callPerplexity(brand: { name: string; domain: string; industry?: 
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Perplexity error ${res.status}: ${errText}`);
+    throw new Error(`Marketers Quest error ${res.status}: ${errText}`);
   }
 
   const data = await res.json();
@@ -143,7 +143,7 @@ async function callPerplexity(brand: { name: string; domain: string; industry?: 
   } catch {
     // Try to extract first JSON object via regex
     const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("Perplexity returned non-JSON content");
+    if (!match) throw new Error("Marketers Quest returned non-JSON content");
     parsed = JSON.parse(match[0]);
   }
 

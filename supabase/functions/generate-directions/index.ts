@@ -119,7 +119,7 @@ serve(async (req) => {
       views_last_60h_millions: trendData.views_last_60h_millions
     };
 
-    // Try to get OpenAI recommendations
+    // Try to get Marketers Quest recommendations
     try {
       const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
       if (!openaiApiKey) {
@@ -242,7 +242,7 @@ ${trendContext}
 Create exactly 5 distinct creative directions. Every idea must directly reference the specific real-time story/event/controversy (not just the trend name). Make each idea feel different in format and emotional angle. No generic marketing language.
 `;
 
-      console.log('Calling OpenAI API for creative directions...');
+      console.log('Calling Marketers Quest API for creative directions...');
       const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -262,18 +262,18 @@ Create exactly 5 distinct creative directions. Every idea must directly referenc
 
       if (!openaiResponse.ok) {
         const errorText = await openaiResponse.text();
-        console.error('OpenAI API error:', openaiResponse.status, errorText);
-        throw new Error(`OpenAI API call failed: ${openaiResponse.status}`);
+        console.error('Marketers Quest API error:', openaiResponse.status, errorText);
+        throw new Error(`Marketers Quest API call failed: ${openaiResponse.status}`);
       }
 
       const openaiData = await openaiResponse.json();
       const content = openaiData.choices?.[0]?.message?.content;
 
       if (!content) {
-        throw new Error('No content in OpenAI response');
+        throw new Error('No content in Marketers Quest response');
       }
 
-      console.log('OpenAI response received, parsing...');
+      console.log('Marketers Quest response received, parsing...');
       const parsedResponse = JSON.parse(content);
 
       // Ensure we have the correct structure

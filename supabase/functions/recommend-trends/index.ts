@@ -116,7 +116,7 @@ serve(async (req) => {
 
     console.log(`Fetched ${trends.length} candidate trends from external Supabase`);
 
-    // Try to get OpenAI recommendations
+    // Try to get Marketers Quest recommendations
     try {
       const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
       if (!openaiApiKey) {
@@ -204,7 +204,7 @@ Please select exactly 5 trends and return a JSON object like:
 Focus on very concrete reasons this trend works for this specific brand. Do NOT use generic marketing buzzwords.
 `;
 
-      console.log('Calling OpenAI API...');
+      console.log('Calling Marketers Quest API...');
       const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -224,25 +224,25 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
 
       if (!openaiResponse.ok) {
         const errorText = await openaiResponse.text();
-        console.error('OpenAI API error:', openaiResponse.status, errorText);
-        throw new Error(`OpenAI API call failed: ${openaiResponse.status}`);
+        console.error('Marketers Quest API error:', openaiResponse.status, errorText);
+        throw new Error(`Marketers Quest API call failed: ${openaiResponse.status}`);
       }
 
       const openaiData = await openaiResponse.json();
       const content = openaiData.choices?.[0]?.message?.content;
       
       if (!content) {
-        throw new Error('No content in OpenAI response');
+        throw new Error('No content in Marketers Quest response');
       }
 
-      console.log('OpenAI response received, parsing...');
+      console.log('Marketers Quest response received, parsing...');
       const parsedResponse = JSON.parse(content);
 
       // Build a map for quick trend lookup
       const trendMap = new Map();
       trends.forEach(t => trendMap.set(t.trend_id, t));
 
-      // Map OpenAI recommendations to full trend objects
+      // Map Marketers Quest recommendations to full trend objects
       const recommended_trends = parsedResponse.recommended_trends
         .map((rec: any) => {
           const fullTrend = trendMap.get(rec.trend_id);
