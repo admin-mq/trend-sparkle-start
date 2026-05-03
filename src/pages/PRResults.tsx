@@ -158,7 +158,7 @@ interface ExternalMention {
   id: string;
   url: string;
   source_type: "article" | "review_site" | "roundup" | "competitor_review" | "social" | "other";
-  status: "pending" | "fetching" | "analyzing" | "done" | "failed";
+  status: "pending" | "fetching" | "analyzing" | "done" | "failed" | "not_a_mention";
   error_message: string | null;
   page_title: string | null;
   sentiment: "positive" | "neutral" | "negative" | "mixed" | null;
@@ -2050,10 +2050,10 @@ const PRResults = () => {
             }`}>
               {discoverResult.found > 0 ? (
                 <><CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                  Found <span className="font-semibold">{discoverResult.found} new mention{discoverResult.found !== 1 ? "s" : ""}</span> — analysing now. Results appear below in ~15 seconds.</>
+                  Found <span className="font-semibold">{discoverResult.found} candidate URL{discoverResult.found !== 1 ? "s" : ""}</span> — fetching each and verifying which actually reference your brand. Pages that don't mention you are filtered out.</>
               ) : (
                 <><AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                  No new mentions found via Google News for this brand. Try adding URLs manually below.</>
+                  No new candidate URLs surfaced from web search for this brand. Try adding URLs manually below.</>
               )}
             </div>
           )}
@@ -2089,7 +2089,7 @@ const PRResults = () => {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                The page will be fetched and analysed automatically. Results appear in ~15 seconds.
+                The page is fetched and verified to actually reference your brand before any analysis runs. URLs that don't mention you are flagged, not analysed.
               </p>
             </CardContent>
           </Card>
@@ -2101,7 +2101,7 @@ const PRResults = () => {
                 <Link2 className="w-7 h-7 text-muted-foreground mx-auto" />
                 <p className="text-sm font-medium text-foreground">No external mentions yet</p>
                 <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                  Click <span className="text-primary font-medium">Find Mentions</span> above to automatically discover press coverage, reviews and roundups via Google News — or paste a URL manually.
+                  Click <span className="text-primary font-medium">Find Mentions</span> above to scan the web for pages that actually reference your brand — or paste a URL manually. Pages that don't mention you are filtered out.
                 </p>
                 <Button
                   size="sm"
@@ -2119,10 +2119,11 @@ const PRResults = () => {
             </Card>
           )}
 
-          {/* Mentions list — active/done first, failed collapsed at bottom */}
+          {/* Mentions list — verified first, failed and non-mentions collapsed at bottom */}
           {(() => {
-            const active = mentions.filter((m) => m.status !== "failed");
+            const active = mentions.filter((m) => m.status !== "failed" && m.status !== "not_a_mention");
             const failed = mentions.filter((m) => m.status === "failed");
+            const notMentions = mentions.filter((m) => m.status === "not_a_mention");
             return (
               <>
                 {active.map((mention) => {
@@ -2260,6 +2261,41 @@ const PRResults = () => {
                               <span>{domain}</span>
                               <span className="opacity-50">·</span>
                               <span className="opacity-60">{sourceLabels[mention.source_type] ?? "Source"}</span>
+                            </a>
+                            <button
+                              onClick={() => deleteMention(mention.id)}
+                              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
+                              title="Remove"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Non-mentions — discovered URLs that didn't actually reference the brand */}
+                {notMentions.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs text-muted-foreground px-0.5">
+                      {notMentions.length} discovered URL{notMentions.length !== 1 ? "s" : ""} didn't actually reference {project.brand_name} — filtered out:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {notMentions.map((mention) => {
+                        const domain = (() => { try { return new URL(mention.url).hostname.replace("www.", ""); } catch { return mention.url; } })();
+                        return (
+                          <div key={mention.id} className="flex items-center gap-1 group">
+                            <a
+                              href={mention.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-border bg-muted/20 text-muted-foreground/70 hover:text-foreground hover:border-border transition-colors"
+                              title={mention.error_message ?? `Page does not reference ${project.brand_name}`}
+                            >
+                              <XCircle className="w-2.5 h-2.5 shrink-0 opacity-60" />
+                              <span>{domain}</span>
                             </a>
                             <button
                               onClick={() => deleteMention(mention.id)}

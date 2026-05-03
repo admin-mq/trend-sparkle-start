@@ -1,3 +1,17 @@
+// supabase/functions/pr-discover-mentions/index.ts
+//
+// Discovers candidate URLs that may mention a brand by running targeted
+// DuckDuckGo searches. Each candidate is then handed to pr-fetch-mention,
+// which fetches the page and runs a hard brand-presence gate before any
+// AI analysis — so URLs that don't actually reference the brand are
+// flagged as `not_a_mention` rather than fabricated into press coverage.
+//
+// We deliberately do NOT inject synthetic G2/Trustpilot/Capterra/Reddit
+// "search result" URLs as if they were mentions. Those pages exist for
+// every brand — including non-existent ones — so saving them as rows
+// inflates the dashboard with non-mentions. If the user wants to track
+// a specific review profile they can paste it manually.
+
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -6,8 +20,6 @@ const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const FUNCTIONS_URL =
   Deno.env.get("SUPABASE_FUNCTIONS_URL") ??
   `${SUPABASE_URL}/functions/v1`;
-
-// ── CORS ─────────────────────────────────────────────────────────────────────
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -32,8 +44,6 @@ interface Discovered {
 }
 
 // ── DuckDuckGo HTML search (returns real URLs via uddg param) ─────────────────
-// DuckDuckGo's /html/ endpoint returns real URLs encoded in the uddg= parameter
-// of each result link — no redirect following needed.
 
 async function searchDDG(query: string, limit = 10): Promise<Discovered[]> {
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
@@ -42,7 +52,7 @@ async function searchDDG(query: string, limit = 10): Promise<Discovered[]> {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml",
+        Accept: "text/html,application/xhtml+xml",
         "Accept-Language": "en-US,en;q=0.9",
       },
       signal: AbortSignal.timeout(12_000),
@@ -56,21 +66,21 @@ async function searchDDG(query: string, limit = 10): Promise<Discovered[]> {
     const results: Discovered[] = [];
     const seen = new Set<string>();
 
-    // DuckDuckGo result links contain: href="//duckduckgo.com/l/?uddg=ENCODED_URL&..."
-    // The uddg value is the actual article URL, URL-encoded
     for (const match of html.matchAll(/uddg=([^&"'\s]+)/g)) {
       try {
         const decoded = decodeURIComponent(match[1]);
         if (
           !decoded.startsWith("http") ||
           decoded.includes("duckduckgo.com") ||
-          decoded.includes("google.com")
+          decoded.includes("google.com") ||
+          // skip search/listing pages — they exist for every brand
+          /[?&]q=/.test(decoded) ||
+          /\/search\b/.test(decoded)
         ) continue;
 
         if (seen.has(decoded)) continue;
         seen.add(decoded);
 
-        // Extract title from nearby anchor text
         const titleMatch = html.slice(
           Math.max(0, html.indexOf(match[0]) - 200),
           html.indexOf(match[0]) + 300,
@@ -95,44 +105,32 @@ async function searchDDG(query: string, limit = 10): Promise<Discovered[]> {
   }
 }
 
-// ── Deterministic brand review pages ─────────────────────────────────────────
-// These are known-good URLs that always exist for major review platforms.
-// No scraping needed — they're just constructed from the brand name.
-
-function knownReviewPages(brand: string, domain: string): Discovered[] {
-  const slug = brand.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
-  const domainSlug = domain.replace(/^www\./, "").replace(/\.[^.]+$/, "");
-
-  return [
-    {
-      url: `https://www.g2.com/search?query=${encodeURIComponent(brand)}`,
-      title: `${brand} reviews on G2`,
-      source_type: "review_site",
-    },
-    {
-      url: `https://www.trustpilot.com/search?query=${encodeURIComponent(domain)}`,
-      title: `${brand} reviews on Trustpilot`,
-      source_type: "review_site",
-    },
-    {
-      url: `https://www.capterra.com/search/#query=${encodeURIComponent(brand)}`,
-      title: `${brand} reviews on Capterra`,
-      source_type: "review_site",
-    },
-    {
-      url: `https://www.reddit.com/search/?q=${encodeURIComponent(brand + " review")}&sort=top&t=year`,
-      title: `Reddit discussions about ${brand}`,
-      source_type: "social",
-    },
-  ];
-}
-
 function classifyUrl(url: string, title: string): SourceType {
   const u = url.toLowerCase();
   const t = title.toLowerCase();
-  if (u.includes("g2.com") || u.includes("capterra.com") || u.includes("trustpilot.com") || u.includes("getapp.com") || u.includes("trustradius.com")) return "review_site";
-  if (u.includes("reddit.com") || u.includes("twitter.com") || u.includes("x.com") || u.includes("linkedin.com") || u.includes("news.ycombinator.com")) return "social";
-  if (t.includes("best ") || t.includes("top ") || t.includes(" vs ") || t.includes("alternative") || t.includes("comparison") || t.includes("roundup")) return "roundup";
+  if (
+    u.includes("g2.com") ||
+    u.includes("capterra.com") ||
+    u.includes("trustpilot.com") ||
+    u.includes("getapp.com") ||
+    u.includes("trustradius.com") ||
+    u.includes("softwareadvice.com")
+  ) return "review_site";
+  if (
+    u.includes("reddit.com") ||
+    u.includes("twitter.com") ||
+    u.includes("x.com") ||
+    u.includes("linkedin.com") ||
+    u.includes("news.ycombinator.com")
+  ) return "social";
+  if (
+    t.includes("best ") ||
+    t.includes("top ") ||
+    t.includes(" vs ") ||
+    t.includes("alternative") ||
+    t.includes("comparison") ||
+    t.includes("roundup")
+  ) return "roundup";
   return "article";
 }
 
@@ -164,33 +162,41 @@ Deno.serve(async (req: Request) => {
   const existingUrls = new Set((existing ?? []).map((m: { url: string }) => m.url));
 
   const brand = project.brand_name;
-  const domain = project.domain ?? "";
+  const domain = (project.domain ?? "").replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/.*$/, "");
   console.log(`Discovering mentions for brand: "${brand}" (${domain})`);
 
-  // ── Run searches in parallel ──────────────────────────────────────────────
-  const [newsResults, reviewResults, roundupResults] = await Promise.all([
+  // ── Run targeted searches in parallel ────────────────────────────────────
+  // We bias toward queries likely to return PAGES that name the brand,
+  // not search/listing pages on review platforms.
+  const [
+    newsResults,
+    reviewResults,
+    roundupResults,
+    domainResults,
+  ] = await Promise.all([
     searchDDG(`"${brand}" news`, 8),
-    searchDDG(`"${brand}" reviews site:g2.com OR site:capterra.com OR site:trustpilot.com`, 6),
-    searchDDG(`"${brand}" best alternatives OR comparison OR vs`, 6),
+    searchDDG(`"${brand}" review`, 6),
+    searchDDG(`"${brand}" alternative OR comparison OR vs`, 6),
+    domain ? searchDDG(`"${domain}" -site:${domain}`, 6) : Promise.resolve([]),
   ]);
 
-  // Deterministic review pages (always include if not already added)
-  const knownPages = knownReviewPages(brand, domain);
+  console.log(
+    `DDG results — news:${newsResults.length} reviews:${reviewResults.length} roundups:${roundupResults.length} domain:${domainResults.length}`,
+  );
 
-  console.log(`DDG results — news:${newsResults.length} reviews:${reviewResults.length} roundups:${roundupResults.length} known:${knownPages.length}`);
-
-  // ── Deduplicate across all sources ────────────────────────────────────────
+  // ── Deduplicate across all sources, drop self-citations and existing rows ──
   const seen = new Set<string>();
   const all: Discovered[] = [];
 
-  for (const item of [...newsResults, ...reviewResults, ...roundupResults, ...knownPages]) {
-    if (!seen.has(item.url) && !existingUrls.has(item.url)) {
-      seen.add(item.url);
-      all.push(item);
-    }
+  for (const item of [...newsResults, ...reviewResults, ...roundupResults, ...domainResults]) {
+    if (seen.has(item.url) || existingUrls.has(item.url)) continue;
+    // Skip the brand's own domain — self-citations are not external mentions
+    if (domain && item.url.toLowerCase().includes(domain)) continue;
+    seen.add(item.url);
+    all.push(item);
   }
 
-  console.log(`Total new items to save: ${all.length}`);
+  console.log(`Total new candidate URLs: ${all.length}`);
 
   if (all.length === 0) return json({ found: 0, new_count: 0, urls: [] });
 
@@ -211,10 +217,13 @@ Deno.serve(async (req: Request) => {
   }
 
   // ── Fire pr-fetch-mention for each (fire and forget) ─────────────────────
+  // pr-fetch-mention enforces the brand-presence gate; rows that don't
+  // mention the brand will land as `not_a_mention` rather than as fake
+  // analysed mentions.
   for (const mention of inserted ?? []) {
     fetch(`${FUNCTIONS_URL}/pr-fetch-mention`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": authHeader },
+      headers: { "Content-Type": "application/json", Authorization: authHeader },
       body: JSON.stringify({ mention_id: mention.id }),
     }).catch((e) => console.error("fire fetch-mention error:", e));
   }
