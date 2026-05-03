@@ -7,9 +7,22 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// External Supabase credentials (user's own project with trends data)
-const EXTERNAL_SUPABASE_URL = "https://njnnpdrevbkhbhzwccuz.supabase.co";
-const EXTERNAL_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qbm5wZHJldmJraGJoendjY3V6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQzOTg3ODQsImV4cCI6MjA3OTk3NDc4NH0.WKuei-3pR2TphEKjSOOhvNlECrX93Jt9NE5SK2TcD-M";
+// Supabase credentials.
+// Prefer explicit EXTERNAL_SUPABASE_* env vars (for cross-project setups
+// where the trends DB lives in a different project from the edge functions).
+// Otherwise fall back to the auto-injected SUPABASE_URL / SUPABASE_ANON_KEY
+// that every Supabase Edge Function gets for free (same-project lookups).
+// Never hardcode keys in source — they leak via git, Lovable previews, and
+// the deployed function bundle. Anyone with read access to this repo would
+// have full anon-key access to the trends DB.
+const EXTERNAL_SUPABASE_URL =
+  Deno.env.get("EXTERNAL_SUPABASE_URL") || Deno.env.get("SUPABASE_URL") || "";
+const EXTERNAL_SUPABASE_ANON_KEY =
+  Deno.env.get("EXTERNAL_SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_ANON_KEY") || "";
+
+if (!EXTERNAL_SUPABASE_URL || !EXTERNAL_SUPABASE_ANON_KEY) {
+  console.error("[recommend-trends] Missing Supabase credentials. Set EXTERNAL_SUPABASE_URL/EXTERNAL_SUPABASE_ANON_KEY or rely on auto-injected SUPABASE_URL/SUPABASE_ANON_KEY.");
+}
 
 type BrandMemory = {
   user_id: string | null;
@@ -87,9 +100,14 @@ serve(async (req) => {
       ? selected_categories
       : [];
 
+    // We deliberately do NOT select views_last_60h_millions here — we don't
+    // currently have a real view-count signal source, so that field is always
+    // NULL. Asking the LLM to optimise for it is meaningless. We rank by
+    // virality_score (computed from cross-source corroboration + timing)
+    // and let brand-fit be the LLM's job.
     let query = externalSupabase
       .from('trends')
-      .select('trend_id, trend_name, description, hashtags, views_last_60h_millions, region, premium_only, active, timing, ig_confirmed, virality_score, source_signals, category')
+      .select('trend_id, trend_name, description, hashtags, region, premium_only, active, timing, ig_confirmed, ig_validated, virality_score, source_signals, category')
       .eq('premium_only', false)
       .eq('active', true)
       .order('virality_score', { ascending: false })
@@ -123,16 +141,22 @@ serve(async (req) => {
         throw new Error('OPENAI_API_KEY not configured');
       }
 
-      // Find the top 2 trends by views to ensure they're included
+      // Lock in the 2 highest-virality trends so the LLM can't drop them
+      // for a marginal "brand fit" pick. Virality_score is computed from
+      // cross-source corroboration + timing in fetch-trends — not the
+      // (always-NULL) views_last_60h_millions placeholder we used to use.
       const top2TrendIds = trends.slice(0, 2).map(t => t.trend_id);
 
       const systemPrompt = `You are a senior social media strategist for high-growth creators and brands.
 
 Your job:
 - Read a brand profile.
-- Read a list of current social media trends, including:
-  - a description of WHY they are trending right now
-  - recent view volume (views_last_60h_millions).
+- Read a list of current social media trends. Each one comes with:
+  - a description of WHY it is trending right now,
+  - a virality_score (10–99) reflecting cross-source corroboration + timing,
+  - a timing label (early / peaking / saturated),
+  - source_signals (which platforms confirmed it: google_trends_uk, reddit, youtube_us, etc. — more sources = more real),
+  - a category and region.
 - Pick exactly 5 trends that will perform best for this brand.
 
 Brand memory is provided as a style guide. Use it as the highest priority for voice and tone:
@@ -147,11 +171,12 @@ Tone handling:
 - If primary_tone is 'Naughty', allow premium A-rated innuendo but keep it non-explicit and brand-safe.
 
 Rules:
-- ALWAYS include the 2 trends with the highest views_last_60h_millions in the final 5.
+- ALWAYS include the 2 trends with the highest virality_score in the final 5 (these are the strongest signals available right now).
 - For the other 3:
-  - Optimise for a mix of:
-    - brand fit (industry, niche, audience, tone, content_format, primary_goal)
-    - view volume (don't pick dead trends).
+  - Optimise for brand fit (industry, niche, audience, tone, content_format, primary_goal).
+  - Prefer trends with timing="early" when brand can move fast — first-mover advantage.
+  - Prefer trends with 2+ source_signals — multi-source corroboration means it's actually trending, not a one-platform blip.
+  - Skip saturated trends unless the brand has a genuinely fresh angle.
 - Use the description field: reference specific triggers (leaks, finales, controversies, emotional themes, flashmobs, etc.), not generic statements.
 - Avoid clichés like:
   - 'engaging content'
@@ -162,7 +187,7 @@ Rules:
 
 For each selected trend you must return:
 - trend_id (matching one from the input),
-- why_good_fit (2–3 punchy sentences using brand language and the real reasons the trend is hot),
+- why_good_fit (2–3 punchy sentences using brand language and the real reasons the trend is hot — cite a specific moment from the description, never a generic claim),
 - example_hook (ONE scroll-stopping hook line, max ~140 characters, which can start with an emoji or CAPS),
 - angle_summary (1–2 sentences describing the creative angle, not a repeat of why_good_fit).
 
@@ -173,7 +198,11 @@ Always respond with a single valid JSON object.`;
         trend_name: t.trend_name,
         description: t.description || '',
         hashtags: t.hashtags || '',
-        views_last_60h_millions: t.views_last_60h_millions
+        virality_score: t.virality_score ?? null,
+        timing: t.timing || null,
+        source_signals: t.source_signals || [],
+        category: t.category || null,
+        region: t.region || null,
       }));
 
       const userMessage = `
@@ -183,10 +212,10 @@ ${JSON.stringify(user_profile, null, 2)}
 Here is the brand memory (style guide):
 ${JSON.stringify(brandMemory, null, 2)}
 
-Here is the list of candidate trends (with descriptions of why they are currently viral):
+Here is the list of candidate trends (ranked by virality_score, with descriptions of why they are currently viral):
 ${JSON.stringify(trendsForPrompt, null, 2)}
 
-The 2 trends with the highest views are: ${top2TrendIds.join(', ')} — you MUST include these.
+The 2 trends with the highest virality_score are: ${top2TrendIds.join(', ')} — you MUST include these.
 
 Please select exactly 5 trends and return a JSON object like:
 
@@ -253,11 +282,12 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
           return {
             trend_id: fullTrend.trend_id,
             trend_name: fullTrend.trend_name,
-            views_last_60h_millions: fullTrend.views_last_60h_millions,
+            // views_last_60h_millions intentionally omitted — we no longer fake it.
             region: fullTrend.region || null,
             timing: fullTrend.timing || 'peaking',
-            ig_confirmed: fullTrend.ig_confirmed ?? false,
-            virality_score: fullTrend.virality_score ?? 50,
+            ig_confirmed: fullTrend.ig_confirmed ?? null,
+            ig_validated: fullTrend.ig_validated ?? 'unknown',
+            virality_score: fullTrend.virality_score ?? null,
             source_signals: fullTrend.source_signals || [],
             category: fullTrend.category || null,
             why_good_fit: rec.why_good_fit || '',
@@ -274,20 +304,68 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
       );
 
     } catch (aiError) {
-      // Fallback: Return top 5 trends with placeholder text
-      console.error('AI recommendation failed, using fallback:', aiError);
-      
-      const fallbackTrends = trends.slice(0, 5).map(trend => ({
-        trend_id: trend.trend_id,
-        trend_name: trend.trend_name,
-        views_last_60h_millions: trend.views_last_60h_millions,
-        why_good_fit: `This is a strong fit for ${user_profile.brand_name} because it is a high-attention global trend.`,
-        example_hook: `Example hook using ${trend.trend_name} for ${user_profile.brand_name}`,
-        angle_summary: `Short summary of how ${user_profile.brand_name} could use ${trend.trend_name} in their content.`
-      }));
+      // Honest fallback when OpenAI is down or rate-limited.
+      //
+      // Old fallback returned 5× "This is a strong fit because it is a
+      // high-attention global trend" — generic boilerplate that destroys
+      // trust on the first outage.
+      //
+      // New fallback uses the trend's actual stored description (which we
+      // already have, sourced from real signals) plus the timing/category
+      // signal to produce a meaningful why_good_fit per trend. We also
+      // surface the degraded mode to the client so the UI can label it
+      // honestly ("Live AI ranking unavailable — showing top trends by
+      // signal strength").
+      console.error('AI recommendation failed, using signal-only fallback:', aiError);
+
+      const firstSentence = (text: string | null | undefined): string => {
+        if (!text) return '';
+        const trimmed = text.trim();
+        const m = trimmed.match(/^[^.!?]+[.!?]/);
+        return (m ? m[0] : trimmed.slice(0, 220)).trim();
+      };
+
+      const timingPhrase = (t: string | null | undefined): string => {
+        if (t === 'early') return 'Early signal — Instagram aggregators have not posted yet, so first-mover advantage is still on the table';
+        if (t === 'peaking') return 'Peaking right now — still room to ride the wave but speed matters';
+        if (t === 'saturated') return 'Already widespread — only worth posting with a genuinely fresh angle';
+        return 'Currently in active rotation across multiple platforms';
+      };
+
+      const fallbackTrends = trends.slice(0, 5).map(trend => {
+        const description = (trend as any).description || '';
+        const timing = (trend as any).timing || null;
+        const sources: string[] = (trend as any).source_signals || [];
+        const category = (trend as any).category || null;
+
+        const lead = firstSentence(description) ||
+          `${trend.trend_name} is currently active${category ? ` in the ${category} space` : ''}.`;
+        const signalLine = sources.length > 0
+          ? `Confirmed across ${sources.length} live signal${sources.length === 1 ? '' : 's'} (${sources.slice(0, 3).join(', ')}).`
+          : `Surfaced from cross-source aggregation.`;
+
+        return {
+          trend_id: trend.trend_id,
+          trend_name: trend.trend_name,
+          region: (trend as any).region || null,
+          timing,
+          ig_confirmed: (trend as any).ig_confirmed ?? null,
+          ig_validated: (trend as any).ig_validated ?? 'unknown',
+          virality_score: (trend as any).virality_score ?? null,
+          source_signals: sources,
+          category,
+          why_good_fit: `${lead} ${timingPhrase(timing)}. ${signalLine}`.trim(),
+          example_hook: `${trend.trend_name}${category ? ` × ${user_profile.brand_name}` : ''} — here's the angle nobody's posted yet.`,
+          angle_summary: `Tie ${trend.trend_name} into ${user_profile.brand_name}'s ${user_profile.niche || user_profile.industry || 'core message'} by leading with the specific moment driving the trend (see description), then bridging to the brand's POV.`,
+        };
+      });
 
       return new Response(
-        JSON.stringify({ recommended_trends: fallbackTrends }),
+        JSON.stringify({
+          recommended_trends: fallbackTrends,
+          degraded: true,
+          degraded_reason: 'ai_ranking_unavailable',
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

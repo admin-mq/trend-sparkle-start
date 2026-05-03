@@ -35,6 +35,16 @@ export interface UserProfile {
 
 export type TrendTiming = 'early' | 'peaking' | 'saturated';
 
+/**
+ * Tri-state IG aggregator validation.
+ * - 'confirmed' → IG aggregator post(s) found for the trend
+ * - 'not_found' → IG search ran cleanly and reported zero matches
+ * - 'unknown'   → validation step did not classify this trend (timeout,
+ *                 parse error, or model omitted it). UI MUST render this
+ *                 as ambiguous, never as a negative.
+ */
+export type IgValidated = 'confirmed' | 'not_found' | 'unknown';
+
 export type TrendCategory =
   | 'Entertainment'
   | 'Sports'
@@ -54,7 +64,9 @@ export interface Trend {
   views_last_60h_millions: number | null;
   region?: string;
   timing?: TrendTiming;
+  /** @deprecated Prefer ig_validated. Kept for back-compat with old API responses. */
   ig_confirmed?: boolean;
+  ig_validated?: IgValidated;
   virality_score?: number;
   source_signals?: string[];
   category?: TrendCategory | string;

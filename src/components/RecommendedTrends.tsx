@@ -255,11 +255,20 @@ export const RecommendedTrends = ({
                   <CategoryBadge category={trend.category} />
                 </div>
 
-                {/* Signal row — only render real signals; we don't fake view counts */}
-                {trend.ig_confirmed === false && trend.timing === 'early' && (
+                {/* Signal row — render only honest signals.
+                    'unknown' is intentionally NOT rendered: it would
+                    falsely imply a checked-and-empty result. */}
+                {trend.ig_validated === 'not_found' && trend.timing === 'early' && (
                   <div className="flex items-center gap-3 mt-1.5">
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
                       Not on IG yet — post first
+                    </span>
+                  </div>
+                )}
+                {trend.ig_validated === 'confirmed' && (
+                  <div className="flex items-center gap-3 mt-1.5">
+                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
+                      Already on IG — bring a fresh angle
                     </span>
                   </div>
                 )}

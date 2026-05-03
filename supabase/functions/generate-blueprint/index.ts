@@ -7,9 +7,21 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// External Supabase credentials (user's own project with trends data)
-const EXTERNAL_SUPABASE_URL = "https://njnnpdrevbkhbhzwccuz.supabase.co";
-const EXTERNAL_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qbm5wZHJldmJraGJoendjY3V6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQzOTg3ODQsImV4cCI6MjA3OTk3NDc4NH0.WKuei-3pR2TphEKjSOOhvNlECrX93Jt9NE5SK2TcD-M";
+// Supabase credentials.
+// Prefer explicit EXTERNAL_SUPABASE_* env vars (for cross-project setups
+// where the trends DB lives in a different project from the edge functions).
+// Otherwise fall back to the auto-injected SUPABASE_URL / SUPABASE_ANON_KEY
+// that every Supabase Edge Function gets for free (same-project lookups).
+// Never hardcode keys in source — they leak via git, Lovable previews, and
+// the deployed function bundle.
+const EXTERNAL_SUPABASE_URL =
+  Deno.env.get("EXTERNAL_SUPABASE_URL") || Deno.env.get("SUPABASE_URL") || "";
+const EXTERNAL_SUPABASE_ANON_KEY =
+  Deno.env.get("EXTERNAL_SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_ANON_KEY") || "";
+
+if (!EXTERNAL_SUPABASE_URL || !EXTERNAL_SUPABASE_ANON_KEY) {
+  console.error("[generate-blueprint] Missing Supabase credentials. Set EXTERNAL_SUPABASE_URL/EXTERNAL_SUPABASE_ANON_KEY or rely on auto-injected SUPABASE_URL/SUPABASE_ANON_KEY.");
+}
 
 type BrandMemory = {
   user_id: string | null;
@@ -55,6 +67,123 @@ async function getBrandMemory(
     .maybeSingle();
 
   return data;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Director's-Cut structural validator
+//
+// A 1200-word shooting script is necessary but not sufficient. Without all
+// the per-scene blocks the script can't actually be executed by another
+// human; it's just a wall of text. This validator catches:
+//   1. Word/char floor failures (script < 1100 words, long_caption < 1300 chars)
+//   2. Missing per-scene blocks (e.g. no [SOUND DESIGN] in any scene)
+//   3. Suspect [REFERENCE] blocks ("a popular ad", "an iconic scene") that
+//      signal fabrication — the prompt explicitly forbids these
+//
+// Returns a list of human-readable issue strings. Empty list = ship.
+// ─────────────────────────────────────────────────────────────────────────────
+const VIDEO_REQUIRED_BLOCKS = [
+  '[INTENT]',
+  '[FRAME]',
+  '[CAMERA]',
+  '[LIGHTING]',
+  '[WARDROBE & PROPS]',
+  '[PERFORMANCE / VOICEOVER]',
+  '[TEXT OVERLAY]',
+  '[SOUND DESIGN]',
+  '[B-ROLL / CUTAWAYS]',
+  '[TRANSITION OUT]',
+];
+
+const STATIC_REQUIRED_BLOCKS = [
+  '[INTENT]',
+  '[SUBJECT & SCENE]',
+  '[COMPOSITION]',
+  '[LIGHTING]',
+  '[COLOUR PALETTE]',
+  '[TYPOGRAPHY]',
+  '[LAYOUT & GRID]',
+  '[TEXT COPY]',
+  '[TEXTURE / FINISH]',
+];
+
+// Phrases that strongly suggest a fabricated [REFERENCE] block. The prompt
+// tells the model to either name a real reference (with title/year/creator)
+// or omit the block entirely. Vague claims like "a popular ad campaign" or
+// "an iconic film scene" with no proper noun are exactly what we forbid.
+const FAB_PATTERNS = [
+  /\ba (popular|famous|well-known|classic|iconic|legendary|memorable) (ad|advert|advertisement|campaign|film|movie|scene|video|music video|song|brand)\b/i,
+  /\ban? (iconic|popular|famous|well-known|classic|legendary) (ad|advert|advertisement|campaign|film|movie|scene|video|music video|song|brand)\b/i,
+  /\b(reminiscent|inspired by) the (style|look|aesthetic|vibe|feel) of (popular|famous|iconic|classic) /i,
+  /\bsimilar to (popular|famous|iconic|classic) /i,
+];
+
+function validateDetailedDirection(
+  d: any,
+  opts: { isVideo: boolean },
+): string[] {
+  const issues: string[] = [];
+  if (!d || typeof d !== 'object') {
+    return ['detailed_direction missing or not an object'];
+  }
+
+  const longField: string = opts.isVideo ? (d.full_script || '') : (d.visual_brief || '');
+  const longFieldName = opts.isVideo ? 'full_script' : 'visual_brief';
+  const wordCount = longField.trim().split(/\s+/).filter(Boolean).length;
+  const captionLen = (d.long_caption || '').length;
+
+  // 1) Length floors
+  if (wordCount < 1100) {
+    issues.push(`${longFieldName} is ${wordCount} words — must be ≥ 1200 (target 1200–1600).`);
+  }
+  if (captionLen < 1300) {
+    issues.push(`long_caption is ${captionLen} characters — must be ≥ 1400 (target 1400–1700).`);
+  }
+
+  // 2) Per-scene/per-frame block presence
+  const required = opts.isVideo ? VIDEO_REQUIRED_BLOCKS : STATIC_REQUIRED_BLOCKS;
+  // Split on SCENE/FRAME headers — robust to variations like "SCENE 1 —"
+  // or "[SCENE 2 — 5 seconds — Title]" or "FRAME 3:".
+  const sceneSplitter = opts.isVideo
+    ? /(?=\bSCENE\s*\d|\[SCENE\s*\d)/i
+    : /(?=\bFRAME\s*\d|\[FRAME\s*\d)/i;
+  const sections = longField.split(sceneSplitter).filter(s => s.trim().length > 50);
+
+  if (sections.length < 3) {
+    issues.push(`${longFieldName} has only ${sections.length} ${opts.isVideo ? 'SCENE' : 'FRAME'} section(s) — need at least 4 to form an escalation curve.`);
+  }
+
+  // For each scene/frame, count missing required blocks
+  const blockMissCounts: Record<string, number> = {};
+  for (const section of sections) {
+    for (const block of required) {
+      if (!section.includes(block)) {
+        blockMissCounts[block] = (blockMissCounts[block] || 0) + 1;
+      }
+    }
+  }
+  for (const [block, count] of Object.entries(blockMissCounts)) {
+    if (count > 0) {
+      const pct = sections.length ? Math.round((count / sections.length) * 100) : 0;
+      // Tolerate 1 missing block in 1 scene; flag systemic absence.
+      if (count >= 2 || pct >= 50) {
+        issues.push(`${block} is missing from ${count}/${sections.length} ${opts.isVideo ? 'scenes' : 'frames'} — every section must include it.`);
+      }
+    }
+  }
+
+  // 3) Fabrication-prone [REFERENCE] phrasing
+  const refRegex = /\[REFERENCE\][^\[]*?(?=\[|$)/gi;
+  const refBlocks = longField.match(refRegex) || [];
+  let suspectRefs = 0;
+  for (const ref of refBlocks) {
+    if (FAB_PATTERNS.some(p => p.test(ref))) suspectRefs++;
+  }
+  if (suspectRefs > 0) {
+    issues.push(`${suspectRefs} [REFERENCE] block(s) use vague generic phrasing ("a popular ad", "an iconic scene"). Either name a real reference with a specific title + year/creator/brand, or omit the [REFERENCE] block entirely.`);
+  }
+
+  return issues;
 }
 
 serve(async (req) => {
@@ -385,40 +514,42 @@ Verify your character/word counts before returning. If short, add more depth —
       let parsedResponse = await callOpenAI();
       let detailedDirection = parsedResponse.detailed_direction;
 
-      // ── Length-floor retry (detailed mode only) ─────────────────────────────
-      // If the model returned the long-form deliverable but it's clearly under
-      // the floor we asked for, do ONE retry with a stricter nudge. The retry
-      // hands back the previous draft and tells the model to rewrite longer
-      // and richer. This costs one extra call at most and only fires when
-      // the first call genuinely under-delivered.
+      // ── Structural + length validation (detailed mode only) ─────────────────
+      // Length is necessary but not sufficient. A 1200-word script that's
+      // missing [SOUND DESIGN] in every scene is unshippable. So we validate
+      // ALL of: word/char floors, per-scene/per-frame block presence, and
+      // [REFERENCE] honesty (fabrication-prone phrasing fails).
+      //
+      // If anything fails, do ONE retry with a precise itemised nudge so the
+      // model knows exactly what to fix — not a generic "try harder" prompt.
       if (isDetailed && detailedDirection) {
-        const longField = isVideo ? detailedDirection.full_script : detailedDirection.visual_brief;
-        const longFieldName = isVideo ? 'full_script' : 'visual_brief';
-        const wordCount = (longField || '').trim().split(/\s+/).filter(Boolean).length;
-        const captionLen = (detailedDirection.long_caption || '').length;
+        const issues = validateDetailedDirection(detailedDirection, { isVideo });
+        if (issues.length > 0) {
+          console.log(`Detailed output failed validation — ${issues.length} issue(s):\n  - ${issues.join('\n  - ')}`);
+          const nudge = `Your previous draft did not meet the deliverable bar. Specific issues:
 
-        const scriptShort  = wordCount > 0 && wordCount < 1100;
-        const captionShort = captionLen > 0 && captionLen < 1300;
+${issues.map((i, n) => `${n + 1}. ${i}`).join('\n')}
 
-        if (scriptShort || captionShort) {
-          console.log(`Detailed output under floor (${longFieldName}=${wordCount}w, long_caption=${captionLen}c) — retrying once with stricter nudge`);
-          const nudge = `Your previous draft was too short to ship.
-
-Previous ${longFieldName}: ${wordCount} words (target 1200–1600).
-Previous long_caption: ${captionLen} characters (target 1400–1700).
-
-Rewrite the FULL JSON response. Keep the same concept and outline, but expand the long-form fields with MORE depth — additional scenes/frames, deeper [REFERENCE] blocks, more concrete [LIGHTING] / [COLOUR PALETTE], more long-tail search phrases in the caption. Do NOT pad with filler. Add information density.
+Rewrite the FULL JSON response. Address every issue above. Do NOT pad with filler — add information density (deeper [REFERENCE] blocks, more concrete [LIGHTING] / [COLOUR PALETTE], more long-tail search phrases). For [REFERENCE] blocks: name a specific real film/ad/creator/campaign with title and year/era, OR omit the [REFERENCE] block entirely. Generic phrasing like "a popular ad" or "an iconic film scene" is forbidden — it signals fabrication.
 
 Previous draft for reference:
 ${JSON.stringify(detailedDirection, null, 2)}`;
           try {
             const retry = await callOpenAI(nudge);
             if (retry?.detailed_direction) {
+              const retryIssues = validateDetailedDirection(retry.detailed_direction, { isVideo });
               detailedDirection = retry.detailed_direction;
+              if (retryIssues.length > 0) {
+                console.warn(`Retry still has ${retryIssues.length} issue(s) but shipping anyway: ${retryIssues.join('; ')}`);
+              } else {
+                console.log('Retry passed all structural checks.');
+              }
             }
           } catch (retryErr) {
             console.error('Detailed-mode retry failed, keeping first draft:', retryErr);
           }
+        } else {
+          console.log('Detailed output passed all structural checks on first try.');
         }
       }
 

@@ -29,8 +29,17 @@ interface ScoredCandidate {
   details: string[];
 }
 
+// Tri-state IG validation result.
+//   'confirmed' → IG aggregator post(s) found for the topic
+//   'not_found' → search ran cleanly and reported zero matches
+//   'unknown'   → validation step didn't return a classification for the
+//                 topic (timeout, parse error, omitted by model). UI MUST
+//                 render this as ambiguous — never as a negative.
+type IgValidated = 'confirmed' | 'not_found' | 'unknown';
+
 interface EnrichedCandidate extends ScoredCandidate {
   ig_confirmed: boolean;
+  ig_validated: IgValidated;
   timing: Timing;
   ig_evidence: string;
   virality_score: number;
@@ -38,6 +47,7 @@ interface EnrichedCandidate extends ScoredCandidate {
 
 interface IGValidation {
   ig_confirmed: boolean;
+  ig_validated: IgValidated;
   timing: Timing;
   ig_evidence: string;
 }
@@ -352,19 +362,44 @@ Return ONLY valid JSON:
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         for (const [topic, v] of Object.entries(parsed.validations || {})) {
-          resultMap.set(topic.toLowerCase(), v as IGValidation);
+          const raw = v as Partial<IGValidation>;
+          // Normalise: a topic that came back from the model with an
+          // explicit ig_confirmed boolean is genuinely classified — true
+          // → 'confirmed', false → 'not_found'. Anything else stays
+          // 'unknown' (we deliberately do not guess).
+          const ig_confirmed = raw.ig_confirmed === true;
+          const ig_validated: IgValidated = raw.ig_confirmed === true
+            ? 'confirmed'
+            : raw.ig_confirmed === false
+              ? 'not_found'
+              : 'unknown';
+          resultMap.set(topic.toLowerCase(), {
+            ig_confirmed,
+            ig_validated,
+            timing: (raw.timing as Timing) || 'peaking',
+            ig_evidence: raw.ig_evidence || '',
+          });
         }
-        console.log(`[fetch-trends] IG validation: ${resultMap.size}/${topics.length} topics confirmed`);
+        const confirmedCount = [...resultMap.values()].filter(v => v.ig_validated === 'confirmed').length;
+        const notFoundCount  = [...resultMap.values()].filter(v => v.ig_validated === 'not_found').length;
+        console.log(`[fetch-trends] IG validation: ${confirmedCount} confirmed, ${notFoundCount} not_found, ${topics.length - resultMap.size} unknown (out of ${topics.length})`);
       }
     }
   } catch (e) {
     console.warn('[fetch-trends] IG validation error:', e);
   }
 
-  // Default fallback for any topics not returned
+  // Topics the model never classified are 'unknown' — NOT 'not_found'.
+  // We can't tell whether the search step skipped them or genuinely found
+  // nothing, so we refuse to guess. The UI renders 'unknown' as ambiguous.
   for (const t of topics) {
     if (!resultMap.has(t.toLowerCase())) {
-      resultMap.set(t.toLowerCase(), { ig_confirmed: false, timing: 'peaking', ig_evidence: 'Not found in search' });
+      resultMap.set(t.toLowerCase(), {
+        ig_confirmed: false,
+        ig_validated: 'unknown',
+        timing: 'peaking',
+        ig_evidence: 'IG validation step did not return a classification for this topic.',
+      });
     }
   }
 
@@ -446,11 +481,18 @@ serve(async (req) => {
     // Build enriched candidates with timing + virality score
     const maxScore = candidates[0]?.totalScore || 1;
     const enriched: EnrichedCandidate[] = candidates.slice(0, 15).map(c => {
-      const igData = igValidations.get(c.topic.toLowerCase()) ||
-        { ig_confirmed: false, timing: 'peaking' as Timing, ig_evidence: '' };
+      // If validateOnInstagram returned nothing for this topic, treat it
+      // as 'unknown' — never as a confirmed-not-on-IG signal.
+      const igData = igValidations.get(c.topic.toLowerCase()) || {
+        ig_confirmed: false,
+        ig_validated: 'unknown' as IgValidated,
+        timing: 'peaking' as Timing,
+        ig_evidence: '',
+      };
       return {
         ...c,
-        ig_confirmed: igData.ig_confirmed,
+        ig_confirmed: igData.ig_validated === 'confirmed',
+        ig_validated: igData.ig_validated,
         timing: igData.timing,
         ig_evidence: igData.ig_evidence,
         virality_score: calcViralityScore(c, maxScore, igData.timing),
@@ -472,10 +514,13 @@ serve(async (req) => {
     // Build research summary for GPT (rich context with timing signals)
     const researchSummary = enriched.map(c => {
       const timingTag = c.timing === 'early' ? '🟢 EARLY' : c.timing === 'peaking' ? '🟡 PEAKING' : '🔴 SATURATED';
+      const igTag = c.ig_validated === 'confirmed' ? '✓ confirmed'
+                  : c.ig_validated === 'not_found' ? '✗ not on IG yet'
+                  : '? unknown';
       return [
         `${timingTag} | "${c.topic}"`,
         `  Sources: ${c.sources.join(' + ')} | Regions: ${c.regions.join('/')} | Virality: ${c.virality_score}`,
-        `  IG: ${c.ig_confirmed ? '✓ confirmed' : '✗ not yet'} — ${c.ig_evidence || 'n/a'}`,
+        `  IG: ${igTag} — ${c.ig_evidence || 'n/a'}`,
         `  Context: ${c.details.slice(0, 2).join('; ') || 'no extra detail'}`,
       ].join('\n');
     }).join('\n\n');
@@ -507,7 +552,10 @@ Your task: Filter to only the social-media-viable topics, then create one trend 
 - For EARLY trends, note the timing advantage in the description
 - source_signals must exactly match the sources listed in each signal
 
-Return ONLY valid JSON:
+Return ONLY valid JSON. Note: timing, virality_score, ig_validated and
+source_signals are MEASURED values shown above — you do NOT need to invent
+them; the upsert step uses the measured values directly. Just provide the
+descriptive fields:
 {
   "trends": [
     {
@@ -517,9 +565,6 @@ Return ONLY valid JSON:
       "description": "3-5 sentences explaining what it is, why it's trending now, what people are posting, and the emotional hook.",
       "region": "UK",
       "premium_only": false,
-      "timing": "early",
-      "ig_confirmed": false,
-      "virality_score": 87,
       "source_signals": ["google_trends_uk", "reddit"],
       "category": "Entertainment"
     }
@@ -530,7 +575,7 @@ Rules:
 - hashtag = lowercase, no # symbol, no spaces
 - region = UK | USA | Global
 - category = exactly one of: Entertainment | Sports | Music | Tech | News | Fashion | Food | Gaming | Finance | Lifestyle
-- Order: early first, then peaking, then saturated — within each group sort by virality_score desc
+- source_signals must exactly match the Sources line for that signal above (so we can verify you didn't invent a topic)
 - NEVER add a trend not in the signal list above`;
 
     const structureRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -555,6 +600,22 @@ Rules:
     if (hallucinated > 0) console.warn(`[fetch-trends] Dropped ${hallucinated} hallucinated trends (no source_signals)`);
     console.log(`[fetch-trends] Layer 3: ${trends.length} real trends structured`);
 
+    // Build a lookup from the enriched data so we can hydrate each
+    // structured trend with the *original* signal-derived ig_validated /
+    // virality_score / timing — without trusting the LLM to faithfully
+    // pass them through the JSON. (We've seen GPT silently flip booleans.)
+    const enrichedByTopic = new Map<string, EnrichedCandidate>();
+    for (const e of enriched) enrichedByTopic.set(e.topic.toLowerCase(), e);
+    const findEnriched = (trendName: string): EnrichedCandidate | undefined => {
+      const key = trendName.toLowerCase();
+      if (enrichedByTopic.has(key)) return enrichedByTopic.get(key);
+      // Fallback: substring match (LLM often renames slightly)
+      for (const [k, v] of enrichedByTopic.entries()) {
+        if (key.includes(k) || k.includes(key)) return v;
+      }
+      return undefined;
+    };
+
     // ── Upsert to trends table ─────────────────────────────────────────────
     let upserted = 0, errors = 0;
 
@@ -567,6 +628,13 @@ Rules:
       const trend_id = `TQ-${today}-${slug}`;
       const hashtags = `#${trend.hashtag} ${(trend.extra_hashtags || '').trim()}`.trim();
 
+      // Hydrate from the enriched record so we use *measured* signal values,
+      // not whatever the LLM happened to echo back. ig_validated comes from
+      // the actual web-search result; ig_confirmed is derived from it.
+      const enrichedMatch = findEnriched(trend.trend_name);
+      const ig_validated: IgValidated = enrichedMatch?.ig_validated || 'unknown';
+      const ig_confirmed = ig_validated === 'confirmed';
+
       const { error } = await supabase.from('trends').upsert(
         {
           trend_id,
@@ -575,17 +643,20 @@ Rules:
           hashtags,
           // We don't have a real view-count signal source, so leave NULL.
           // The UI hides this field entirely; virality_score / timing /
-          // ig_confirmed / source_signals are the real signals we surface.
+          // ig_validated / source_signals are the real signals we surface.
           views_last_60h_millions: null,
           region:                  trend.region || 'Global',
           premium_only:            trend.premium_only ?? false,
           active:                  true,
           date_added:              today,
-          // New signal fields
-          timing:                  trend.timing || 'peaking',
-          ig_confirmed:            trend.ig_confirmed ?? false,
-          virality_score:          trend.virality_score ?? 50,
-          source_signals:          trend.source_signals || [],
+          // Signal fields — prefer measured values from `enriched`, fall
+          // back to LLM output only for the fields the LLM actually owns
+          // (timing/source_signals/category derived from descriptions).
+          timing:                  enrichedMatch?.timing || trend.timing || 'peaking',
+          ig_confirmed,
+          ig_validated,
+          virality_score:          enrichedMatch?.virality_score ?? trend.virality_score ?? 50,
+          source_signals:          enrichedMatch?.sources || trend.source_signals || [],
           category:                trend.category || 'Entertainment',
         },
         { onConflict: 'trend_id', ignoreDuplicates: false }
