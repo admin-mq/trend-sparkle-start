@@ -145,6 +145,8 @@ interface BrandStepProps {
   industry: string; setIndustry: (v: string) => void;
   geography: string; setGeography: (v: string) => void;
   audience: string; setAudience: (v: string) => void;
+  setBusinessSummary: (v: string) => void;
+  setNiche: (v: string) => void;
   error: string | null;
   prefilled?: boolean;
   onNext: () => void;
@@ -153,7 +155,8 @@ interface BrandStepProps {
 function BrandStep({
   brandName, setBrandName, domain, setDomain,
   industry, setIndustry, geography, setGeography,
-  audience, setAudience, error, prefilled, onNext,
+  audience, setAudience, setBusinessSummary, setNiche,
+  error, prefilled, onNext,
 }: BrandStepProps) {
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -172,6 +175,9 @@ function BrandStep({
       if (p.industry)   setIndustry(p.industry);
       if (p.geography)  setGeography(p.geography);
       if (p.target_audience) setAudience(p.target_audience);
+      // Capture rich context for downstream steps (find-competitors etc.)
+      if (p.business_summary) setBusinessSummary(p.business_summary);
+      if (p.niche)            setNiche(p.niche);
       // Extract clean domain from the URL they pasted
       const extracted = url.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase();
       if (extracted && !domain) setDomain(extracted);
@@ -565,6 +571,11 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
   const [industry, setIndustry] = useState("");
   const [geography, setGeography] = useState("Global");
   const [audience, setAudience] = useState("");
+  // Rich context captured from analyze-brand-website / brand profile.
+  // Forwarded to find-competitors so it can ground its search in what the
+  // brand actually sells (not just its name + industry label).
+  const [businessSummary, setBusinessSummary] = useState("");
+  const [niche, setNiche] = useState("");
 
   // Pre-fill from brand profile on mount
   useEffect(() => {
@@ -582,7 +593,10 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
       if (data.brand_name) setBrandName(data.brand_name);
       if (data.industry)   setIndustry(data.industry);
       if (data.geography)  setGeography(data.geography);
-      if (data.business_summary) setAudience(data.business_summary);
+      if (data.business_summary) {
+        setAudience(data.business_summary);
+        setBusinessSummary(data.business_summary);
+      }
       const savedCompetitors: { name: string; domain: string }[] = (data.competitors ?? [])
         .filter((c: any) => c.domain)
         .slice(0, 4)
@@ -643,14 +657,30 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
           industry: bIndustry || '',
           geography: bGeo || 'Global',
           country: bGeo || 'Global',
+          // Rich context — lets the function ground its search in what the
+          // brand actually sells, not just the name. If empty, the function
+          // will crawl the brand_url itself to derive these.
+          business_summary: businessSummary || '',
+          niche: niche || '',
         }
       });
       if (fnError) throw new Error(fnError.message);
       const found: Competitor[] = (data?.competitors ?? [])
         .slice(0, 4)
         .map((c: any) => ({ name: c.name, domain: c.domain }));
-      if (found.length > 0) setCompetitors(found);
-      else setDiscoverError('No competitors found — add them manually below.');
+      if (found.length > 0) {
+        setCompetitors(found);
+        // If the function derived business_summary/niche server-side, capture
+        // them so subsequent re-runs pass the same context.
+        if (data?.derived_context?.business_summary && !businessSummary) {
+          setBusinessSummary(data.derived_context.business_summary);
+        }
+        if (data?.derived_context?.niche && !niche) {
+          setNiche(data.derived_context.niche);
+        }
+      } else {
+        setDiscoverError('No competitors found — add them manually below.');
+      }
     } catch {
       setDiscoverError('Could not auto-find competitors — add them manually below.');
     } finally {
@@ -742,6 +772,8 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
             industry={industry} setIndustry={setIndustry}
             geography={geography} setGeography={setGeography}
             audience={audience} setAudience={setAudience}
+            setBusinessSummary={setBusinessSummary}
+            setNiche={setNiche}
             error={error}
             prefilled={prefilledFromProfile}
             onNext={handleBrandNext}
