@@ -1,8 +1,24 @@
+// supabase/functions/pr-visibility-check/index.ts
+//
+// AI Visibility check — for each tracked prompt, ask Marketers Quest sonar
+// (live web search) the prompt and inspect the REAL citations sonar returns.
+// Brand presence is computed deterministically:
+//   - Cited:   the brand's domain appears in sonar's citations[] array
+//   - Mentioned: the brand name (or domain) appears in sonar's answer text
+//   - Absent:  neither
+//
+// We do not ask any LLM to judge whether a brand is present. That used to
+// produce confidently-wrong answers because the model was scoring its own
+// invention. Now the only "AI" piece is sonar's actual web search; the
+// scoring is regex against the URLs sonar found.
+//
+// visibility_score is deterministic from citation rank + answer mention.
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!;
+const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY")!;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,6 +27,91 @@ const corsHeaders = {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function cleanHost(rawDomain: string | null | undefined): string {
+  return (rawDomain || "")
+    .toLowerCase()
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .replace(/\/.*$/, "")
+    .trim();
+}
+
+function extractHost(url: string): string | null {
+  try {
+    const u = new URL(url.startsWith("http") ? url : `https://${url}`);
+    return u.hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function textContains(haystack: string, needle: string): boolean {
+  if (!needle || !haystack) return false;
+  // For domains and short brand names use a word-boundary match
+  const re = new RegExp(`\\b${escapeRegex(needle)}\\b`, "i");
+  return re.test(haystack);
+}
+
+function findSentenceWith(text: string, needles: string[]): string | null {
+  if (!text) return null;
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  const lc = needles.map((n) => (n || "").toLowerCase()).filter(Boolean);
+  for (const s of sentences) {
+    const ls = s.toLowerCase();
+    if (lc.some((n) => ls.includes(n))) {
+      return s.trim().slice(0, 280);
+    }
+  }
+  return null;
+}
+
+function hostMatches(host: string, target: string): boolean {
+  if (!host || !target) return false;
+  return host === target || host.endsWith("." + target);
+}
+
+// ── Sonar call ────────────────────────────────────────────────────────────────
+
+async function querySonar(
+  promptText: string,
+  geography: string,
+): Promise<{ answer: string; citations: string[] }> {
+  const systemMsg = `You are a knowledgeable research assistant with live web access. Answer the user's query in 150-250 words with a clear, factual response grounded in real sources you find via search. Cite real, currently-online sources. Do not fabricate brands, websites, statistics, or quotes. If reliable information is not available, say so plainly. Geography context for this query: ${geography || "Global"}.`;
+
+  const res = await fetch("https://api.perplexity.ai/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "sonar",
+      messages: [
+        { role: "system", content: systemMsg },
+        { role: "user", content: promptText },
+      ],
+      temperature: 0.2,
+      max_tokens: 800,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Marketers Quest sonar error ${res.status}: ${text}`);
+  }
+
+  const data = await res.json();
+  const answer: string = data.choices?.[0]?.message?.content ?? "";
+  const citations: string[] = Array.isArray(data.citations) ? data.citations : [];
+  return { answer, citations };
+}
+
 // ── Single prompt visibility check ────────────────────────────────────────────
 
 async function checkPromptVisibility(
@@ -18,7 +119,7 @@ async function checkPromptVisibility(
   geography: string,
   brandName: string,
   brandDomain: string,
-  competitors: { name: string; domain: string }[]
+  competitors: { name: string; domain: string }[],
 ): Promise<{
   brand_present: boolean;
   brand_position: number | null;
@@ -30,86 +131,100 @@ async function checkPromptVisibility(
   analysis_summary: string;
   visibility_score: number;
 }> {
-  const competitorList = competitors
-    .slice(0, 5)
-    .map((c) => `- ${c.name} (${c.domain})`)
-    .join("\n");
+  const { answer, citations } = await querySonar(promptText, geography);
 
-  const system = `You are an AI answer engine and brand visibility analyst.
-
-When given a search query, you will:
-1. Answer it naturally, as a helpful AI assistant would — the kind of answer that would appear in ChatGPT, Marketers Quest, or Google's AI Overview
-2. Analyze that answer for specific brand and competitor presence
-
-Your natural answer should reflect what an AI system trained on public web data would actually say — mentioning real, well-known players in the space when relevant. Do not force mentions of unknown brands.
-
-Always respond with a valid JSON object.`;
-
-  const user = `Query: "${promptText}"
-Geography context: ${geography || "Global"}
-
-Brand to track: ${brandName} (domain: ${brandDomain})
-Competitors to track:
-${competitorList || "None specified"}
-
-First, write a natural AI answer to this query (150-250 words), as if you're a helpful search AI. Mention specific companies, tools, or services that are genuinely well-known for this query.
-
-Then analyze your own answer and return this JSON:
-
-{
-  "natural_answer": "<your 150-250 word AI answer to the query>",
-  "brand_present": <true if ${brandName} or ${brandDomain} appears in the answer>,
-  "brand_position": <null if absent; 1 if prominently featured first, 2-3 if mentioned midway, 4-5 if briefly mentioned at end>,
-  "brand_context": "<if present: quote the exact sentence where the brand appears, else null>",
-  "competitor_presence": {
-    ${competitors.slice(0, 5).map((c) => `"${c.domain}": <true/false>`).join(",\n    ")}
-  },
-  "cited_domains": ["<list of website domains referenced or implied in the answer, e.g. 'hubspot.com', 'semrush.com'>"],
-  "why_absent": "<if brand_present is false: 1-2 sentences on why the brand likely doesn't appear — e.g. low authority, missing category content, dominated by specific competitors>",
-  "analysis_summary": "<1-2 sentences summarising the visibility situation for ${brandName} on this prompt>",
-  "visibility_score": <integer 0-100: 0=completely absent, 50=mentioned but not prominently, 100=featured as a top recommendation>
-}`;
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.3,
-      max_tokens: 1200,
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Marketers Quest error ${response.status}: ${err}`);
+  // Deduplicate citation hosts in order of first appearance
+  const seen = new Set<string>();
+  const orderedHosts: string[] = [];
+  for (const c of citations) {
+    const host = extractHost(c);
+    if (host && !seen.has(host)) {
+      seen.add(host);
+      orderedHosts.push(host);
+    }
   }
 
-  const data = await response.json();
-  const parsed = JSON.parse(data.choices[0].message.content);
+  const brandHost = cleanHost(brandDomain);
+  const brandInCitationIdx = brandHost
+    ? orderedHosts.findIndex((h) => hostMatches(h, brandHost))
+    : -1;
+  const brandInCitations = brandInCitationIdx >= 0;
+  const brandInAnswer =
+    (brandName ? textContains(answer, brandName) : false) ||
+    (brandHost ? answer.toLowerCase().includes(brandHost) : false);
+  const brandPresent = brandInCitations || brandInAnswer;
+
+  // Competitor presence — keyed by clean host
+  const competitorPresence: Record<string, boolean> = {};
+  for (const c of (competitors || []).slice(0, 5)) {
+    const ch = cleanHost(c.domain);
+    if (!ch) continue;
+    const inCitations = orderedHosts.some((h) => hostMatches(h, ch));
+    const inAnswer =
+      (c.name ? textContains(answer, c.name) : false) ||
+      answer.toLowerCase().includes(ch);
+    competitorPresence[ch] = inCitations || inAnswer;
+  }
+
+  // Deterministic visibility_score
+  let score = 0;
+  if (brandInCitations) {
+    if (brandInCitationIdx === 0) score = 90;
+    else if (brandInCitationIdx <= 2) score = 75;
+    else if (brandInCitationIdx <= 4) score = 60;
+    else score = 50;
+    // Small bump if also mentioned in the prose
+    if (brandInAnswer) score = Math.min(100, score + 5);
+  } else if (brandInAnswer) {
+    score = 35;
+  }
+
+  const brandPosition = brandInCitations ? brandInCitationIdx + 1 : null;
+
+  const brandContext = brandPresent
+    ? findSentenceWith(answer, [brandName, brandHost].filter(Boolean) as string[])
+    : null;
+
+  const competitorsCitedCount = Object.values(competitorPresence).filter(Boolean).length;
+
+  let whyAbsent: string | null = null;
+  if (!brandPresent) {
+    if (competitorsCitedCount > 0) {
+      whyAbsent = `Live web search returned ${orderedHosts.length} source${orderedHosts.length !== 1 ? "s" : ""} for this query — none from ${brandDomain}. ${competitorsCitedCount} of your tracked competitor${competitorsCitedCount !== 1 ? "s are" : " is"} cited instead.`;
+    } else if (orderedHosts.length === 0) {
+      whyAbsent = `The live answer did not surface any cited sources we could match. The brand name ${brandName} does not appear in the answer text.`;
+    } else {
+      whyAbsent = `None of the ${orderedHosts.length} sources cited reference ${brandDomain}, and ${brandName} is not named in the answer text. Likely cause: insufficient indexed authority for this query's intent.`;
+    }
+  }
+
+  let summary: string;
+  if (brandInCitations && brandInCitationIdx === 0) {
+    summary = `${brandName} is the top-cited source for this query.`;
+  } else if (brandInCitations) {
+    summary = `${brandName} is cited as source #${brandInCitationIdx + 1} of ${orderedHosts.length}.`;
+  } else if (brandInAnswer) {
+    summary = `${brandName} is mentioned in the answer text but no source from ${brandDomain} is cited.`;
+  } else if (competitorsCitedCount > 0) {
+    summary = `${brandName} is absent. ${competitorsCitedCount} tracked competitor${competitorsCitedCount !== 1 ? "s are" : " is"} cited instead.`;
+  } else {
+    summary = `${brandName} is absent from the live answer for this query.`;
+  }
 
   return {
-    brand_present: parsed.brand_present ?? false,
-    brand_position: parsed.brand_position ?? null,
-    brand_context: parsed.brand_context ?? null,
-    competitor_presence: parsed.competitor_presence ?? {},
-    cited_domains: Array.isArray(parsed.cited_domains) ? parsed.cited_domains : [],
-    raw_answer: parsed.natural_answer ?? "",
-    why_absent: parsed.why_absent ?? null,
-    analysis_summary: parsed.analysis_summary ?? "",
-    visibility_score: typeof parsed.visibility_score === "number" ? parsed.visibility_score : 0,
+    brand_present: brandPresent,
+    brand_position: brandPosition,
+    brand_context: brandContext,
+    competitor_presence: competitorPresence,
+    cited_domains: orderedHosts.slice(0, 10),
+    raw_answer: answer,
+    why_absent: whyAbsent,
+    analysis_summary: summary,
+    visibility_score: score,
   };
 }
 
-// ── Main handler ───────────────────────────────────────────────────────────────
+// ── Main handler ──────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -126,6 +241,10 @@ Deno.serve(async (req: Request) => {
   let runId: string | null = null;
 
   try {
+    if (!PERPLEXITY_API_KEY) {
+      throw new Error("PERPLEXITY_API_KEY must be configured");
+    }
+
     const body = await req.json();
     const { project_id, run_id } = body;
 
@@ -138,7 +257,6 @@ Deno.serve(async (req: Request) => {
 
     runId = run_id;
 
-    // Load project
     const { data: project, error: projErr } = await supabase
       .from("pr_projects")
       .select("*")
@@ -161,13 +279,11 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Mark run as running
     await supabase
       .from("pr_visibility_runs")
       .update({ status: "running", total: trackedPrompts.length })
       .eq("id", run_id);
 
-    // Process each prompt sequentially (avoid rate limits)
     let completed = 0;
     for (const prompt of trackedPrompts.slice(0, 10)) {
       try {
@@ -176,7 +292,7 @@ Deno.serve(async (req: Request) => {
           prompt.geography || project.geography || "Global",
           project.brand_name,
           project.domain,
-          competitors
+          competitors,
         );
 
         await supabase.from("pr_visibility_results").insert({
@@ -196,7 +312,6 @@ Deno.serve(async (req: Request) => {
         });
       } catch (promptErr) {
         console.error(`Error checking prompt "${prompt.prompt_text}":`, promptErr);
-        // Store failed result so user sees something
         await supabase.from("pr_visibility_results").insert({
           run_id,
           project_id,
@@ -204,7 +319,7 @@ Deno.serve(async (req: Request) => {
           geography: prompt.geography || project.geography || "Global",
           brand_present: false,
           visibility_score: 0,
-          analysis_summary: "Analysis failed for this prompt.",
+          analysis_summary: "Live AI search failed for this prompt.",
         });
       }
 
@@ -215,7 +330,6 @@ Deno.serve(async (req: Request) => {
         .eq("id", run_id);
     }
 
-    // Mark complete
     await supabase
       .from("pr_visibility_runs")
       .update({ status: "completed", ended_at: new Date().toISOString(), progress: completed })

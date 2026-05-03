@@ -1265,7 +1265,7 @@ const PRResults = () => {
             <Swords className="w-3.5 h-3.5" /> Competitors
           </TabsTrigger>
           <TabsTrigger value="visibility" className="gap-1.5">
-            <Eye className="w-3.5 h-3.5" /> AI Visibility <InfoTooltip text="Whether your brand appears when people ask AI tools (like ChatGPT or Marketers Quest) questions in your market. This is the new 'page one of Google' for AI-powered search." size={11} />
+            <Eye className="w-3.5 h-3.5" /> AI Visibility <InfoTooltip text="For each tracked prompt we query live AI web search (Marketers Quest sonar) and check whether your domain appears in the cited sources, or your brand name in the answer text. Citations shown are real URLs the search engine returned — not invented." size={11} />
           </TabsTrigger>
           <TabsTrigger value="mentions" className="gap-1.5">
             <Link2 className="w-3.5 h-3.5" /> Mentions
@@ -2415,7 +2415,7 @@ const PRResults = () => {
                     {project.tracked_prompts.length} prompt{project.tracked_prompts.length !== 1 ? "s" : ""} tracked
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Checks whether your brand appears when buyers ask AI tools these questions
+                    Live web search per prompt — we match your domain against the real citations returned
                   </p>
                 </div>
                 <Button
@@ -2442,7 +2442,7 @@ const PRResults = () => {
                     <div>
                       <p className="text-sm font-medium text-foreground">Checking AI visibility…</p>
                       <p className="text-xs text-muted-foreground">
-                        Asking GPT-4o each prompt and analysing brand presence.
+                        Running each prompt through live AI web search and matching real citations.
                         {visibilityRun.total > 0 && ` ${visibilityRun.progress ?? 0} of ${visibilityRun.total} done.`}
                       </p>
                     </div>
@@ -2552,15 +2552,22 @@ const PRResults = () => {
                             </div>
                           )}
 
-                          {/* Cited domains */}
+                          {/* Cited domains — real URLs returned by live web search */}
                           {r.cited_domains?.length > 0 && (
                             <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground font-medium">Domains cited:</p>
+                              <p className="text-xs text-muted-foreground font-medium">Sources cited by AI:</p>
                               <div className="flex flex-wrap gap-1">
-                                {r.cited_domains.slice(0, 6).map((d) => (
-                                  <Badge key={d} variant="outline" className="text-xs bg-muted text-muted-foreground">
-                                    {d}
-                                  </Badge>
+                                {r.cited_domains.slice(0, 8).map((d, idx) => (
+                                  <a
+                                    key={d}
+                                    href={`https://${d}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs px-2 py-0.5 rounded border bg-muted text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+                                    title={`Source #${idx + 1} — opens in new tab`}
+                                  >
+                                    {idx + 1}. {d}
+                                  </a>
                                 ))}
                               </div>
                             </div>

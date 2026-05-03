@@ -464,7 +464,7 @@ function PromptsStep({
           <div className="flex items-center justify-between">
             <Label className="flex items-center gap-1.5">
               <Target className="w-4 h-4 text-muted-foreground" /> AI Search Queries
-              <InfoTooltip text="Questions your target buyers type into AI tools like ChatGPT or Marketers Quest. We check whether your brand appears in the AI's answer — the new 'page one of Google'." size={12} />
+              <InfoTooltip text="Real questions your buyers might type into a live AI search. We run each prompt through Marketers Quest sonar (live web search) and check whether your domain appears in the real citations the engine returns — or your brand name in the answer text." size={12} />
               <span className="text-muted-foreground font-normal text-xs">(one per line)</span>
             </Label>
             {!suggesting && (
