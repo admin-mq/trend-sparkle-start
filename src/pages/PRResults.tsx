@@ -26,6 +26,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "@/hooks/use-toast";
 import { InfoTooltip } from "@/components/InfoTooltip";
+import { roundScore, formatScore, meaningfulDelta, SCORE_AXIS_TICKS } from "@/lib/score";
 
 const SUPABASE_FUNCTIONS_URL = "https://njnnpdrevbkhbhzwccuz.supabase.co/functions/v1";
 
@@ -273,13 +274,13 @@ function ScoreCard({
           <Icon className="w-4 h-4 text-muted-foreground" />
         </div>
         <div className={`text-3xl font-bold ${scoreColor(score, invert)}`}>
-          {score != null ? score : "—"}
+          {formatScore(score)}
         </div>
         <div className="flex items-center justify-center gap-1 text-xs font-medium text-foreground">
           {label}
           {tooltip && <InfoTooltip text={tooltip} size={11} />}
         </div>
-        {delta != null && delta !== 0 && (
+        {delta != null && (
           <div className="flex items-center justify-center gap-1">
             <ScoreDelta delta={delta} invert={invert} />
             <span className="text-xs text-muted-foreground">vs last scan</span>
@@ -332,14 +333,16 @@ function ChartTooltipContent({ active, payload, label }: any) {
 }
 
 function NarrativeTrendChart({ history }: { history: { narrative_score: number | null; authority_score: number | null; proof_density_score: number | null; opportunity_score: number | null; snapshot_date: string }[] }) {
+  // Plot scores rounded to nearest 5 — the underlying signal isn't precise
+  // enough to justify a line wandering between 71 and 73 across scans.
   const data = [...history]
     .reverse()
     .map((s) => ({
       date: new Date(s.snapshot_date).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
-      narrative:   s.narrative_score,
-      authority:   s.authority_score,
-      proof:       s.proof_density_score,
-      opportunity: s.opportunity_score,
+      narrative:   roundScore(s.narrative_score),
+      authority:   roundScore(s.authority_score),
+      proof:       roundScore(s.proof_density_score),
+      opportunity: roundScore(s.opportunity_score),
     }));
 
   return (
@@ -366,7 +369,7 @@ function NarrativeTrendChart({ history }: { history: { narrative_score: number |
               tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
               tickLine={false}
               axisLine={false}
-              ticks={[0, 25, 50, 75, 100]}
+              ticks={[...SCORE_AXIS_TICKS]}
             />
             <RechartsTooltip content={<ChartTooltipContent />} cursor={{ stroke: "hsl(var(--border))", strokeWidth: 1 }} />
             <Legend
@@ -399,9 +402,10 @@ function NarrativeTrendChart({ history }: { history: { narrative_score: number |
 }
 
 function VisibilityTrendChart({ history }: { history: VisibilityHistoryPoint[] }) {
+  // Round to nearest 5 for plotting — same rationale as NarrativeTrendChart.
   const data = history.map((v) => ({
     date: new Date(v.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
-    score: v.avg_score,
+    score: roundScore(v.avg_score),
     presence: v.presence_pct,
   }));
 
@@ -429,7 +433,7 @@ function VisibilityTrendChart({ history }: { history: VisibilityHistoryPoint[] }
               tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
               tickLine={false}
               axisLine={false}
-              ticks={[0, 25, 50, 75, 100]}
+              ticks={[...SCORE_AXIS_TICKS]}
             />
             <RechartsTooltip content={<ChartTooltipContent />} cursor={{ stroke: "hsl(var(--border))", strokeWidth: 1 }} />
             <Legend
@@ -636,14 +640,16 @@ interface ThemeOwnershipChartProps {
 }
 
 function ThemeOwnershipChart({ brandName, brandThemes, compName, compThemes }: ThemeOwnershipChartProps) {
-  // Use static keys "brand" / "comp" — dynamic keys break Recharts reconciliation
+  // Use static keys "brand" / "comp" — dynamic keys break Recharts reconciliation.
+  // Bar lengths plot rounded-to-5 strengths so we don't draw a 73-vs-74
+  // difference that's noise in the underlying signal.
   const rows = useMemo(() => {
     const map = new Map<string, { brand: number; comp: number }>();
-    for (const t of brandThemes) map.set(t.theme, { brand: t.strength, comp: 0 });
+    for (const t of brandThemes) map.set(t.theme, { brand: roundScore(t.strength) ?? 0, comp: 0 });
     for (const t of compThemes) {
       const ex = map.get(t.theme);
-      if (ex) ex.comp = t.strength;
-      else map.set(t.theme, { brand: 0, comp: t.strength });
+      if (ex) ex.comp = roundScore(t.strength) ?? 0;
+      else map.set(t.theme, { brand: 0, comp: roundScore(t.strength) ?? 0 });
     }
     return [...map.entries()]
       .map(([theme, { brand, comp }]) => ({
@@ -674,7 +680,7 @@ function ThemeOwnershipChart({ brandName, brandThemes, compName, compThemes }: T
             <XAxis
               type="number"
               domain={[0, 100]}
-              ticks={[0, 25, 50, 75, 100]}
+              ticks={[...SCORE_AXIS_TICKS]}
               tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
               tickLine={false}
               axisLine={false}
@@ -1076,13 +1082,15 @@ const PRResults = () => {
   }, [projectId, discoveringMentions, loadMentions]);
 
   // ── Compute deltas from score history (latest vs previous)
+  // meaningfulDelta() rounds both ends to the nearest 5 and returns null
+  // for moves under that — anything smaller is within model noise and
+  // shouldn't be shown as a "change since last scan".
   const prevSnapshot = scoreHistory.length >= 2 ? scoreHistory[1] : null;
   const scoreDelta = (key: keyof ScoreSnapshot) => {
     if (!result || !prevSnapshot) return null;
     const curr = result[key as keyof NarrativeResult] as number | null;
     const prev = prevSnapshot[key] as number | null;
-    if (curr == null || prev == null) return null;
-    return curr - prev;
+    return meaningfulDelta(curr, prev);
   };
 
   const runVisibilityCheck = useCallback(async () => {
@@ -1527,8 +1535,9 @@ const PRResults = () => {
               <CardContent className="px-4 pb-4 divide-y divide-border">
                 {scoreHistory.slice(0, 10).map((snap, i) => {
                   const prev = scoreHistory[i + 1];
+                  // Suppress sub-5 wobble; that's noise, not a "trend".
                   const delta = prev != null
-                    ? (snap.narrative_score ?? 0) - (prev.narrative_score ?? 0)
+                    ? meaningfulDelta(snap.narrative_score, prev.narrative_score)
                     : null;
                   return (
                     <div key={snap.id} className="flex items-center justify-between py-2.5 gap-3">
@@ -1549,12 +1558,12 @@ const PRResults = () => {
                           { val: snap.opportunity_score,    color: "#f59e0b" },
                         ].map(({ val, color }, j) => (
                           <span key={j} className="text-xs font-bold tabular-nums w-7 text-right" style={{ color }}>
-                            {val ?? "—"}
+                            {formatScore(val)}
                           </span>
                         ))}
                         {delta !== null && (
-                          <span className={`text-xs font-medium w-10 text-right ${delta > 0 ? "text-emerald-400" : delta < 0 ? "text-red-400" : "text-muted-foreground"}`}>
-                            {delta > 0 ? `+${delta}` : delta === 0 ? "—" : delta}
+                          <span className={`text-xs font-medium w-10 text-right ${delta > 0 ? "text-emerald-400" : "text-red-400"}`}>
+                            {delta > 0 ? `+${delta}` : delta}
                           </span>
                         )}
                       </div>
@@ -1595,9 +1604,9 @@ const PRResults = () => {
                           {n.status}
                         </Badge>
                       </div>
-                      <span className="text-xs font-bold text-foreground">{n.strength}</span>
+                      <span className="text-xs font-bold text-foreground">{formatScore(n.strength)}</span>
                     </div>
-                    <StrengthBar value={n.strength} color={
+                    <StrengthBar value={roundScore(n.strength) ?? 0} color={
                       n.status === "strong" ? "bg-emerald-500"
                         : n.status === "emerging" ? "bg-blue-500"
                         : n.status === "weak" ? "bg-yellow-500"
@@ -1629,9 +1638,9 @@ const PRResults = () => {
                         <div key={i} className="space-y-1.5">
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-sm font-medium text-foreground">{n.theme}</span>
-                            <span className="text-xs font-bold text-muted-foreground">{n.strength}</span>
+                            <span className="text-xs font-bold text-muted-foreground">{formatScore(n.strength)}</span>
                           </div>
-                          <StrengthBar value={n.strength} color="bg-secondary-foreground/30" />
+                          <StrengthBar value={roundScore(n.strength) ?? 0} color="bg-secondary-foreground/30" />
                           <p className="text-xs text-muted-foreground">{n.description}</p>
                         </div>
                       ))}
@@ -1766,8 +1775,10 @@ const PRResults = () => {
             </Card>
           ) : (() => {
             // ── Derived data ─────────────────────────────────────────────────
+            // Aggregated theme strengths are still 0–100 AI-derived scores —
+            // round to nearest 5 so we don't print false precision.
             const brandAvg = result.brand_narratives.length > 0
-              ? Math.round(result.brand_narratives.reduce((s, n) => s + n.strength, 0) / result.brand_narratives.length)
+              ? roundScore(result.brand_narratives.reduce((s, n) => s + n.strength, 0) / result.brand_narratives.length) ?? 0
               : 0;
             const brandOwnedCount = result.brand_narratives.filter((n) => n.strength >= 70).length;
 
@@ -1781,7 +1792,7 @@ const PRResults = () => {
             const focusComp = compsWithData.find((c) => c.domain === focusDomain) ?? compsWithData[0];
             const focusThemes = focusComp ? (result.competitor_narratives[focusComp.domain] || []) : [];
             const focusAvg = focusThemes.length > 0
-              ? Math.round(focusThemes.reduce((s, n) => s + n.strength, 0) / focusThemes.length)
+              ? roundScore(focusThemes.reduce((s, n) => s + n.strength, 0) / focusThemes.length) ?? 0
               : 0;
             const focusOwnedCount = focusThemes.filter((n) => n.strength >= 70).length;
             const focusTop = [...focusThemes].sort((a, b) => b.strength - a.strength)[0];
@@ -1833,7 +1844,7 @@ const PRResults = () => {
                       const isActive = comp.domain === focusDomain;
                       const cThemes = result.competitor_narratives[comp.domain] || [];
                       const cAvg = cThemes.length > 0
-                        ? Math.round(cThemes.reduce((s, n) => s + n.strength, 0) / cThemes.length)
+                        ? roundScore(cThemes.reduce((s, n) => s + n.strength, 0) / cThemes.length) ?? 0
                         : 0;
                       const cLeads = cAvg > brandAvg;
                       return (
@@ -1878,7 +1889,7 @@ const PRResults = () => {
                               { label: "Opportunity", value: result.opportunity_score },
                             ].map(({ label, value }) => (
                               <div key={label} className="text-center">
-                                <div className={`text-xl font-bold tabular-nums ${scoreColor(value)}`}>{value ?? "—"}</div>
+                                <div className={`text-xl font-bold tabular-nums ${scoreColor(value)}`}>{formatScore(value)}</div>
                                 <div className="text-[10px] text-muted-foreground mt-0.5">{label}</div>
                               </div>
                             ))}
@@ -1918,14 +1929,17 @@ const PRResults = () => {
                             </Badge>
                           </div>
                           <div className="grid grid-cols-4 gap-2">
+                            {/* `isScore` flags 0–100 AI strengths so they round to 5; counts stay as-is. */}
                             {[
-                              { label: "Avg strength", value: focusAvg },
-                              { label: "Themes owned", value: focusOwnedCount },
-                              { label: "Top score",    value: focusTop?.strength ?? null },
-                              { label: "Total themes", value: focusThemes.length },
-                            ].map(({ label, value }) => (
+                              { label: "Avg strength", value: focusAvg, isScore: true },
+                              { label: "Themes owned", value: focusOwnedCount, isScore: false },
+                              { label: "Top score",    value: focusTop?.strength ?? null, isScore: true },
+                              { label: "Total themes", value: focusThemes.length, isScore: false },
+                            ].map(({ label, value, isScore }) => (
                               <div key={label} className="text-center">
-                                <div className="text-xl font-bold tabular-nums text-orange-400">{value ?? "—"}</div>
+                                <div className="text-xl font-bold tabular-nums text-orange-400">
+                                  {value == null ? "—" : isScore ? formatScore(value) : value}
+                                </div>
                                 <div className="text-[10px] text-muted-foreground mt-0.5">{label}</div>
                               </div>
                             ))}
@@ -1969,9 +1983,9 @@ const PRResults = () => {
                                   <span className="text-xs text-foreground truncate">{n.theme}</span>
                                   {n.status === "strong" && <Crown className="w-3 h-3 text-emerald-400 shrink-0" />}
                                 </div>
-                                <span className={`text-xs font-bold shrink-0 ${n.strength >= 70 ? "text-emerald-400" : n.strength >= 40 ? "text-yellow-400" : "text-destructive"}`}>{n.strength}</span>
+                                <span className={`text-xs font-bold shrink-0 ${n.strength >= 70 ? "text-emerald-400" : n.strength >= 40 ? "text-yellow-400" : "text-destructive"}`}>{formatScore(n.strength)}</span>
                               </div>
-                              <StrengthBar value={n.strength} color={n.strength >= 70 ? "bg-emerald-500" : n.strength >= 40 ? "bg-yellow-500" : "bg-destructive"} />
+                              <StrengthBar value={roundScore(n.strength) ?? 0} color={n.strength >= 70 ? "bg-emerald-500" : n.strength >= 40 ? "bg-yellow-500" : "bg-destructive"} />
                             </div>
                           ))}
                         </CardContent>
@@ -1993,9 +2007,9 @@ const PRResults = () => {
                                   <span className="text-xs text-foreground truncate">{n.theme}</span>
                                   {n.strength >= 70 && <ShieldAlert className="w-3 h-3 text-orange-400 shrink-0" />}
                                 </div>
-                                <span className={`text-xs font-bold shrink-0 ${n.strength >= 70 ? "text-orange-400" : n.strength >= 40 ? "text-yellow-400" : "text-muted-foreground"}`}>{n.strength}</span>
+                                <span className={`text-xs font-bold shrink-0 ${n.strength >= 70 ? "text-orange-400" : n.strength >= 40 ? "text-yellow-400" : "text-muted-foreground"}`}>{formatScore(n.strength)}</span>
                               </div>
-                              <StrengthBar value={n.strength} color={n.strength >= 70 ? "bg-orange-500" : n.strength >= 40 ? "bg-yellow-500/60" : "bg-muted-foreground/30"} />
+                              <StrengthBar value={roundScore(n.strength) ?? 0} color={n.strength >= 70 ? "bg-orange-500" : n.strength >= 40 ? "bg-yellow-500/60" : "bg-muted-foreground/30"} />
                             </div>
                           ))}
                         </CardContent>
@@ -2161,9 +2175,11 @@ const PRResults = () => {
                     <div className="flex items-center gap-1.5 shrink-0">
                       <Badge variant="outline" className="text-xs">{sourceLabels[mention.source_type] ?? "Source"}</Badge>
                       {mention.sentiment && (
+                        // Sentiment label already conveys direction (positive/neutral/
+                        // negative) — appending an exact integer like "· 83" implied
+                        // model precision that doesn't exist. Drop the digits.
                         <Badge variant="outline" className={`text-xs capitalize ${sentimentStyle[mention.sentiment] ?? ""}`}>
                           {mention.sentiment}
-                          {mention.sentiment_score != null && ` · ${mention.sentiment_score}`}
                         </Badge>
                       )}
                       <button onClick={() => deleteMention(mention.id)}
@@ -2506,7 +2522,11 @@ const PRResults = () => {
                 <>
                   {/* Overall score */}
                   {(() => {
-                    const avg = Math.round(visibilityResults.reduce((s, r) => s + (r.visibility_score ?? 0), 0) / visibilityResults.length);
+                    // Round avg to nearest 5 — the underlying per-prompt scores are
+                    // already deterministic-by-rank (90/75/60/50/35), but averaging
+                    // those across prompts can yield meaningless decimals.
+                    const avgRaw = visibilityResults.reduce((s, r) => s + (r.visibility_score ?? 0), 0) / visibilityResults.length;
+                    const avg = roundScore(avgRaw) ?? 0;
                     const present = visibilityResults.filter((r) => r.brand_present).length;
                     return (
                       <Card className={`border-2 ${avg >= 50 ? "border-emerald-500/30" : avg >= 25 ? "border-yellow-500/30" : "border-destructive/30"}`}>
@@ -2618,7 +2638,7 @@ const PRResults = () => {
                               r.visibility_score >= 50 ? "text-emerald-400"
                               : r.visibility_score >= 25 ? "text-yellow-400"
                               : "text-destructive"
-                            }`}>{r.visibility_score}/100</span>
+                            }`}>{formatScore(r.visibility_score)}/100</span>
                           </div>
                           {r.geography && (
                             <span className="text-xs text-muted-foreground flex items-center gap-1">

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { Loader2, Printer, ArrowLeft, ExternalLink } from "lucide-react";
+import { roundScore, formatScore } from "@/lib/score";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -64,11 +65,14 @@ interface ExternalMention {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function scoreLabel(score: number | null, invert = false) {
+  // Print scores at the same ±5 granularity as the dashboard. Underlying
+  // values are AI-derived and don't justify exact integer presentation.
   if (score == null) return { label: "N/A", color: "#6b7280" };
-  const s = invert ? 100 - score : score;
-  if (s >= 70) return { label: String(score), color: "#059669" };
-  if (s >= 40) return { label: String(score), color: "#d97706" };
-  return { label: String(score), color: "#dc2626" };
+  const rounded = roundScore(score) ?? 0;
+  const s = invert ? 100 - rounded : rounded;
+  if (s >= 70) return { label: String(rounded), color: "#059669" };
+  if (s >= 40) return { label: String(rounded), color: "#d97706" };
+  return { label: String(rounded), color: "#dc2626" };
 }
 
 function severityColor(severity: string) {
@@ -379,9 +383,9 @@ const PRPrint = () => {
                           <Chip label={n.status} color={barColor} />
                         </div>
                         <div style={{ background: "#e5e7eb", borderRadius: 4, height: 5 }}>
-                          <div style={{ background: barColor, borderRadius: 4, height: 5, width: `${n.strength}%` }} />
+                          <div style={{ background: barColor, borderRadius: 4, height: 5, width: `${roundScore(n.strength) ?? 0}%` }} />
                         </div>
-                        <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 3 }}>Strength: {n.strength}/100</div>
+                        <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 3 }}>Strength: {formatScore(n.strength)}/100</div>
                       </div>
                       <div style={{ flex: 1, fontSize: 12, color: "#6b7280", lineHeight: 1.65, paddingTop: 2 }}>{n.description}</div>
                     </div>
@@ -474,12 +478,12 @@ const PRPrint = () => {
                         <div key={i} style={{ marginBottom: 8 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
                             <span style={{ fontSize: 11, color: "#374151" }}>{n.theme}</span>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>{n.strength}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>{formatScore(n.strength)}</span>
                           </div>
                           <div style={{ background: "#f3f4f6", borderRadius: 3, height: 4 }}>
                             <div style={{
                               background: n.strength >= 70 ? "#ea580c" : n.strength >= 40 ? "#d97706" : "#d1d5db",
-                              borderRadius: 3, height: 4, width: `${n.strength}%`,
+                              borderRadius: 3, height: 4, width: `${roundScore(n.strength) ?? 0}%`,
                             }} />
                           </div>
                           {n.description && (
@@ -533,7 +537,7 @@ const PRPrint = () => {
                           )}
                         </div>
                         <div style={{ textAlign: "right", flexShrink: 0 }}>
-                          <div style={{ fontSize: 18, fontWeight: 800, color: presentColor }}>{v.visibility_score}</div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: presentColor }}>{formatScore(v.visibility_score)}</div>
                           <div style={{ fontSize: 9, color: "#9ca3af" }}>score</div>
                         </div>
                       </div>

@@ -18,6 +18,7 @@ import {
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "@/hooks/use-toast";
 import { InfoTooltip } from "@/components/InfoTooltip";
+import { roundScore, meaningfulDelta } from "@/lib/score";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -124,16 +125,19 @@ function ScorePill({
   value: number;
   prev: number | null;
 }) {
-  const delta = prev != null ? value - prev : null;
+  // Scores are AI-derived with ~±5 real precision; round to nearest 5 and
+  // only surface a delta that's meaningful (≥5). See src/lib/score.ts.
+  const rounded = roundScore(value);
+  const delta = meaningfulDelta(value, prev);
   const scoreColor =
-    value >= 75 ? "text-emerald-400" :
-    value >= 55 ? "text-yellow-400" :
+    (rounded ?? 0) >= 75 ? "text-emerald-400" :
+    (rounded ?? 0) >= 55 ? "text-yellow-400" :
     "text-red-400";
 
   return (
     <div className="flex flex-col items-center gap-0.5 min-w-0">
-      <span className={`text-base font-bold tabular-nums ${scoreColor}`}>{value}</span>
-      {delta != null && Math.abs(delta) >= 1 ? (
+      <span className={`text-base font-bold tabular-nums ${scoreColor}`}>{rounded ?? "—"}</span>
+      {delta != null ? (
         <span className={`flex items-center gap-0.5 text-[10px] font-medium ${delta > 0 ? "text-emerald-400" : "text-red-400"}`}>
           {delta > 0
             ? <TrendingUp className="w-2.5 h-2.5" />
@@ -141,9 +145,9 @@ function ScorePill({
           }
           {delta > 0 ? "+" : ""}{delta}
         </span>
-      ) : delta != null ? (
+      ) : prev != null ? (
         <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
-          <Minus className="w-2.5 h-2.5" /> 0
+          <Minus className="w-2.5 h-2.5" /> flat
         </span>
       ) : (
         <span className="text-[10px] text-muted-foreground">—</span>
