@@ -258,6 +258,44 @@ Summary: ${m.ai_summary ?? ""}`;
       }).join("\n\n")
     : null;
 
+  // ── Build the evidence URL pool ─────────────────────────────────────────────
+  // Every claim returned by the LLM must cite from this pool — anything else is
+  // hallucination and gets stripped in post-validation. URLs come from sources
+  // that the synthesis ACTUALLY saw in its inputs:
+  //   • brand pages we crawled (line-prefix `[url]` in brandFacts)
+  //   • competitor pages we crawled
+  //   • external mention URLs
+  //   • sonar citations from the latest AI-search visibility run
+  const urlFromFact = (s: string): string | null => {
+    const m = s.match(/^\[(https?:\/\/[^\]]+)\]/);
+    return m ? m[1] : null;
+  };
+  const evidenceUrls = new Set<string>();
+  for (const f of brandFacts) { const u = urlFromFact(f); if (u) evidenceUrls.add(u); }
+  for (const list of Object.values(competitorFacts)) {
+    for (const f of list) { const u = urlFromFact(f); if (u) evidenceUrls.add(u); }
+  }
+  for (const m of externalMentions) {
+    if (typeof m.url === "string" && m.url.startsWith("http")) evidenceUrls.add(m.url);
+  }
+  for (const v of visibilityResults) {
+    const cited = Array.isArray(v.cited_domains) ? v.cited_domains : [];
+    for (const c of cited) {
+      if (typeof c === "string" && c.startsWith("http")) evidenceUrls.add(c);
+    }
+  }
+  const evidenceList = Array.from(evidenceUrls);
+  const evidenceBlock = evidenceList.length > 0
+    ? `=== AVAILABLE EVIDENCE URLS (the ONLY URLs you may cite) ===
+Every claim object you return MUST include a "sources" array of 0-3 URLs chosen
+from this list. URLs not in this list will be silently dropped — do NOT invent.
+If a claim is genuinely not backed by any of these URLs, return "sources": [].
+
+${evidenceList.map((u, i) => `${i + 1}. ${u}`).join("\n")}`
+    : `=== AVAILABLE EVIDENCE URLS ===
+(No evidence URLs available for this scan. Return "sources": [] for every claim.)`;
+  console.log(`[pr-scan] evidence pool — ${evidenceList.length} URL(s) available for citation`);
+
   // ── Brand context block (live web intelligence) ──
   const tier = brandContext?.tier && brandContext.tier !== "unknown" ? brandContext.tier : "unknown";
   const tierLabel: Record<string, string> = {
@@ -297,7 +335,10 @@ AI search landscape: ${brandContext.ai_search_landscape_note ?? "(not assessed)"
         ? Object.entries(v.competitor_presence as Record<string, boolean>)
             .filter(([_, p]) => p).map(([d]) => d).join(", ")
         : "";
-      return `  • "${v.prompt_text}" — ${v.brand_present ? `BRAND PRESENT${v.brand_position ? ` (#${v.brand_position})` : ""}` : "BRAND ABSENT"}${compDomination ? ` | competitors present: ${compDomination}` : ""}`;
+      const cited = Array.isArray(v.cited_domains) && v.cited_domains.length > 0
+        ? ` | cited: ${(v.cited_domains as string[]).slice(0, 3).join(", ")}${v.cited_domains.length > 3 ? "…" : ""}`
+        : "";
+      return `  • "${v.prompt_text}" — ${v.brand_present ? `BRAND PRESENT${v.brand_position ? ` (#${v.brand_position})` : ""}` : "BRAND ABSENT"}${compDomination ? ` | competitors present: ${compDomination}` : ""}${cited}`;
     }).join("\n");
     return `=== AI SEARCH VISIBILITY (latest run — most valuable signal) ===
 Brand appears in ${present}/${total} tracked buying-intent queries.
@@ -404,7 +445,12 @@ EVIDENCE GROUNDING & HONESTY:
 - EXTERNAL MENTIONS are third-party validation signals (high trust).
 - NEVER fabricate. NEVER report something as missing if the evidence shows
   it's present (e.g. don't say "no testimonials" if mentions show reviews).
-- Be brutally specific. Generic = failure.`;
+- Be brutally specific. Generic = failure.
+- EVERY claim object (brand_narrative, competitor_narrative entry, proof_gap,
+  recommended_action) must include a "sources" array. Pick 0-3 URLs from the
+  AVAILABLE EVIDENCE URLS list that genuinely back the claim. URLs not in that
+  list will be silently dropped — do NOT invent. An empty sources array is
+  acceptable when no URL evidence applies; it's more honest than a fake one.`;
 
   const user = `Generate the narrative intelligence report for ${project.brand_name} (${project.domain}).
 
@@ -427,6 +473,8 @@ Third-party sources are high-trust signals — weight heavily for authority_scor
 
 ${mentionsBlock}` : ""}
 
+${evidenceBlock}
+
 ═══════════════════════════════════════════════════════════════════════════════
 Return ONLY a JSON object with this exact structure:
 ═══════════════════════════════════════════════════════════════════════════════
@@ -442,12 +490,13 @@ Return ONLY a JSON object with this exact structure:
       "theme": "<specific theme grounded in evidence — e.g. 'Everyday Low Price Leadership', 'Omnichannel Convenience'. NOT generic.>",
       "strength": <0-100>,
       "description": "<1-2 sentences citing actual content found>",
-      "status": "<'strong' | 'emerging' | 'weak' | 'missing'>"
+      "status": "<'strong' | 'emerging' | 'weak' | 'missing'>",
+      "sources": ["<0-3 URLs from the AVAILABLE EVIDENCE URLS list — pick the ones that BEST back this theme & description>"]
     }
   ],
   "competitor_narratives": {
     "<competitor_domain>": [
-      { "theme": "<grounded theme>", "strength": <0-100>, "description": "<1-2 sentences from competitor evidence>" }
+      { "theme": "<grounded theme>", "strength": <0-100>, "description": "<1-2 sentences from competitor evidence>", "sources": ["<0-3 URLs from AVAILABLE EVIDENCE URLS — preferably competitor-domain pages>"] }
     ]
   },
   "proof_gaps": [
@@ -455,7 +504,8 @@ Return ONLY a JSON object with this exact structure:
       "gap_type": "<tier-appropriate gap. For mega/enterprise: AI search absence, exec voice silence, narrative warfare gaps, data drop cadence gaps, analyst-relations gaps, missing crisis inoculation. NOT testimonials or FAQ.>",
       "description": "<specific gap grounded in EVIDENCE + LIVE CONTEXT. Reference named competitors and specific press themes/risks.>",
       "severity": "<'critical' | 'high' | 'medium' | 'low'>",
-      "narrative_affected": "<which brand narrative or PR risk this gap connects to>"
+      "narrative_affected": "<which brand narrative or PR risk this gap connects to>",
+      "sources": ["<0-3 URLs from AVAILABLE EVIDENCE URLS that DEMONSTRATE the gap (e.g. competitor page showing the move the brand isn't making, or an AI-search citation showing the brand is missing). Empty array if no concrete URL evidence — that's honest.>"]
     }
   ],
   "recommended_actions": [
@@ -466,7 +516,8 @@ Return ONLY a JSON object with this exact structure:
       "effort": "<'low' | 'medium' | 'high'>",
       "expected_impact": "<'low' | 'medium' | 'high'>",
       "why_it_matters": "<1-2 sentences. MUST reference: (a) competitive context — vs. named competitor or open whitespace, (b) why now — tied to recent_press_themes / active_pr_risks / AI visibility gap. Tier-appropriate framing.>",
-      "what_to_do": "<2-4 concrete steps with named channels, named outlets, named journalists/podcasts, specific timing. The level of detail a CMO would brief their team with.>"
+      "what_to_do": "<2-4 concrete steps with named channels, named outlets, named journalists/podcasts, specific timing. The level of detail a CMO would brief their team with.>",
+      "sources": ["<0-3 URLs from AVAILABLE EVIDENCE URLS supporting the why_it_matters reasoning. Empty array if the action is purely strategic and not URL-anchored.>"]
     }
   ]
 }
@@ -508,7 +559,66 @@ Be brutally specific about ${project.brand_name}. Reference real things. Make it
   }
 
   const data = await response.json();
-  return JSON.parse(data.choices[0].message.content);
+  const parsed = JSON.parse(data.choices[0].message.content);
+
+  // ── Post-validation: drop hallucinated source URLs ──────────────────────────
+  // The LLM is instructed to cite only from evidenceUrls, but we still verify.
+  // Anything not in the pool gets stripped silently. We keep up to 3 per claim.
+  const filterSources = (raw: unknown): string[] => {
+    if (!Array.isArray(raw)) return [];
+    const cleaned: string[] = [];
+    for (const u of raw) {
+      if (typeof u !== "string") continue;
+      if (!evidenceUrls.has(u)) continue;
+      if (!cleaned.includes(u)) cleaned.push(u);
+      if (cleaned.length >= 3) break;
+    }
+    return cleaned;
+  };
+
+  let totalCited = 0;
+  let totalDropped = 0;
+  const accountFor = (raw: unknown, kept: string[]) => {
+    if (Array.isArray(raw)) {
+      totalCited += kept.length;
+      totalDropped += Math.max(0, raw.length - kept.length);
+    }
+  };
+
+  if (Array.isArray(parsed.brand_narratives)) {
+    parsed.brand_narratives = parsed.brand_narratives.map((n: any) => {
+      const kept = filterSources(n?.sources);
+      accountFor(n?.sources, kept);
+      return { ...n, sources: kept };
+    });
+  }
+  if (parsed.competitor_narratives && typeof parsed.competitor_narratives === "object") {
+    for (const [domain, list] of Object.entries(parsed.competitor_narratives)) {
+      if (!Array.isArray(list)) continue;
+      parsed.competitor_narratives[domain] = (list as any[]).map((n: any) => {
+        const kept = filterSources(n?.sources);
+        accountFor(n?.sources, kept);
+        return { ...n, sources: kept };
+      });
+    }
+  }
+  if (Array.isArray(parsed.proof_gaps)) {
+    parsed.proof_gaps = parsed.proof_gaps.map((g: any) => {
+      const kept = filterSources(g?.sources);
+      accountFor(g?.sources, kept);
+      return { ...g, sources: kept };
+    });
+  }
+  if (Array.isArray(parsed.recommended_actions)) {
+    parsed.recommended_actions = parsed.recommended_actions.map((a: any) => {
+      const kept = filterSources(a?.sources);
+      accountFor(a?.sources, kept);
+      return { ...a, sources: kept };
+    });
+  }
+  console.log(`[pr-scan] sources — kept:${totalCited} dropped:${totalDropped} pool:${evidenceUrls.size}`);
+
+  return parsed;
 }
 
 // ── Main handler ───────────────────────────────────────────────────────────────
@@ -653,7 +763,7 @@ Deno.serve(async (req: Request) => {
     if (latestVisRun?.id) {
       const { data: visRows } = await supabase
         .from("pr_visibility_results")
-        .select("prompt_text, brand_present, brand_position, visibility_score, competitor_presence")
+        .select("prompt_text, brand_present, brand_position, visibility_score, competitor_presence, cited_domains")
         .eq("run_id", latestVisRun.id)
         .order("visibility_score", { ascending: false });
       visibilityResults = visRows ?? [];
@@ -748,6 +858,7 @@ Deno.serve(async (req: Request) => {
               expected_impact: a.expected_impact ?? null,
               what_to_do: a.what_to_do ?? null,
               why_it_matters: a.why_it_matters ?? null,
+              sources: Array.isArray(a.sources) ? a.sources : [],
               status: "todo" as const,
               dedup_key: dedupKey,
             };

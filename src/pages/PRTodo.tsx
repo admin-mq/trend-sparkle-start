@@ -35,6 +35,7 @@ interface PrAction {
   expected_impact: string | null;
   what_to_do: string | null;
   why_it_matters: string | null;
+  sources: string[] | null;
   status: ActionStatus;
   status_updated_at: string;
   notes: string | null;
@@ -158,7 +159,7 @@ export default function PRTodo() {
         .from("pr_actions")
         .select(`
           id, project_id, scan_job_id, title, action_type, effort, priority,
-          expected_impact, what_to_do, why_it_matters, status, status_updated_at,
+          expected_impact, what_to_do, why_it_matters, sources, status, status_updated_at,
           notes, playbook, playbook_generated_at, created_at,
           pr_projects!inner ( id, brand_name, domain )
         `)
@@ -493,6 +494,11 @@ function ActionCard({
                 </Badge>
               )}
             </div>
+
+            {/* Evidence URLs from synthesis (validated against the scan's
+                real evidence pool — never fabricated). Stop propagation
+                on the parent click so anchor clicks don't open the sheet. */}
+            <EvidenceLinks urls={action.sources} />
           </div>
         </div>
 
@@ -562,6 +568,10 @@ function PlaybookDrawer({
             For <span className="font-medium text-foreground">{action.pr_projects.brand_name}</span> · {action.pr_projects.domain}
           </SheetDescription>
         )}
+        {/* Evidence the synthesis cited as backing for this action. Each URL
+            survived per-claim validation against the scan's real evidence
+            pool (crawled pages, mentions, sonar citations). */}
+        <EvidenceLinks urls={action.sources} />
       </SheetHeader>
 
       {/* Quick action bar */}
@@ -700,6 +710,37 @@ function Section({ icon: Icon, title, body }: { icon: React.ElementType; title: 
         <Icon className="w-4 h-4 text-primary" /> {title}
       </h3>
       <p className="text-sm text-foreground/90 leading-relaxed">{body}</p>
+    </div>
+  );
+}
+
+// Renders the action-level evidence URLs that pr-scan attached during
+// synthesis. URLs were already validated against a real pool (crawled
+// pages, mentions, sonar citations) and stored on the pr_actions row,
+// so anything here is real.
+function EvidenceLinks({ urls }: { urls: string[] | null | undefined }) {
+  if (!Array.isArray(urls) || urls.length === 0) return null;
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap pt-1">
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Evidence</span>
+      {urls.map((u, i) => {
+        let host = u;
+        try { host = new URL(u).hostname.replace(/^www\./, ""); } catch { /* keep raw */ }
+        return (
+          <a
+            key={i}
+            href={u}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={u}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded border border-border/50 text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors max-w-[180px] truncate"
+          >
+            <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+            <span className="truncate">{host}</span>
+          </a>
+        );
+      })}
     </div>
   );
 }

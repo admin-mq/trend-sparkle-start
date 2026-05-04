@@ -58,12 +58,14 @@ interface BrandNarrative {
   strength: number;
   description: string;
   status: "strong" | "emerging" | "weak" | "missing";
+  sources?: string[];
 }
 
 interface CompetitorNarrative {
   theme: string;
   strength: number;
   description: string;
+  sources?: string[];
 }
 
 interface ProofGap {
@@ -71,6 +73,7 @@ interface ProofGap {
   description: string;
   severity: "critical" | "high" | "medium" | "low";
   narrative_affected: string;
+  sources?: string[];
 }
 
 interface RecommendedAction {
@@ -81,6 +84,7 @@ interface RecommendedAction {
   expected_impact: "low" | "medium" | "high";
   why_it_matters: string;
   what_to_do: string;
+  sources?: string[];
 }
 
 interface NarrativeResult {
@@ -301,6 +305,37 @@ function StrengthBar({ value, color = "bg-primary" }: { value: number; color?: s
         className={`${color} h-1.5 rounded-full transition-all`}
         style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
       />
+    </div>
+  );
+}
+
+// ── Source links row ──────────────────────────────────────────────────────────
+// Renders the per-claim evidence URLs that the synthesis pipeline grounds each
+// LLM output against. The edge function post-validates these against a real
+// pool (crawled pages, mentions, sonar citations) before storing — so anything
+// that reaches this component is verified to have actually been seen.
+function SourcesRow({ urls, label = "Sources" }: { urls?: string[] | null; label?: string }) {
+  if (!Array.isArray(urls) || urls.length === 0) return null;
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap pt-1">
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70">{label}</span>
+      {urls.map((u, i) => {
+        let host = u;
+        try { host = new URL(u).hostname.replace(/^www\./, ""); } catch { /* leave raw */ }
+        return (
+          <a
+            key={i}
+            href={u}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={u}
+            className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded border border-border/50 text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors max-w-[180px] truncate"
+          >
+            <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+            <span className="truncate">{host}</span>
+          </a>
+        );
+      })}
     </div>
   );
 }
@@ -1613,6 +1648,7 @@ const PRResults = () => {
                         : "bg-destructive"
                     } />
                     <p className="text-xs text-muted-foreground">{n.description}</p>
+                    <SourcesRow urls={n.sources} label="Evidence" />
                   </div>
                 ))
               )}
@@ -1642,6 +1678,7 @@ const PRResults = () => {
                           </div>
                           <StrengthBar value={roundScore(n.strength) ?? 0} color="bg-secondary-foreground/30" />
                           <p className="text-xs text-muted-foreground">{n.description}</p>
+                          <SourcesRow urls={n.sources} label="Evidence" />
                         </div>
                       ))}
                     </CardContent>
@@ -1684,6 +1721,7 @@ const PRResults = () => {
                       {gap.narrative_affected}
                     </p>
                   )}
+                  <SourcesRow urls={gap.sources} label="Evidence" />
                 </CardContent>
               </Card>
             ))
@@ -1745,6 +1783,9 @@ const PRResults = () => {
                     <Badge variant="outline" className={`text-xs ${impactBadge(action.expected_impact)}`}>
                       {action.expected_impact} impact
                     </Badge>
+                  </div>
+                  <div className="pl-9">
+                    <SourcesRow urls={action.sources} label="Evidence" />
                   </div>
                 </CardContent>
               </Card>
