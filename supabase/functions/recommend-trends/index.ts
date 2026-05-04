@@ -107,7 +107,7 @@ serve(async (req) => {
     // and let brand-fit be the LLM's job.
     let query = externalSupabase
       .from('trends')
-      .select('trend_id, trend_name, description, hashtags, region, premium_only, active, timing, ig_confirmed, ig_validated, virality_score, source_signals, corroboration_score, first_seen_at, last_seen_at, peaked_at, peak_virality_score, category')
+      .select('trend_id, trend_name, description, hashtags, region, premium_only, active, timing, ig_confirmed, ig_validated, virality_score, source_signals, corroboration_score, first_seen_at, last_seen_at, peaked_at, peak_virality_score, category, yt_video_id, yt_video_title, yt_channel_title, yt_view_count, yt_like_count, yt_comment_count, yt_video_published_at, yt_fetched_at')
       .eq('premium_only', false)
       .eq('active', true)
       .order('virality_score', { ascending: false })
@@ -157,6 +157,7 @@ Your job:
   - a timing label (early / peaking / saturated),
   - source_signals (which raw signals confirmed it: google_trends_uk, reddit, youtube_us, etc.),
   - a corroboration_score (1–3) — the count of DISTINCT platforms (Google Trends / Reddit / YouTube) that confirmed it. 3 = all three platforms agree (highest credibility), 1 = only one platform (treat as weaker signal),
+  - optional yt_view_count / yt_like_count — REAL YouTube engagement on the best-matching recent video for this trend. When present, this is externally-verifiable proof that audiences are actually engaging (not just searching). When null, it just means we couldn't find a qualifying recent video — treat it as "no extra evidence", NOT as "this trend has no reach".
   - a category and region.
 - Pick exactly 5 trends that will perform best for this brand.
 
@@ -177,6 +178,7 @@ Rules:
   - Optimise for brand fit (industry, niche, audience, tone, content_format, primary_goal).
   - Prefer trends with timing="early" when brand can move fast — first-mover advantage.
   - Prefer trends with corroboration_score ≥ 2. A single-platform trend (corroboration_score=1) can be a real trend or just one platform's noise — only pick it if the brand fit is unusually strong AND the description's WHY is concrete and verifiable.
+  - When yt_view_count is present, factor it in as proof of real reach (e.g., 1M+ views = strong external validation). Cite the specific number in why_good_fit when it materially supports the pick. Never claim engagement we don't have — if yt_view_count is null, do NOT invent a number or imply YouTube has zero reach.
   - Skip saturated trends unless the brand has a genuinely fresh angle.
 - Use the description field: reference specific triggers (leaks, finales, controversies, emotional themes, flashmobs, etc.), not generic statements.
 - Avoid clichés like:
@@ -203,6 +205,12 @@ Always respond with a single valid JSON object.`;
         timing: t.timing || null,
         source_signals: t.source_signals || [],
         corroboration_score: t.corroboration_score ?? 1,
+        // Real YouTube engagement evidence (Tier 2 / Fix #6). Null when no
+        // qualifying match was found — the LLM is instructed to treat null
+        // as "no extra evidence", never as "zero reach".
+        yt_view_count: (t as any).yt_view_count ?? null,
+        yt_like_count: (t as any).yt_like_count ?? null,
+        yt_channel_title: (t as any).yt_channel_title ?? null,
         category: t.category || null,
         region: t.region || null,
       }));
@@ -299,6 +307,17 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
             last_seen_at: fullTrend.last_seen_at ?? null,
             peaked_at: fullTrend.peaked_at ?? null,
             peak_virality_score: fullTrend.peak_virality_score ?? null,
+            // Real YouTube engagement evidence. All null when no qualifying
+            // match was found — UI MUST hide the engagement badge entirely
+            // in that case (showing "0 views" would be a fabrication).
+            yt_video_id: (fullTrend as any).yt_video_id ?? null,
+            yt_video_title: (fullTrend as any).yt_video_title ?? null,
+            yt_channel_title: (fullTrend as any).yt_channel_title ?? null,
+            yt_view_count: (fullTrend as any).yt_view_count ?? null,
+            yt_like_count: (fullTrend as any).yt_like_count ?? null,
+            yt_comment_count: (fullTrend as any).yt_comment_count ?? null,
+            yt_video_published_at: (fullTrend as any).yt_video_published_at ?? null,
+            yt_fetched_at: (fullTrend as any).yt_fetched_at ?? null,
             category: fullTrend.category || null,
             why_good_fit: rec.why_good_fit || '',
             example_hook: rec.example_hook || '',
@@ -349,6 +368,9 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
         const corroboration: number = (trend as any).corroboration_score ?? 1;
         const category = (trend as any).category || null;
 
+        const ytViews: number | null = (trend as any).yt_view_count ?? null;
+        const ytLikes: number | null = (trend as any).yt_like_count ?? null;
+
         const lead = firstSentence(description) ||
           `${trend.trend_name} is currently active${category ? ` in the ${category} space` : ''}.`;
         const signalLine = corroboration >= 2
@@ -356,6 +378,12 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
           : sources.length > 0
             ? `Single-platform signal so far (${sources[0]}) — verify before posting.`
             : `Surfaced from cross-source aggregation.`;
+        // Only mention YouTube reach when we actually have a number. NULL =
+        // we couldn't find a qualifying match; we will not fabricate or
+        // imply the trend has no reach.
+        const ytLine = ytViews !== null
+          ? ` Recent YouTube uploads on this topic are pulling ${ytViews.toLocaleString()} views${ytLikes !== null ? ` / ${ytLikes.toLocaleString()} likes` : ''}.`
+          : '';
 
         return {
           trend_id: trend.trend_id,
@@ -371,8 +399,16 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
           last_seen_at: (trend as any).last_seen_at ?? null,
           peaked_at: (trend as any).peaked_at ?? null,
           peak_virality_score: (trend as any).peak_virality_score ?? null,
+          yt_video_id: (trend as any).yt_video_id ?? null,
+          yt_video_title: (trend as any).yt_video_title ?? null,
+          yt_channel_title: (trend as any).yt_channel_title ?? null,
+          yt_view_count: ytViews,
+          yt_like_count: ytLikes,
+          yt_comment_count: (trend as any).yt_comment_count ?? null,
+          yt_video_published_at: (trend as any).yt_video_published_at ?? null,
+          yt_fetched_at: (trend as any).yt_fetched_at ?? null,
           category,
-          why_good_fit: `${lead} ${timingPhrase(timing)}. ${signalLine}`.trim(),
+          why_good_fit: `${lead} ${timingPhrase(timing)}. ${signalLine}${ytLine}`.trim(),
           example_hook: `${trend.trend_name}${category ? ` × ${user_profile.brand_name}` : ''} — here's the angle nobody's posted yet.`,
           angle_summary: `Tie ${trend.trend_name} into ${user_profile.brand_name}'s ${user_profile.niche || user_profile.industry || 'core message'} by leading with the specific moment driving the trend (see description), then bridging to the brand's POV.`,
         };

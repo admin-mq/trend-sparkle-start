@@ -93,6 +93,31 @@ export interface Trend {
   peaked_at?: string | null;
   /** Highest virality_score ever recorded for this trend. */
   peak_virality_score?: number | null;
+  // ── Real YouTube engagement (Tier 2 / Fix #6) ──────────────────────────────
+  // All eight yt_* fields travel together: present together when a qualifying
+  // recent video was matched (≥10K views), null together when no match was
+  // found OR YOUTUBE_API_KEY isn't configured. UI MUST hide the engagement
+  // badge when yt_video_id is null — rendering "0 views" would falsely imply
+  // we checked and the video flopped.
+  /** YouTube videoId of the best-matching recent video. NULL = no match. */
+  yt_video_id?: string | null;
+  /** Title of the matched YouTube video. */
+  yt_video_title?: string | null;
+  /** Channel name of the matched YouTube video. */
+  yt_channel_title?: string | null;
+  /** Real view count from YouTube Data API at last fetch. NULL when no match. */
+  yt_view_count?: number | null;
+  /** Like count. NULL when no match OR when likes are disabled on the video. */
+  yt_like_count?: number | null;
+  /** Comment count. NULL when no match OR when comments are disabled. */
+  yt_comment_count?: number | null;
+  /** Publication time of the matched YouTube video. */
+  yt_video_published_at?: string | null;
+  /**
+   * When fetch-trends last refreshed the yt_* stats. UI uses this to show
+   * "fetched Xh ago" so users can tell if numbers are stale.
+   */
+  yt_fetched_at?: string | null;
   category?: TrendCategory | string;
 }
 

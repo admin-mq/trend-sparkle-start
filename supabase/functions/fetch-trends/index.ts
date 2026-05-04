@@ -50,6 +50,20 @@ interface EnrichedCandidate extends ScoredCandidate {
    * credibility badge — single-source = ⚠ verify, 3-source = strong signal.
    */
   corroboration_score: number;
+  /**
+   * Real engagement evidence pulled from YouTube Data API v3. ALL of these
+   * fields are nullable and are NULL together when no qualifying video was
+   * found — never fabricate or zero-fill. The UI must hide the engagement
+   * badge entirely when yt_video_id is null (showing "0 views" would
+   * falsely imply we checked and the video flopped).
+   */
+  yt_video_id: string | null;
+  yt_video_title: string | null;
+  yt_channel_title: string | null;
+  yt_view_count: number | null;
+  yt_like_count: number | null;
+  yt_comment_count: number | null;
+  yt_video_published_at: string | null;
 }
 
 /**
@@ -260,6 +274,171 @@ async function fetchYouTubeTrending(apiKey: string): Promise<RawSignal[]> {
 
   console.log(`[fetch-trends] YouTube: ${signals.length} signals`);
   return signals;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LAYER 1d: YouTube engagement enrichment (Tier 2 / Fix #6)
+//
+// For each candidate trend (from ANY source — Google Trends, Reddit, or
+// YouTube's own trending chart), look up the best-matching recent YouTube
+// video and pull real view/like/comment counts. This is the first piece
+// of *externally verifiable* engagement evidence on a trend — proof that
+// real audiences are actually engaging, not just that the topic is being
+// searched.
+//
+// Quota math (YouTube Data API v3, 10,000 units/day free tier):
+//   - search.list = 100 units per call (one per candidate, can't batch)
+//   - videos.list = 1 unit per call regardless of how many IDs in the
+//     batch (we batch all matched IDs into a single call)
+//   ≈ 15 candidates × 100 + 1 = 1,501 units per fetch run
+//   At 2-3 runs/day this stays well under the 10K daily ceiling.
+//
+// Honesty rules enforced here:
+//   - No match found      → all yt_* fields stay null. The UI hides the
+//                           badge entirely; we never render "0 views".
+//   - View count < 10K    → drop the match (more likely an unrelated
+//                           upload than evidence of real reach). Same
+//                           result: nulls stored.
+//   - API error / timeout → log a warning and leave nulls. Never estimate.
+//
+// Deliberately no Reddit / TikTok engagement here. Those are separate
+// follow-up migrations once their respective API credentials are in place.
+// ─────────────────────────────────────────────────────────────────────────────
+const YT_VIEW_COUNT_FLOOR = 10_000;
+
+interface YouTubeEngagement {
+  yt_video_id: string;
+  yt_video_title: string;
+  yt_channel_title: string;
+  yt_view_count: number;
+  yt_like_count: number | null;     // null if disabled on the video
+  yt_comment_count: number | null;  // null if disabled on the video
+  yt_video_published_at: string;
+}
+
+async function searchYouTubeVideoForTopic(
+  topic: string,
+  apiKey: string,
+  publishedAfterIso: string,
+): Promise<string | null> {
+  // Strip hashtag-y noise from the query so we don't pass tokens like
+  // "BREAKING:" or trailing emoji into search — they hurt relevance.
+  const cleanQuery = topic.replace(/[^\w\s'-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
+  if (!cleanQuery) return null;
+
+  const url =
+    `https://www.googleapis.com/youtube/v3/search` +
+    `?part=snippet&type=video&order=relevance` +
+    `&q=${encodeURIComponent(cleanQuery)}` +
+    `&publishedAfter=${encodeURIComponent(publishedAfterIso)}` +
+    `&maxResults=1&relevanceLanguage=en` +
+    `&key=${apiKey}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn(`[fetch-trends] YT search "${cleanQuery}": HTTP ${res.status}`);
+      return null;
+    }
+    const data = await res.json();
+    const top = data.items?.[0];
+    return top?.id?.videoId || null;
+  } catch (e) {
+    console.warn(`[fetch-trends] YT search "${cleanQuery}" error:`, e);
+    return null;
+  }
+}
+
+async function batchFetchVideoStats(
+  videoIds: string[],
+  apiKey: string,
+): Promise<Map<string, YouTubeEngagement>> {
+  const result = new Map<string, YouTubeEngagement>();
+  if (videoIds.length === 0) return result;
+
+  // videos.list accepts up to 50 IDs in a single call for 1 quota unit.
+  // We never have more than ~15 candidates, so a single call is plenty.
+  const idsParam = videoIds.slice(0, 50).join(',');
+  const url =
+    `https://www.googleapis.com/youtube/v3/videos` +
+    `?part=snippet,statistics&id=${encodeURIComponent(idsParam)}` +
+    `&key=${apiKey}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn(`[fetch-trends] YT videos.list: HTTP ${res.status}`);
+      return result;
+    }
+    const data = await res.json();
+    for (const item of (data.items || [])) {
+      const stats = item.statistics || {};
+      const viewCount = parseInt(stats.viewCount || '0', 10);
+      // Apply view-count floor — videos under this threshold are more
+      // likely unrelated noise than evidence of real reach. Drop them
+      // so the trend's yt_* stays NULL rather than store a misleading
+      // "this trend has 247 views" badge.
+      if (viewCount < YT_VIEW_COUNT_FLOOR) continue;
+      // YouTube returns no like_count / comment_count fields when the
+      // creator has disabled them. Distinguish disabled (null) from
+      // actually-zero (0) — both are honest, but they mean different things.
+      const likeCount    = stats.likeCount    !== undefined ? parseInt(stats.likeCount, 10)    : null;
+      const commentCount = stats.commentCount !== undefined ? parseInt(stats.commentCount, 10) : null;
+      result.set(item.id, {
+        yt_video_id:           item.id,
+        yt_video_title:        item.snippet?.title || '',
+        yt_channel_title:      item.snippet?.channelTitle || '',
+        yt_view_count:         viewCount,
+        yt_like_count:         likeCount,
+        yt_comment_count:      commentCount,
+        yt_video_published_at: item.snippet?.publishedAt || new Date().toISOString(),
+      });
+    }
+  } catch (e) {
+    console.warn('[fetch-trends] YT videos.list error:', e);
+  }
+  return result;
+}
+
+/**
+ * For each topic, resolve a YouTube videoId via search.list, then batch
+ * fetch all stats in one videos.list call. Returns a Map keyed by the
+ * lowercase topic so callers can hydrate matched candidates.
+ */
+async function enrichYouTubeEngagement(
+  topics: string[],
+  apiKey: string,
+): Promise<Map<string, YouTubeEngagement>> {
+  const out = new Map<string, YouTubeEngagement>();
+  if (topics.length === 0) return out;
+
+  // Only consider videos uploaded in the last 14 days. A trend is
+  // "right now"; we want recent uploads as evidence of *current* reach,
+  // not viral-from-2019 evergreen videos that happen to share keywords.
+  const publishedAfter = new Date();
+  publishedAfter.setDate(publishedAfter.getDate() - 14);
+  const publishedAfterIso = publishedAfter.toISOString();
+
+  // Sequential search.list calls (small per-call delay to be polite to
+  // the API). 15 × ~150ms = ~2-3s of wall time, acceptable.
+  const videoIdByTopic = new Map<string, string>();
+  for (const topic of topics) {
+    const videoId = await searchYouTubeVideoForTopic(topic, apiKey, publishedAfterIso);
+    if (videoId) videoIdByTopic.set(topic.toLowerCase(), videoId);
+    await delay(120);
+  }
+
+  if (videoIdByTopic.size === 0) {
+    console.log('[fetch-trends] YT enrichment: no qualifying matches across all topics');
+    return out;
+  }
+
+  const stats = await batchFetchVideoStats([...videoIdByTopic.values()], apiKey);
+
+  for (const [topic, videoId] of videoIdByTopic.entries()) {
+    const s = stats.get(videoId);
+    if (s) out.set(topic, s);
+  }
+  console.log(`[fetch-trends] YT enrichment: ${out.size}/${topics.length} topics matched (above ${YT_VIEW_COUNT_FLOOR.toLocaleString()}-view floor)`);
+  return out;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -523,8 +702,43 @@ serve(async (req) => {
         ig_evidence: igData.ig_evidence,
         virality_score: calcViralityScore(c, maxScore, igData.timing),
         corroboration_score: computeCorroborationScore(c.sources),
+        // YouTube engagement starts as null — will be hydrated below in
+        // Layer 2c if YOUTUBE_API_KEY is set and a qualifying match is found.
+        yt_video_id:           null,
+        yt_video_title:        null,
+        yt_channel_title:      null,
+        yt_view_count:         null,
+        yt_like_count:         null,
+        yt_comment_count:      null,
+        yt_video_published_at: null,
       };
     });
+
+    // ── LAYER 2c: YouTube engagement enrichment (Tier 2 / Fix #6) ──────────
+    // For each enriched candidate, look up the best-matching recent YouTube
+    // video and pull real view/like/comment counts. Only runs if the
+    // YOUTUBE_API_KEY secret is configured. If skipped or if no qualifying
+    // match is found, all yt_* fields stay null — never fabricated.
+    if (YOUTUBE_API_KEY) {
+      console.log('[fetch-trends] Layer 2c: Enriching with YouTube engagement data...');
+      const ytEngagement = await enrichYouTubeEngagement(
+        enriched.map(c => c.topic),
+        YOUTUBE_API_KEY,
+      );
+      for (const c of enriched) {
+        const stats = ytEngagement.get(c.topic.toLowerCase());
+        if (!stats) continue;
+        c.yt_video_id           = stats.yt_video_id;
+        c.yt_video_title        = stats.yt_video_title;
+        c.yt_channel_title      = stats.yt_channel_title;
+        c.yt_view_count         = stats.yt_view_count;
+        c.yt_like_count         = stats.yt_like_count;
+        c.yt_comment_count      = stats.yt_comment_count;
+        c.yt_video_published_at = stats.yt_video_published_at;
+      }
+    } else {
+      console.log('[fetch-trends] Layer 2c: skipped (YOUTUBE_API_KEY not set) — all yt_* fields will be null');
+    }
 
     // Sort: early first (most valuable for brands), then by virality score
     enriched.sort((a, b) => {
@@ -547,10 +761,19 @@ serve(async (req) => {
       const corrTag = c.corroboration_score === 3 ? '🟢 3/3 platforms'
                     : c.corroboration_score === 2 ? '🟡 2/3 platforms'
                     : '⚠ single-platform';
+      // Real YouTube engagement, when we have it. "no YT match" is an honest
+      // statement (we looked, found nothing above the floor), distinct from
+      // "didn't check" — the LLM can use both legitimately.
+      const ytLine = c.yt_view_count !== null
+        ? `  YouTube: ${c.yt_view_count.toLocaleString()} views`
+          + (c.yt_like_count !== null ? `, ${c.yt_like_count.toLocaleString()} likes` : '')
+          + (c.yt_channel_title ? ` (${c.yt_channel_title})` : '')
+        : `  YouTube: no qualifying match (no recent video above ${YT_VIEW_COUNT_FLOOR.toLocaleString()}-view floor)`;
       return [
         `${timingTag} | "${c.topic}"`,
         `  Sources: ${c.sources.join(' + ')} (${corrTag}) | Regions: ${c.regions.join('/')} | Virality: ${c.virality_score}`,
         `  IG: ${igTag} — ${c.ig_evidence || 'n/a'}`,
+        ytLine,
         `  Context: ${c.details.slice(0, 2).join('; ') || 'no extra detail'}`,
       ].join('\n');
     }).join('\n\n');
@@ -696,6 +919,21 @@ Rules:
         ? nowIso
         : (existing?.peaked_at ?? null);
 
+      // YouTube engagement comes from the enriched record (Layer 2c).
+      // All yt_* fields are nullable and travel together — if no qualifying
+      // match was found, every yt_* stays null. yt_fetched_at is set to
+      // nowIso ONLY when we actually have a video_id to record (so a stale
+      // null row doesn't claim a fresh "checked at" timestamp).
+      const hasYouTubeMatch = !!enrichedMatch?.yt_video_id;
+      const yt_video_id           = enrichedMatch?.yt_video_id           ?? null;
+      const yt_video_title        = enrichedMatch?.yt_video_title        ?? null;
+      const yt_channel_title      = enrichedMatch?.yt_channel_title      ?? null;
+      const yt_view_count         = enrichedMatch?.yt_view_count         ?? null;
+      const yt_like_count         = enrichedMatch?.yt_like_count         ?? null;
+      const yt_comment_count      = enrichedMatch?.yt_comment_count      ?? null;
+      const yt_video_published_at = enrichedMatch?.yt_video_published_at ?? null;
+      const yt_fetched_at         = hasYouTubeMatch ? nowIso : null;
+
       const baseRow = {
         trend_id,
         trend_name:              trend.trend_name,
@@ -727,6 +965,17 @@ Rules:
         last_seen_at:            nowIso,
         peak_virality_score,
         peaked_at,
+        // YouTube engagement (Tier 2 / Fix #6). All null when no match;
+        // never fabricated. yt_fetched_at marks the freshness of these
+        // numbers so the UI can warn on stale stats.
+        yt_video_id,
+        yt_video_title,
+        yt_channel_title,
+        yt_view_count,
+        yt_like_count,
+        yt_comment_count,
+        yt_video_published_at,
+        yt_fetched_at,
       };
 
       const upsertRow = isInsert
@@ -759,13 +1008,15 @@ Rules:
       .lt('date_added', cutoff.toISOString().split('T')[0])
       .eq('active', true);
 
+    const ytMatchCount = enriched.filter(c => c.yt_video_id !== null).length;
     const result = {
       success: true,
       date: today,
-      pipeline: '3-layer: google-trends + reddit + youtube + ig-validation',
+      pipeline: '4-layer: google-trends + reddit + youtube + ig-validation + yt-engagement',
       source_breakdown: sourceBreakdown,
       candidates_after_dedup: candidates.length,
       early_signals: earlyCount,
+      youtube_engagement_matches: YOUTUBE_API_KEY ? `${ytMatchCount}/${enriched.length}` : 'skipped (no API key)',
       trends_upserted: upserted,
       errors,
     };

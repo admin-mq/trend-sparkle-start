@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { RecommendedTrend, TrendTiming, TrendCategory } from "@/types/trends";
-import { TrendingUp, ArrowRight, RefreshCw, Zap, Clock, Flame, ShieldCheck, AlertTriangle } from "lucide-react";
+import { TrendingUp, ArrowRight, RefreshCw, Zap, Clock, Flame, ShieldCheck, AlertTriangle, Youtube, ThumbsUp, MessageCircle } from "lucide-react";
 
 interface RecommendedTrendsProps {
   recommendations: RecommendedTrend[];
@@ -158,6 +158,93 @@ const CorroborationBadge = ({ score }: { score?: number }) => {
       <AlertTriangle className="w-3 h-3" />
       Single-source — verify
     </span>
+  );
+};
+
+/**
+ * Compact view-count formatter — 1.2K / 4.7M / 12.3M.
+ * For honesty: round half-down on the 1-decimal version so we never
+ * round 999,000 up to "1M" (it's been 999K, say 999K).
+ */
+const formatCount = (n: number): string => {
+  if (n < 1_000) return n.toString();
+  if (n < 10_000) return `${(Math.floor(n / 100) / 10).toFixed(1)}K`;
+  if (n < 1_000_000) return `${Math.floor(n / 1_000)}K`;
+  if (n < 10_000_000) return `${(Math.floor(n / 100_000) / 10).toFixed(1)}M`;
+  if (n < 1_000_000_000) return `${Math.floor(n / 1_000_000)}M`;
+  return `${(Math.floor(n / 100_000_000) / 10).toFixed(1)}B`;
+};
+
+/**
+ * Real engagement evidence pulled from YouTube Data API. ONLY renders when
+ * we actually have a video match — never shows "0 views" because that would
+ * falsely imply we checked and the video flopped. Likes/comments only render
+ * when YouTube returned them (creator can disable both, in which case they
+ * stay null and we honestly skip them).
+ *
+ * Hover title shows "fetched X ago" so users can tell if numbers are stale.
+ */
+const YouTubeEngagementBadge = ({
+  videoId,
+  videoTitle,
+  channelTitle,
+  viewCount,
+  likeCount,
+  commentCount,
+  fetchedAt,
+}: {
+  videoId?: string | null;
+  videoTitle?: string | null;
+  channelTitle?: string | null;
+  viewCount?: number | null;
+  likeCount?: number | null;
+  commentCount?: number | null;
+  fetchedAt?: string | null;
+}) => {
+  // Hide entirely when we have no match. yt_video_id is the source of truth
+  // — if it's null, every other yt_* field is also null by contract.
+  if (!videoId || viewCount == null) return null;
+
+  const fetchedAgo = fetchedAt
+    ? (() => {
+        const h = (Date.now() - new Date(fetchedAt).getTime()) / 36e5;
+        if (h < 1) return 'fetched <1h ago';
+        if (h < 48) return `fetched ${Math.round(h)}h ago`;
+        return `fetched ${Math.round(h / 24)}d ago`;
+      })()
+    : '';
+
+  const titleParts = [
+    `Best matching recent YouTube video: "${videoTitle || 'untitled'}"`,
+    channelTitle ? `Channel: ${channelTitle}` : null,
+    fetchedAgo ? `Stats ${fetchedAgo}` : null,
+  ].filter(Boolean);
+
+  return (
+    <a
+      href={`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={titleParts.join(' · ')}
+      className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/30 hover:bg-red-500/15 transition-colors"
+    >
+      <Youtube className="w-3 h-3" />
+      <span className="tabular-nums">{formatCount(viewCount)} views</span>
+      {likeCount != null && (
+        <>
+          <span className="opacity-50">·</span>
+          <ThumbsUp className="w-2.5 h-2.5" />
+          <span className="tabular-nums">{formatCount(likeCount)}</span>
+        </>
+      )}
+      {commentCount != null && commentCount > 0 && (
+        <>
+          <span className="opacity-50">·</span>
+          <MessageCircle className="w-2.5 h-2.5" />
+          <span className="tabular-nums">{formatCount(commentCount)}</span>
+        </>
+      )}
+    </a>
   );
 };
 
@@ -354,6 +441,15 @@ export const RecommendedTrends = ({
                     peakedAt={trend.peaked_at}
                     viralityScore={trend.virality_score}
                     peakViralityScore={trend.peak_virality_score}
+                  />
+                  <YouTubeEngagementBadge
+                    videoId={trend.yt_video_id}
+                    videoTitle={trend.yt_video_title}
+                    channelTitle={trend.yt_channel_title}
+                    viewCount={trend.yt_view_count}
+                    likeCount={trend.yt_like_count}
+                    commentCount={trend.yt_comment_count}
+                    fetchedAt={trend.yt_fetched_at}
                   />
                   {trend.region && (
                     <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">
