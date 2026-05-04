@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { resolveFormatSpec, formatSpecPromptBlock } from "../_shared/platform-format.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -190,12 +191,27 @@ serve(async (req) => {
 
       const trendContext = trendContextLines.join('\n');
 
+      // Tier 2 / #9 — resolve platform-specific format spec so each idea
+      // is generated for the actual platform conventions rather than a
+      // generic "video" / "carousel" framing.
+      const platformSpec = resolveFormatSpec(
+        user_profile.platform,
+        user_profile.content_format
+      );
+      const platformSpecBlock = formatSpecPromptBlock(
+        platformSpec,
+        user_profile.platform || null,
+        user_profile.content_format || null
+      );
+
       const systemPrompt = `You are a veteran social-first creative director who has shipped thousands of viral posts.
 
 You receive:
 - a brand profile,
 - ONE trend with REAL-TIME CONTEXT explaining exactly why it's viral right now,
 - the brand's preferred content_format (e.g. video, carousel, short-form).
+
+${platformSpecBlock}
 
 Brand memory is provided as a style guide. Use it as the highest priority for voice and tone:
 - Match the rhythm and attitude described in voice_profile_text.
@@ -215,7 +231,7 @@ Create EXACTLY 5 distinct creative directions for how this brand can use this tr
 Each idea MUST:
 - Directly reference the specific real-time event/story driving the trend.
 - Match the brand's tone in wording and attitude.
-- Fit the content_format (if 'video', think shots/beats; if 'carousel', think slides).
+- Fit the platform-specific format spec above. Every direction must respect the duration window, hook window, and edit-style notes for the actual platform — not a generic "video" notion. A TikTok 7-15s POV idea should NOT look like a YouTube 60s Short idea.
 - Support the primary_goal with a clear angle.
 
 Content rules:

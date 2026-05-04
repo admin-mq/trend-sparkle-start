@@ -43,6 +43,32 @@ interface EnrichedCandidate extends ScoredCandidate {
   timing: Timing;
   ig_evidence: string;
   virality_score: number;
+  /**
+   * Number of *distinct platforms* that confirmed this trend (1-3).
+   * Counts Google Trends / Reddit / YouTube as one platform each, regardless
+   * of region. Used by the AI ranker and shown directly to users as a
+   * credibility badge — single-source = ⚠ verify, 3-source = strong signal.
+   */
+  corroboration_score: number;
+}
+
+/**
+ * Map a SignalSource ID to its parent platform. Used to compute the
+ * corroboration score: a trend hit by google_trends_uk + google_trends_us
+ * counts as 1 platform (Google Trends), not 2 — that's geographic spread,
+ * not multi-platform corroboration.
+ */
+function platformOf(s: SignalSource): 'google_trends' | 'reddit' | 'youtube' {
+  if (s.startsWith('google_trends')) return 'google_trends';
+  if (s.startsWith('youtube'))       return 'youtube';
+  return 'reddit';
+}
+
+function computeCorroborationScore(sources: SignalSource[]): number {
+  const platforms = new Set(sources.map(platformOf));
+  // Clamp to [1, 3]. 0 shouldn't happen since we already filter signal-less
+  // candidates upstream, but defensive default = 1 (worst case).
+  return Math.max(1, Math.min(3, platforms.size));
 }
 
 interface IGValidation {
@@ -496,6 +522,7 @@ serve(async (req) => {
         timing: igData.timing,
         ig_evidence: igData.ig_evidence,
         virality_score: calcViralityScore(c, maxScore, igData.timing),
+        corroboration_score: computeCorroborationScore(c.sources),
       };
     });
 
@@ -517,9 +544,12 @@ serve(async (req) => {
       const igTag = c.ig_validated === 'confirmed' ? '✓ confirmed'
                   : c.ig_validated === 'not_found' ? '✗ not on IG yet'
                   : '? unknown';
+      const corrTag = c.corroboration_score === 3 ? '🟢 3/3 platforms'
+                    : c.corroboration_score === 2 ? '🟡 2/3 platforms'
+                    : '⚠ single-platform';
       return [
         `${timingTag} | "${c.topic}"`,
-        `  Sources: ${c.sources.join(' + ')} | Regions: ${c.regions.join('/')} | Virality: ${c.virality_score}`,
+        `  Sources: ${c.sources.join(' + ')} (${corrTag}) | Regions: ${c.regions.join('/')} | Virality: ${c.virality_score}`,
         `  IG: ${igTag} — ${c.ig_evidence || 'n/a'}`,
         `  Context: ${c.details.slice(0, 2).join('; ') || 'no extra detail'}`,
       ].join('\n');
@@ -617,7 +647,13 @@ Rules:
     };
 
     // ── Upsert to trends table ─────────────────────────────────────────────
-    let upserted = 0, errors = 0;
+    // We can't use a plain `upsert()` because lifecycle fields are
+    // conditional: first_seen_at must be PRESERVED across runs (set on
+    // insert only), and peaked_at/peak_virality_score must only update
+    // when the new virality beats the stored peak. So we read-then-write
+    // per trend. ~15 trends/run × 1 round-trip each = trivial cost.
+    let upserted = 0, inserted = 0, errors = 0;
+    const nowIso = new Date().toISOString();
 
     for (const trend of trends) {
       const slug = trend.trend_name
@@ -635,36 +671,84 @@ Rules:
       const ig_validated: IgValidated = enrichedMatch?.ig_validated || 'unknown';
       const ig_confirmed = ig_validated === 'confirmed';
 
+      const newVirality = enrichedMatch?.virality_score ?? trend.virality_score ?? 50;
+      const corroboration = enrichedMatch?.corroboration_score
+        ?? computeCorroborationScore((trend.source_signals || []) as SignalSource[]);
+
+      // Look up existing observation history for this trend_id.
+      const { data: existing } = await supabase
+        .from('trends')
+        .select('first_seen_at, peaked_at, peak_virality_score')
+        .eq('trend_id', trend_id)
+        .maybeSingle();
+
+      // Compute lifecycle fields:
+      //   - first_seen_at: NEVER overwrite. Only set on insert.
+      //   - last_seen_at:  refreshed every observation.
+      //   - peaked_at + peak_virality_score: stamp on new high-water mark.
+      //     Tie goes to keeping the existing value (don't shift the peak
+      //     timestamp on equal-value re-observations).
+      const isInsert = !existing;
+      const prevPeak = existing?.peak_virality_score ?? -1;
+      const beatsPrevPeak = newVirality > prevPeak;
+      const peak_virality_score = beatsPrevPeak ? newVirality : prevPeak;
+      const peaked_at = beatsPrevPeak
+        ? nowIso
+        : (existing?.peaked_at ?? null);
+
+      const baseRow = {
+        trend_id,
+        trend_name:              trend.trend_name,
+        description:             trend.description,
+        hashtags,
+        // We don't have a real view-count signal source, so leave NULL.
+        // The UI hides this field entirely; virality_score / timing /
+        // ig_validated / source_signals are the real signals we surface.
+        views_last_60h_millions: null,
+        region:                  trend.region || 'Global',
+        premium_only:            trend.premium_only ?? false,
+        active:                  true,
+        date_added:              today,
+        // Signal fields — prefer measured values from `enriched`, fall
+        // back to LLM output only for the fields the LLM actually owns
+        // (timing/source_signals/category derived from descriptions).
+        timing:                  enrichedMatch?.timing || trend.timing || 'peaking',
+        ig_confirmed,
+        ig_validated,
+        virality_score:          newVirality,
+        source_signals:          enrichedMatch?.sources || trend.source_signals || [],
+        // Corroboration is derived from the actual measured sources, never
+        // from the LLM. If we somehow have no enriched match (shouldn't
+        // happen post-filter), fall back to computing from whatever
+        // sources came through; otherwise default to 1 = single-platform.
+        corroboration_score:     corroboration,
+        category:                trend.category || 'Entertainment',
+        // Lifecycle observation fields.
+        last_seen_at:            nowIso,
+        peak_virality_score,
+        peaked_at,
+      };
+
+      const upsertRow = isInsert
+        ? { ...baseRow, first_seen_at: nowIso }
+        : baseRow;  // existing row keeps its original first_seen_at — we
+                    // never include it in the update payload, so the DB
+                    // value is preserved.
+
       const { error } = await supabase.from('trends').upsert(
-        {
-          trend_id,
-          trend_name:              trend.trend_name,
-          description:             trend.description,
-          hashtags,
-          // We don't have a real view-count signal source, so leave NULL.
-          // The UI hides this field entirely; virality_score / timing /
-          // ig_validated / source_signals are the real signals we surface.
-          views_last_60h_millions: null,
-          region:                  trend.region || 'Global',
-          premium_only:            trend.premium_only ?? false,
-          active:                  true,
-          date_added:              today,
-          // Signal fields — prefer measured values from `enriched`, fall
-          // back to LLM output only for the fields the LLM actually owns
-          // (timing/source_signals/category derived from descriptions).
-          timing:                  enrichedMatch?.timing || trend.timing || 'peaking',
-          ig_confirmed,
-          ig_validated,
-          virality_score:          enrichedMatch?.virality_score ?? trend.virality_score ?? 50,
-          source_signals:          enrichedMatch?.sources || trend.source_signals || [],
-          category:                trend.category || 'Entertainment',
-        },
+        upsertRow,
         { onConflict: 'trend_id', ignoreDuplicates: false }
       );
 
-      if (error) { console.error(`[fetch-trends] Upsert error ${trend_id}:`, error); errors++; }
-      else upserted++;
+      if (error) {
+        console.error(`[fetch-trends] Upsert error ${trend_id}:`, error);
+        errors++;
+      } else {
+        upserted++;
+        if (isInsert) inserted++;
+      }
     }
+    console.log(`[fetch-trends] Upsert complete — ${inserted} new trends, ${upserted - inserted} updated, ${errors} errors`);
 
     // ── Deactivate trends older than 7 days ───────────────────────────────
     const cutoff = new Date();

@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { RecommendedTrend, TrendTiming, TrendCategory } from "@/types/trends";
-import { TrendingUp, ArrowRight, RefreshCw, Zap, Clock, Flame } from "lucide-react";
+import { TrendingUp, ArrowRight, RefreshCw, Zap, Clock, Flame, ShieldCheck, AlertTriangle } from "lucide-react";
 
 interface RecommendedTrendsProps {
   recommendations: RecommendedTrend[];
@@ -56,6 +56,107 @@ const TimingBadge = ({ timing }: { timing?: TrendTiming }) => {
     <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${className}`}>
       {icon}
       {label}
+    </span>
+  );
+};
+
+/**
+ * Renders observation lifecycle copy honestly.
+ *   - first_seen_at → "Broke Xh ago" (real, measured)
+ *   - peaked_at      → "Peaked Yh ago" — but only when set
+ *   - peaked_at NULL → "Still climbing" — only when virality is current peak
+ * Never invents a peak time. If we have no first_seen_at, render nothing.
+ */
+const LifecycleBadge = ({
+  firstSeenAt,
+  peakedAt,
+  viralityScore,
+  peakViralityScore,
+}: {
+  firstSeenAt?: string | null;
+  peakedAt?: string | null;
+  viralityScore?: number;
+  peakViralityScore?: number | null;
+}) => {
+  if (!firstSeenAt) return null;
+  const ageHours = Math.max(0, (Date.now() - new Date(firstSeenAt).getTime()) / 36e5);
+  const ageLabel = ageHours < 1
+    ? 'Broke <1h ago'
+    : ageHours < 48
+      ? `Broke ${Math.round(ageHours)}h ago`
+      : `Broke ${Math.round(ageHours / 24)}d ago`;
+
+  // Determine peak phase from observation history.
+  // We say "still climbing" only when current virality matches the recorded
+  // peak AND the peak hasn't been stamped (which means we've never seen a
+  // drop). If virality is below peak, we know the trend has come off its
+  // high — even if we don't have a peaked_at timestamp.
+  let peakPhase: { label: string; tone: 'climbing' | 'past' | 'unknown' } | null = null;
+  if (peakViralityScore != null && viralityScore != null) {
+    if (peakedAt && viralityScore < peakViralityScore) {
+      const peakAgo = Math.max(0, (Date.now() - new Date(peakedAt).getTime()) / 36e5);
+      const peakLabel = peakAgo < 1
+        ? 'just peaked'
+        : peakAgo < 48
+          ? `peaked ${Math.round(peakAgo)}h ago`
+          : `peaked ${Math.round(peakAgo / 24)}d ago`;
+      peakPhase = { label: peakLabel, tone: 'past' };
+    } else if (viralityScore >= peakViralityScore) {
+      peakPhase = { label: 'still climbing', tone: 'climbing' };
+    }
+  }
+
+  const tone = peakPhase?.tone === 'climbing'
+    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+    : peakPhase?.tone === 'past'
+      ? 'bg-muted text-muted-foreground border border-border'
+      : 'bg-secondary text-muted-foreground border border-border';
+
+  const fullLabel = peakPhase ? `${ageLabel} · ${peakPhase.label}` : ageLabel;
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${tone}`}
+      title={`First seen at ${new Date(firstSeenAt).toLocaleString()}`}
+    >
+      <Clock className="w-3 h-3" />
+      {fullLabel}
+    </span>
+  );
+};
+
+/**
+ * Surfaces the cross-source corroboration count as a credibility badge.
+ * 3/3 = green shield, 2/3 = blue shield, 1/3 = amber alert ("verify before
+ * posting"). Hidden if score is missing — never silently shown as 1/3,
+ * since that would falsely imply we checked and found one.
+ */
+const CorroborationBadge = ({ score }: { score?: number }) => {
+  if (score == null) return null;
+  if (score >= 3) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+            title="Confirmed across all 3 platforms (Google Trends + Reddit + YouTube)">
+        <ShieldCheck className="w-3 h-3" />
+        3-platform confirmed
+      </span>
+    );
+  }
+  if (score === 2) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30"
+            title="Confirmed across 2 distinct platforms">
+        <ShieldCheck className="w-3 h-3" />
+        2-platform
+      </span>
+    );
+  }
+  // score === 1 → single-platform — caveat the user, don't pretend it's strong
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30"
+          title="Single-platform signal only. Verify on the source platform before posting.">
+      <AlertTriangle className="w-3 h-3" />
+      Single-source — verify
     </span>
   );
 };
@@ -247,6 +348,13 @@ export const RecommendedTrends = ({
                     {trend.trend_name}
                   </h4>
                   <TimingBadge timing={trend.timing} />
+                  <CorroborationBadge score={trend.corroboration_score} />
+                  <LifecycleBadge
+                    firstSeenAt={trend.first_seen_at}
+                    peakedAt={trend.peaked_at}
+                    viralityScore={trend.virality_score}
+                    peakViralityScore={trend.peak_virality_score}
+                  />
                   {trend.region && (
                     <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">
                       {trend.region}

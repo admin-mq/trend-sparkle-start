@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { resolveFormatSpec, formatSpecPromptBlock } from "../_shared/platform-format.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -267,6 +268,21 @@ serve(async (req) => {
       const isDetailed = detailed === true;
       const goal = (user_profile.primary_goal || "").toString();
 
+      // Resolve the platform-specific format spec (Tier 2 / #9). When the
+      // brand profile names a platform + content_format we know about, this
+      // injects concrete duration / aspect / hook / algorithm-rewards
+      // guidance into the prompt. When we can't resolve, a neutral fallback
+      // line is rendered — never a fabricated spec.
+      const platformSpec = resolveFormatSpec(
+        user_profile.platform,
+        user_profile.content_format
+      );
+      const platformSpecBlock = formatSpecPromptBlock(
+        platformSpec,
+        user_profile.platform || null,
+        user_profile.content_format || null
+      );
+
       // ─── Persona ─────────────────────────────────────────────────────────────
       // Detailed mode swaps in a top-tier-creative persona. Standard mode keeps
       // the lighter "social media director" framing.
@@ -283,6 +299,8 @@ You receive:
 - ONE trend with a detailed description of why it is viral now,
 - ONE selected creative direction (title, summary, hook, visual_idea, CTA),
 - the content_format (${user_profile.content_format || "unspecified"}).
+
+${platformSpecBlock}
 
 Creator context:
 ${isFaceless ? "⚠️ FACELESS ACCOUNT: This creator does NOT show their face. All shot/visual suggestions must use voiceover, text overlays, hands/objects only shots, b-roll, screen recordings, animations, product photography, or environmental shots. Never suggest selfie, talking-head, or on-camera presenter shots." : "✅ Face-on account: on-camera and talking-head content is fine."}

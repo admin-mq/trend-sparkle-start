@@ -69,6 +69,30 @@ export interface Trend {
   ig_validated?: IgValidated;
   virality_score?: number;
   source_signals?: string[];
+  /**
+   * Number of *distinct platforms* (Google Trends, Reddit, YouTube) that
+   * confirmed this trend. 1 = single-platform (treat as weaker signal),
+   * 2 = corroborated, 3 = fully corroborated across all platforms checked.
+   * Surfaced to users as a credibility badge — single-source trends should
+   * be labeled "verify before posting" so users know the signal is thinner.
+   */
+  corroboration_score?: number;
+  /**
+   * The very first time we observed this trend in our pipeline. Set on
+   * insert, never overwritten. Powers "broke Xh ago" copy.
+   */
+  first_seen_at?: string | null;
+  /** Most recent observation timestamp. Refreshed every fetch run. */
+  last_seen_at?: string | null;
+  /**
+   * When the current peak virality score was reached. NULL means we
+   * haven't seen a virality drop yet (i.e. still climbing). UI must
+   * distinguish "still climbing" (null) from "peaked Xh ago" (timestamp)
+   * — never silently treat null as "now".
+   */
+  peaked_at?: string | null;
+  /** Highest virality_score ever recorded for this trend. */
+  peak_virality_score?: number | null;
   category?: TrendCategory | string;
 }
 

@@ -107,7 +107,7 @@ serve(async (req) => {
     // and let brand-fit be the LLM's job.
     let query = externalSupabase
       .from('trends')
-      .select('trend_id, trend_name, description, hashtags, region, premium_only, active, timing, ig_confirmed, ig_validated, virality_score, source_signals, category')
+      .select('trend_id, trend_name, description, hashtags, region, premium_only, active, timing, ig_confirmed, ig_validated, virality_score, source_signals, corroboration_score, first_seen_at, last_seen_at, peaked_at, peak_virality_score, category')
       .eq('premium_only', false)
       .eq('active', true)
       .order('virality_score', { ascending: false })
@@ -155,7 +155,8 @@ Your job:
   - a description of WHY it is trending right now,
   - a virality_score (10–99) reflecting cross-source corroboration + timing,
   - a timing label (early / peaking / saturated),
-  - source_signals (which platforms confirmed it: google_trends_uk, reddit, youtube_us, etc. — more sources = more real),
+  - source_signals (which raw signals confirmed it: google_trends_uk, reddit, youtube_us, etc.),
+  - a corroboration_score (1–3) — the count of DISTINCT platforms (Google Trends / Reddit / YouTube) that confirmed it. 3 = all three platforms agree (highest credibility), 1 = only one platform (treat as weaker signal),
   - a category and region.
 - Pick exactly 5 trends that will perform best for this brand.
 
@@ -175,7 +176,7 @@ Rules:
 - For the other 3:
   - Optimise for brand fit (industry, niche, audience, tone, content_format, primary_goal).
   - Prefer trends with timing="early" when brand can move fast — first-mover advantage.
-  - Prefer trends with 2+ source_signals — multi-source corroboration means it's actually trending, not a one-platform blip.
+  - Prefer trends with corroboration_score ≥ 2. A single-platform trend (corroboration_score=1) can be a real trend or just one platform's noise — only pick it if the brand fit is unusually strong AND the description's WHY is concrete and verifiable.
   - Skip saturated trends unless the brand has a genuinely fresh angle.
 - Use the description field: reference specific triggers (leaks, finales, controversies, emotional themes, flashmobs, etc.), not generic statements.
 - Avoid clichés like:
@@ -201,6 +202,7 @@ Always respond with a single valid JSON object.`;
         virality_score: t.virality_score ?? null,
         timing: t.timing || null,
         source_signals: t.source_signals || [],
+        corroboration_score: t.corroboration_score ?? 1,
         category: t.category || null,
         region: t.region || null,
       }));
@@ -289,6 +291,14 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
             ig_validated: fullTrend.ig_validated ?? 'unknown',
             virality_score: fullTrend.virality_score ?? null,
             source_signals: fullTrend.source_signals || [],
+            corroboration_score: fullTrend.corroboration_score ?? 1,
+            // Lifecycle history. peaked_at can be NULL (no observed peak
+            // drop yet), and that's intentional — UI must distinguish
+            // "still climbing" (NULL) from "peaked Xh ago" (timestamp).
+            first_seen_at: fullTrend.first_seen_at ?? null,
+            last_seen_at: fullTrend.last_seen_at ?? null,
+            peaked_at: fullTrend.peaked_at ?? null,
+            peak_virality_score: fullTrend.peak_virality_score ?? null,
             category: fullTrend.category || null,
             why_good_fit: rec.why_good_fit || '',
             example_hook: rec.example_hook || '',
@@ -336,13 +346,16 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
         const description = (trend as any).description || '';
         const timing = (trend as any).timing || null;
         const sources: string[] = (trend as any).source_signals || [];
+        const corroboration: number = (trend as any).corroboration_score ?? 1;
         const category = (trend as any).category || null;
 
         const lead = firstSentence(description) ||
           `${trend.trend_name} is currently active${category ? ` in the ${category} space` : ''}.`;
-        const signalLine = sources.length > 0
-          ? `Confirmed across ${sources.length} live signal${sources.length === 1 ? '' : 's'} (${sources.slice(0, 3).join(', ')}).`
-          : `Surfaced from cross-source aggregation.`;
+        const signalLine = corroboration >= 2
+          ? `Confirmed across ${corroboration} distinct platforms (${sources.slice(0, 3).join(', ')}).`
+          : sources.length > 0
+            ? `Single-platform signal so far (${sources[0]}) — verify before posting.`
+            : `Surfaced from cross-source aggregation.`;
 
         return {
           trend_id: trend.trend_id,
@@ -353,6 +366,11 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
           ig_validated: (trend as any).ig_validated ?? 'unknown',
           virality_score: (trend as any).virality_score ?? null,
           source_signals: sources,
+          corroboration_score: corroboration,
+          first_seen_at: (trend as any).first_seen_at ?? null,
+          last_seen_at: (trend as any).last_seen_at ?? null,
+          peaked_at: (trend as any).peaked_at ?? null,
+          peak_virality_score: (trend as any).peak_virality_score ?? null,
           category,
           why_good_fit: `${lead} ${timingPhrase(timing)}. ${signalLine}`.trim(),
           example_hook: `${trend.trend_name}${category ? ` × ${user_profile.brand_name}` : ''} — here's the angle nobody's posted yet.`,

@@ -7,8 +7,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const EXTERNAL_SUPABASE_URL = "https://njnnpdrevbkhbhzwccuz.supabase.co";
-const EXTERNAL_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qbm5wZHJldmJraGJoendjY3V6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQzOTg3ODQsImV4cCI6MjA3OTk3NDc4NH0.WKuei-3pR2TphEKjSOOhvNlECrX93Jt9NE5SK2TcD-M";
+// Cross-project access for the trends DB. EXTERNAL_* take priority for setups
+// where the trends DB is a different Supabase project than the one this Edge
+// Function runs in; otherwise fall back to the auto-injected SUPABASE_* env
+// vars. Keeping credentials out of source — same pattern as recommend-trends,
+// generate-directions, generate-blueprint (Tier 1 fix #1).
+const EXTERNAL_SUPABASE_URL =
+  Deno.env.get("EXTERNAL_SUPABASE_URL") || Deno.env.get("SUPABASE_URL") || "";
+const EXTERNAL_SUPABASE_ANON_KEY =
+  Deno.env.get("EXTERNAL_SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_ANON_KEY") || "";
 
 const HASHTAG_ITEM_SCHEMA = `{
   "tag": string (with # prefix, lowercase),
