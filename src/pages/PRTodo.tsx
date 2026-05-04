@@ -6,7 +6,7 @@ import {
   CheckCircle2, Circle, CircleDashed, X, Loader2, Sparkles, ChevronRight,
   Megaphone, Filter, RefreshCw, ListChecks, Building2, AlertCircle,
   DollarSign, Target, Calendar, MapPin, Lightbulb, TrendingUp, Shield,
-  ExternalLink, Zap,
+  ExternalLink, Zap, BadgeCheck, AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,11 +45,24 @@ interface PrAction {
   pr_projects?: { id: string; brand_name: string; domain: string } | null;
 }
 
+// New-shape outlet, written by expand-pr-action after Fix #4. Each outlet
+// must have a real, validated URL. `verified` means the host showed up in
+// sonar's live citations[] for this generation.
+interface Outlet {
+  name: string;
+  url: string;
+  rationale: string;
+  verified: boolean;
+}
+
+// Playbook accepts either the new Outlet[] shape OR the legacy free-text
+// string[] from rows generated before Fix #4. The renderer below handles
+// both — old rows still display, just without links or the verified badge.
 interface Playbook {
   what: string;
   how: string[];
   when: string;
-  where: string[];
+  where: Outlet[] | string[];
   why: string;
   success_metrics: string[];
   risks: Array<{ risk: string; mitigation: string }>;
@@ -59,6 +72,7 @@ interface Playbook {
     rationale: string;
     line_items: Array<{ item: string; cost_usd: string }>;
   } | null;
+  outlets_unverified?: boolean; // present on post-Fix-#4 rows only
   generated_at: string;
   source: string;
 }
@@ -605,9 +619,11 @@ function PlaybookDrawer({
           {/* When */}
           <Section icon={Calendar} title="When" body={pb.when} />
 
-          {/* Where */}
+          {/* Where — outlets, with link + verified badge for new-shape entries.
+              Legacy rows (where: string[]) still render as plain bullets so
+              already-generated playbooks don't break. */}
           {pb.where && pb.where.length > 0 && (
-            <SectionList icon={MapPin} title="Where (named channels)" items={pb.where} />
+            <OutletsSection where={pb.where} unverified={pb.outlets_unverified === true} />
           )}
 
           {/* How */}
@@ -703,6 +719,91 @@ function SectionList({ icon: Icon, title, items, numbered = false }: { icon: Rea
             <span>{it}</span>
           </li>
         ))}
+      </ul>
+    </div>
+  );
+}
+
+// Renders the "Where (named channels)" block. Handles both:
+//   • new shape  — Outlet[] with name/url/rationale/verified
+//   • legacy     — string[] from playbooks generated before Fix #4
+//
+// New-shape outlets become clickable links with a "verified" check icon
+// when the host appeared in sonar's live citations[]. Legacy strings
+// render as plain bullets with a small caption flagging that they
+// weren't validated.
+function OutletsSection({
+  where,
+  unverified,
+}: {
+  where: Outlet[] | string[];
+  unverified: boolean;
+}) {
+  const isStructured = where.length > 0 && typeof where[0] !== "string";
+  return (
+    <div>
+      <h3 className="text-sm font-semibold flex items-center gap-1.5 mb-2">
+        <MapPin className="w-4 h-4 text-primary" /> Where (named channels)
+      </h3>
+
+      {/* Banner: too many outlets failed validation in this generation */}
+      {isStructured && unverified && (
+        <div className="flex items-start gap-2 mb-2 px-2.5 py-2 rounded-md bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-400">
+          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span>
+            Half or more of the outlets the model named couldn't be verified
+            against live web search. Treat the surviving list as a
+            starting point and confirm before pitching.
+          </span>
+        </div>
+      )}
+
+      {/* Legacy caption: this playbook was generated before per-outlet validation existed */}
+      {!isStructured && (
+        <p className="text-[11px] text-muted-foreground mb-2 italic">
+          Generated before per-outlet validation — names below are unverified.
+          Re-generate the playbook to get checked links.
+        </p>
+      )}
+
+      <ul className="space-y-2">
+        {isStructured
+          ? (where as Outlet[]).map((o, i) => (
+              <li key={i} className="text-sm text-foreground/90 leading-relaxed flex gap-2">
+                <span className="flex-shrink-0 text-muted-foreground">•</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <a
+                      href={o.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-primary hover:underline inline-flex items-center gap-1 break-words"
+                    >
+                      {o.name}
+                      <ExternalLink className="w-3 h-3 shrink-0" />
+                    </a>
+                    {o.verified && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] gap-1 py-0 bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
+                        title="Host appeared in live web-search citations for this generation"
+                      >
+                        <BadgeCheck className="w-3 h-3" /> verified
+                      </Badge>
+                    )}
+                  </div>
+                  {o.rationale && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{o.rationale}</p>
+                  )}
+                </div>
+              </li>
+            ))
+          : (where as string[]).map((it, i) => (
+              <li key={i} className="text-sm text-foreground/90 leading-relaxed flex gap-2">
+                <span className="flex-shrink-0 text-muted-foreground">•</span>
+                <span>{it}</span>
+              </li>
+            ))}
       </ul>
     </div>
   );
