@@ -308,6 +308,7 @@ function CreateProjectDialog({
   const [industry, setIndustry] = useState("");
   const [geography, setGeography] = useState("Global");
   const [audience, setAudience] = useState("");
+  const [businessSummary, setBusinessSummary] = useState("");
   const prefillDone = useRef(false);
 
   // Pre-fill from brand profile when dialog opens
@@ -327,7 +328,7 @@ function CreateProjectDialog({
       if (data.brand_name) setBrandName(data.brand_name);
       if (data.industry)   setIndustry(data.industry);
       if (data.geography)  setGeography(data.geography);
-      if (data.business_summary) setAudience(data.business_summary);
+      if (data.business_summary) setBusinessSummary(data.business_summary);
       prefillDone.current = true;
     }
     void prefill();
@@ -349,6 +350,7 @@ function CreateProjectDialog({
       if (p.industry)   setIndustry(p.industry);
       if (p.geography)  setGeography(p.geography);
       if (p.target_audience) setAudience(p.target_audience);
+      if (p.business_summary) setBusinessSummary(p.business_summary);
       const extracted = url.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase();
       if (extracted && !domain) setDomain(extracted);
     } catch {
@@ -379,6 +381,7 @@ function CreateProjectDialog({
           industry: industry || '',
           geography: geography || 'Global',
           audience: audience || '',
+          business_summary: businessSummary || '',
           competitors: useCompetitors ?? competitors,
         }
       });
@@ -394,7 +397,7 @@ function CreateProjectDialog({
 
   function resetForm() {
     setStep("Brand");
-    setBrandName(""); setDomain(""); setIndustry(""); setGeography("Global"); setAudience("");
+    setBrandName(""); setDomain(""); setIndustry(""); setGeography("Global"); setAudience(""); setBusinessSummary("");
     setWebsiteUrl(""); setIsAnalyzing(false);
     setCompetitors([{ name: "", domain: "" }]);
     setPromptText(""); setScanFrequency("weekly");

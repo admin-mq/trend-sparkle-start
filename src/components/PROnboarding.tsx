@@ -594,7 +594,6 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
       if (data.industry)   setIndustry(data.industry);
       if (data.geography)  setGeography(data.geography);
       if (data.business_summary) {
-        setAudience(data.business_summary);
         setBusinessSummary(data.business_summary);
       }
       const savedCompetitors: { name: string; domain: string }[] = (data.competitors ?? [])
@@ -617,18 +616,19 @@ export function PROnboarding({ onCreated }: PROnboardingProps) {
   const [scanFrequency, setScanFrequency] = useState<"weekly" | "monthly" | "manual">("weekly");
   const [suggesting, setSuggesting] = useState(false);
 
-  async function suggestPrompts(opts?: { bName?: string; bDomain?: string; bIndustry?: string; bGeo?: string; bAudience?: string; bCompetitors?: Competitor[] }) {
+  async function suggestPrompts(opts?: { bName?: string; bDomain?: string; bIndustry?: string; bGeo?: string; bAudience?: string; bSummary?: string; bCompetitors?: Competitor[] }) {
     const bName = opts?.bName ?? brandName;
     const bDomain = opts?.bDomain ?? domain;
     const bIndustry = opts?.bIndustry ?? industry;
     const bGeo = opts?.bGeo ?? geography;
     const bAudience = opts?.bAudience ?? audience;
+    const bSummary = opts?.bSummary ?? businessSummary;
     const bCompetitors = opts?.bCompetitors ?? competitors;
     if (!bName.trim()) return;
     setSuggesting(true);
     try {
       const { data, error: fnError } = await supabase.functions.invoke('suggest-pr-prompts', {
-        body: { brand_name: bName, domain: bDomain, industry: bIndustry, geography: bGeo, audience: bAudience, competitors: bCompetitors }
+        body: { brand_name: bName, domain: bDomain, industry: bIndustry, geography: bGeo, audience: bAudience, business_summary: bSummary, competitors: bCompetitors }
       });
       if (fnError) throw new Error(fnError.message);
       const lines: string[] = data?.prompts ?? [];

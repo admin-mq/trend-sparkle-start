@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { brand_name, domain, industry, geography, audience, competitors } = await req.json();
+    const { brand_name, domain, industry, geography, audience, business_summary, competitors } = await req.json();
 
     if (!brand_name) {
       return new Response(
@@ -38,6 +38,22 @@ serve(async (req) => {
     const industryLabel = industry || 'their industry';
     const audienceLabel = audience || 'general consumers';
 
+    // Trim business_summary to a reasonable size — sonar context is finite and
+    // we don't need the whole thing, just enough for positioning grounding.
+    const summaryRaw = typeof business_summary === 'string' ? business_summary.trim() : '';
+    const summaryClipped = summaryRaw.length > 1200 ? summaryRaw.slice(0, 1200) + '…' : summaryRaw;
+    const summaryBlock = summaryClipped
+      ? `\nWhat the brand actually does (use this as the primary positioning anchor — do not invent capabilities or audiences not implied by it):\n"""\n${summaryClipped}\n"""\n`
+      : '';
+
+    console.log('[suggest-pr-prompts] inputs —',
+      'brand:', brand_name,
+      'industry:', industryLabel,
+      'geo:', geoLabel,
+      'audience-len:', audienceLabel.length,
+      'summary-len:', summaryClipped.length,
+      'competitors:', competitorNames === 'unknown' ? 0 : competitorNames.split(',').length);
+
     const prompt = `You are a PR and search visibility strategist. A brand wants to know which AI search prompts they should track — these are the queries their target buyers type into ChatGPT, Marketers Quest, or Google AI Overviews when looking for products or services like theirs.
 
 Brand: ${brand_name}
@@ -46,12 +62,14 @@ Industry: ${industryLabel}
 Geography: ${geoLabel}
 Target audience: ${audienceLabel}
 Key competitors: ${competitorNames}
-
+${summaryBlock}
 Generate exactly 5 high-value AI search prompts this brand should track. Each prompt must:
 - Be a real natural-language question or phrase a buyer or journalist would type into an AI tool
+- Be specific to what this brand actually sells${summaryClipped ? ' (per the positioning block above)' : ''} — do NOT default to generic category queries unless they genuinely match the brand's offering
 - Be specific enough that winning a mention would be genuinely valuable
 - Cover a mix of: buying-intent queries, comparison queries, and category-leadership queries
 - Be relevant to ${geoLabel} if the brand is location-specific
+- Avoid naming the brand itself in the query (we want queries the brand should win, not queries about the brand)
 
 Return ONLY this JSON, no markdown, no explanation:
 {
