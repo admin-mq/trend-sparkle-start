@@ -229,7 +229,7 @@ async function synthesizeAnalysis(
   externalMentions: any[] = [],
   brandContext: any | null = null,
   visibilityResults: any[] = []
-): Promise<any> {
+): Promise<{ analysis: any; evidence_url_pool_size: number }> {
   const brandEvidence = brandFacts.join("\n\n");
 
   const competitorBlocks = Object.entries(competitorFacts)
@@ -618,7 +618,7 @@ Be brutally specific about ${project.brand_name}. Reference real things. Make it
   }
   console.log(`[pr-scan] sources — kept:${totalCited} dropped:${totalDropped} pool:${evidenceUrls.size}`);
 
-  return parsed;
+  return { analysis: parsed, evidence_url_pool_size: evidenceUrls.size };
 }
 
 // ── Main handler ───────────────────────────────────────────────────────────────
@@ -778,7 +778,7 @@ Deno.serve(async (req: Request) => {
       .update({ progress_step: "Running strategic narrative analysis…" })
       .eq("id", scan_job_id);
 
-    const analysis = await synthesizeAnalysis(
+    const { analysis, evidence_url_pool_size } = await synthesizeAnalysis(
       project,
       brandFacts,
       competitorFacts,
@@ -786,6 +786,43 @@ Deno.serve(async (req: Request) => {
       brandContext,
       visibilityResults
     );
+
+    // ── Step 4b: Compute evidence_signals for low-confidence detection ───────
+    // The synthesis is only as good as the evidence behind it. We capture the
+    // input shape at scan-time so the UI can warn users when a report was
+    // generated from thin inputs (few pages crawled, no mentions, no
+    // visibility run, no live brand context). Stored on the narrative result
+    // so the warning is sticky to that scan, not recomputed from current state.
+    const competitorPageCount = Object.values(competitorPages).flat().length;
+    const mentionCount = (externalMentions ?? []).length;
+    const visibilityCount = visibilityResults.length;
+    const hasBrandContext = !!brandContext && (brandContext.tier ?? "unknown") !== "unknown";
+
+    const warnings: string[] = [];
+    if (brandPages.length < 5) warnings.push(`Only ${brandPages.length} brand page(s) crawled — site may be JS-heavy or blocking bots`);
+    if (competitorPageCount === 0) warnings.push("No competitor pages analyzed — comparative claims are weaker");
+    if (mentionCount === 0) warnings.push("No external press mentions — authority signals are limited");
+    if (visibilityCount === 0) warnings.push("No AI search visibility data — run a visibility check for the strongest signal");
+    if (!brandContext) warnings.push("No live brand context derived — strategic suggestions may be generic");
+    else if (!hasBrandContext) warnings.push("Brand tier is unknown — synthesis defaulted to growth-stage playbook");
+
+    const lowConfidence =
+      brandPages.length < 3 ||
+      evidence_url_pool_size < 3 ||
+      !brandContext;
+
+    const evidence_signals = {
+      brand_pages_crawled: brandPages.length,
+      competitor_pages_crawled: competitorPageCount,
+      external_mentions: mentionCount,
+      visibility_results: visibilityCount,
+      evidence_url_pool_size,
+      brand_context_present: !!brandContext,
+      brand_context_tier: brandContext?.tier ?? null,
+      warnings,
+      low_confidence: lowConfidence,
+    };
+    console.log(`[pr-scan] evidence_signals — low_confidence:${lowConfidence} warnings:${warnings.length}`);
 
     // ── Step 5: Store results ─────────────────────────────────────────────────
     await supabase
@@ -809,6 +846,7 @@ Deno.serve(async (req: Request) => {
         recommended_actions: analysis.recommended_actions ?? [],
         executive_summary: analysis.executive_summary ?? null,
         pages_analyzed: totalPages,
+        evidence_signals,
       })
       .select("id")
       .single();

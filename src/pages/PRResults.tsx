@@ -87,6 +87,18 @@ interface RecommendedAction {
   sources?: string[];
 }
 
+interface EvidenceSignals {
+  brand_pages_crawled?: number;
+  competitor_pages_crawled?: number;
+  external_mentions?: number;
+  visibility_results?: number;
+  evidence_url_pool_size?: number;
+  brand_context_present?: boolean;
+  brand_context_tier?: string | null;
+  warnings?: string[];
+  low_confidence?: boolean;
+}
+
 interface NarrativeResult {
   narrative_score: number | null;
   authority_score: number | null;
@@ -99,6 +111,7 @@ interface NarrativeResult {
   recommended_actions: RecommendedAction[];
   executive_summary: string | null;
   pages_analyzed: number;
+  evidence_signals?: EvidenceSignals | null;
 }
 
 interface VisibilityRun {
@@ -337,6 +350,84 @@ function SourcesRow({ urls, label = "Sources" }: { urls?: string[] | null; label
         );
       })}
     </div>
+  );
+}
+
+// ── Low-confidence banner ─────────────────────────────────────────────────────
+// Surfaced at the top of PRResults when a scan ran with thin inputs (few brand
+// pages crawled, no mentions, no visibility data, missing brand context). The
+// signals are captured at scan-time and stored on the narrative result, so the
+// warning is sticky to the report — it won't change if you later add mentions
+// or a visibility run, you'd need to re-scan to lift it.
+function LowConfidenceBanner({
+  signals,
+  onRescan,
+  onRunVisibility,
+}: {
+  signals?: EvidenceSignals | null;
+  onRescan?: () => void;
+  onRunVisibility?: () => void;
+}) {
+  if (!signals) return null;
+  const warnings = Array.isArray(signals.warnings) ? signals.warnings : [];
+  // Show the banner if the synthesis flagged low_confidence, OR if 2+ warnings
+  // landed (a single warning isn't necessarily low-confidence, but multiple
+  // missing signals add up).
+  const shouldShow = signals.low_confidence === true || warnings.length >= 2;
+  if (!shouldShow) return null;
+
+  const showVisibilityCTA = (signals.visibility_results ?? 0) === 0;
+
+  return (
+    <Card className="border-amber-500/40 bg-amber-500/5">
+      <CardContent className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 shrink-0">
+            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-3 mb-1.5 flex-wrap">
+              <h3 className="text-sm font-semibold text-foreground">
+                {signals.low_confidence ? "Low-confidence scan" : "Limited evidence"}
+              </h3>
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <span>pages: {signals.brand_pages_crawled ?? 0}</span>
+                <span>·</span>
+                <span>mentions: {signals.external_mentions ?? 0}</span>
+                <span>·</span>
+                <span>visibility: {signals.visibility_results ?? 0}</span>
+                <span>·</span>
+                <span>citations: {signals.evidence_url_pool_size ?? 0}</span>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground mb-2">
+              The synthesis ran with thinner-than-ideal inputs. Treat the report as
+              directional rather than conclusive — strengthen the signals below and
+              re-scan for a higher-confidence read.
+            </p>
+            {warnings.length > 0 && (
+              <ul className="text-xs text-foreground/80 space-y-0.5 mb-2 list-disc pl-4">
+                {warnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            )}
+            <div className="flex items-center gap-2 flex-wrap pt-1">
+              {showVisibilityCTA && onRunVisibility && (
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={onRunVisibility}>
+                  <Eye className="w-3 h-3" /> Run visibility check
+                </Button>
+              )}
+              {onRescan && (
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={onRescan}>
+                  <RefreshCw className="w-3 h-3" /> Re-scan
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1281,6 +1372,13 @@ const PRResults = () => {
           </Button>
         </div>
       </div>
+
+      {/* Low-confidence warning — only renders when scan ran with thin inputs */}
+      <LowConfidenceBanner
+        signals={result.evidence_signals}
+        onRescan={() => navigate("/pr")}
+        onRunVisibility={runVisibilityCheck}
+      />
 
       {/* Executive summary */}
       {result.executive_summary && (
