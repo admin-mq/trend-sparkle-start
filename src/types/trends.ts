@@ -118,7 +118,29 @@ export interface Trend {
    * "fetched Xh ago" so users can tell if numbers are stale.
    */
   yt_fetched_at?: string | null;
+  /**
+   * Time-series observation history (Tier 3 / Fix #1). Up to 14 most
+   * recent observations, sorted ASCENDING by observed_at. UI MUST hide
+   * the sparkline when length < 2 — a single point is not a "timeline".
+   * UI MUST NOT extrapolate beyond the latest observation.
+   */
+  observation_history?: TrendObservation[];
   category?: TrendCategory | string;
+}
+
+/**
+ * One snapshot of a trend's signal state at a moment in time. Powers the
+ * sparkline component. NULL fields are honest — never zero-fill.
+ */
+export interface TrendObservation {
+  observed_at: string;
+  virality_score: number | null;
+  corroboration_score: number | null;
+  timing: string | null;
+  ig_validated: string | null;
+  yt_view_count: number | null;
+  yt_like_count: number | null;
+  yt_comment_count: number | null;
 }
 
 export interface RecommendedTrend extends Trend {

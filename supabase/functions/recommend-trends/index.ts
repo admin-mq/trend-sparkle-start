@@ -24,6 +24,73 @@ if (!EXTERNAL_SUPABASE_URL || !EXTERNAL_SUPABASE_ANON_KEY) {
   console.error("[recommend-trends] Missing Supabase credentials. Set EXTERNAL_SUPABASE_URL/EXTERNAL_SUPABASE_ANON_KEY or rely on auto-injected SUPABASE_URL/SUPABASE_ANON_KEY.");
 }
 
+// Tier 3 / Fix #1 — Observation history for sparklines.
+//
+// Fetches up to 14 days of time-series observations for the specified
+// trend_ids in a single round-trip, then groups them by trend_id and
+// caps each list at the 14 most recent. The UI uses this to render an
+// inline sparkline; insufficient history (<2 points) renders nothing.
+//
+// Honesty rule: we ORDER BY observed_at ASC so the consumer reads
+// chronologically. The UI must NOT extrapolate beyond the latest
+// observation — what we have is what we show.
+type Observation = {
+  observed_at: string;
+  virality_score: number | null;
+  corroboration_score: number | null;
+  timing: string | null;
+  ig_validated: string | null;
+  yt_view_count: number | null;
+  yt_like_count: number | null;
+  yt_comment_count: number | null;
+};
+
+async function fetchObservationHistory(
+  supabase: any,
+  trendIds: string[],
+  daysBack = 14,
+): Promise<Map<string, Observation[]>> {
+  const map = new Map<string, Observation[]>();
+  if (trendIds.length === 0) return map;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - daysBack);
+  const { data, error } = await supabase
+    .from('trend_observations')
+    .select('trend_id, observed_at, virality_score, corroboration_score, timing, ig_validated, yt_view_count, yt_like_count, yt_comment_count')
+    .in('trend_id', trendIds)
+    .gte('observed_at', cutoff.toISOString())
+    .order('observed_at', { ascending: true })
+    .limit(500);
+  if (error) {
+    // Don't break recommendations on a sparkline-data fetch failure —
+    // surface the error and return an empty map so the UI just hides
+    // sparklines for this response. This is degraded, not broken.
+    console.warn('[recommend-trends] Observation history fetch error:', error);
+    return map;
+  }
+  for (const row of (data || [])) {
+    const obs: Observation = {
+      observed_at:         row.observed_at,
+      virality_score:      row.virality_score,
+      corroboration_score: row.corroboration_score,
+      timing:              row.timing,
+      ig_validated:        row.ig_validated,
+      yt_view_count:       row.yt_view_count,
+      yt_like_count:       row.yt_like_count,
+      yt_comment_count:    row.yt_comment_count,
+    };
+    const list = map.get(row.trend_id) || [];
+    list.push(obs);
+    map.set(row.trend_id, list);
+  }
+  // Cap each trend's history at the 14 most recent observations. Already
+  // sorted ASC by observed_at, so slice from the end.
+  for (const [k, list] of map) {
+    if (list.length > 14) map.set(k, list.slice(-14));
+  }
+  return map;
+}
+
 type BrandMemory = {
   user_id: string | null;
   brand_name: string;
@@ -281,6 +348,13 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
       const trendMap = new Map();
       trends.forEach(t => trendMap.set(t.trend_id, t));
 
+      // Tier 3 / Fix #1 — fetch observation history ONLY for the trends
+      // the LLM picked, not all 30 candidates. Single round trip.
+      const pickedTrendIds: string[] = (parsedResponse.recommended_trends || [])
+        .map((r: any) => r.trend_id)
+        .filter((id: any): id is string => typeof id === 'string');
+      const observationHistoryMap = await fetchObservationHistory(externalSupabase, pickedTrendIds);
+
       // Map Marketers Quest recommendations to full trend objects
       const recommended_trends = parsedResponse.recommended_trends
         .map((rec: any) => {
@@ -318,6 +392,10 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
             yt_comment_count: (fullTrend as any).yt_comment_count ?? null,
             yt_video_published_at: (fullTrend as any).yt_video_published_at ?? null,
             yt_fetched_at: (fullTrend as any).yt_fetched_at ?? null,
+            // Time-series observation history (Tier 3 / Fix #1). Up to 14
+            // most recent observations, ascending by observed_at. UI MUST
+            // hide the sparkline if length < 2.
+            observation_history: observationHistoryMap.get(fullTrend.trend_id) || [],
             category: fullTrend.category || null,
             why_good_fit: rec.why_good_fit || '',
             example_hook: rec.example_hook || '',
@@ -360,6 +438,11 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
         if (t === 'saturated') return 'Already widespread — only worth posting with a genuinely fresh angle';
         return 'Currently in active rotation across multiple platforms';
       };
+
+      // Same observation-history fetch as the AI path — keep parity so
+      // sparklines render in the degraded mode too.
+      const fallbackTrendIds = trends.slice(0, 5).map(t => t.trend_id);
+      const observationHistoryMap = await fetchObservationHistory(externalSupabase, fallbackTrendIds);
 
       const fallbackTrends = trends.slice(0, 5).map(trend => {
         const description = (trend as any).description || '';
@@ -407,6 +490,7 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
           yt_comment_count: (trend as any).yt_comment_count ?? null,
           yt_video_published_at: (trend as any).yt_video_published_at ?? null,
           yt_fetched_at: (trend as any).yt_fetched_at ?? null,
+          observation_history: observationHistoryMap.get(trend.trend_id) || [],
           category,
           why_good_fit: `${lead} ${timingPhrase(timing)}. ${signalLine}${ytLine}`.trim(),
           example_hook: `${trend.trend_name}${category ? ` × ${user_profile.brand_name}` : ''} — here's the angle nobody's posted yet.`,

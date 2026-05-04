@@ -995,6 +995,32 @@ Rules:
       } else {
         upserted++;
         if (isInsert) inserted++;
+
+        // Tier 3 / Fix #1 — Time-series observation. One row per fetch run
+        // per trend, capturing the *signal* fields at this exact moment.
+        // Static fields (name, description, category) are NOT duplicated
+        // here — they live on `trends`. We deliberately INSERT (not upsert)
+        // so every observation is preserved, not collapsed.
+        //
+        // A failure here must NOT abort the upsert that just succeeded —
+        // we log and continue. Worst case: a missing observation row,
+        // detectable as a gap in the sparkline (preferable to losing the
+        // primary trend update).
+        const { error: obsError } = await supabase.from('trend_observations').insert({
+          trend_id,
+          observed_at:         nowIso,
+          virality_score:      newVirality,
+          corroboration_score: corroboration,
+          source_signals:      enrichedMatch?.sources || trend.source_signals || [],
+          timing:              enrichedMatch?.timing || trend.timing || 'peaking',
+          ig_validated,
+          yt_view_count,
+          yt_like_count,
+          yt_comment_count,
+        });
+        if (obsError) {
+          console.warn(`[fetch-trends] Observation insert error ${trend_id}:`, obsError);
+        }
       }
     }
     console.log(`[fetch-trends] Upsert complete — ${inserted} new trends, ${upserted - inserted} updated, ${errors} errors`);

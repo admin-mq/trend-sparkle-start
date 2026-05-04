@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { RecommendedTrend, TrendTiming, TrendCategory } from "@/types/trends";
+import { RecommendedTrend, TrendTiming, TrendCategory, TrendObservation } from "@/types/trends";
 import { TrendingUp, ArrowRight, RefreshCw, Zap, Clock, Flame, ShieldCheck, AlertTriangle, Youtube, ThumbsUp, MessageCircle } from "lucide-react";
 
 interface RecommendedTrendsProps {
@@ -258,6 +258,115 @@ const CategoryBadge = ({ category }: { category?: string }) => {
   );
 };
 
+/**
+ * Inline-SVG sparkline of a trend's virality_score over time.
+ *
+ * Honesty rules:
+ *   - Renders ONLY when ≥ 2 observations exist. A single point is not
+ *     a timeline; we never simulate movement.
+ *   - The X-axis spans the actual observed time range (oldest → newest).
+ *     We do NOT extrapolate forward — what we show is exactly what we
+ *     measured.
+ *   - The Y-axis spans the actual observed value range, padded so a
+ *     flat line shows as flat (not collapsed to a point or stretched
+ *     to look dramatic).
+ *   - If the most recent observation is < 24h after the first, we add
+ *     a "fresh signal" caption so users don't read a 1h window as a
+ *     real trend direction.
+ *   - Direction arrow (▲/▼/■) is computed from FIRST vs LAST observation,
+ *     never inferred or smoothed.
+ *
+ * Renders ~80×24px inline. No chart library — pure SVG, ~600 bytes per
+ * card, accessible via title.
+ */
+const TrendSparkline = ({ history }: { history?: TrendObservation[] }) => {
+  if (!history || history.length < 2) return null;
+
+  // Filter to observations that actually have a virality_score. NULLs
+  // can't be plotted honestly, so we drop them rather than substitute 0.
+  const points = history
+    .filter(o => o.virality_score != null)
+    .map(o => ({ t: new Date(o.observed_at).getTime(), v: o.virality_score as number }));
+  if (points.length < 2) return null;
+
+  const W = 80;
+  const H = 24;
+  const PAD = 2;
+
+  const tMin = points[0].t;
+  const tMax = points[points.length - 1].t;
+  const tSpan = Math.max(1, tMax - tMin);
+
+  const vValues = points.map(p => p.v);
+  const vMin = Math.min(...vValues);
+  const vMax = Math.max(...vValues);
+  // Pad the y-range so a flat line shows mid-height (rather than at top
+  // or bottom). For a real range, scale to the actual range.
+  const vSpan = Math.max(1, vMax - vMin);
+  const yScale = (v: number) => H - PAD - ((v - vMin) / vSpan) * (H - 2 * PAD);
+  const xScale = (t: number) => PAD + ((t - tMin) / tSpan) * (W - 2 * PAD);
+
+  const pathData = points
+    .map((p, i) => `${i === 0 ? 'M' : 'L'}${xScale(p.t).toFixed(1)},${yScale(p.v).toFixed(1)}`)
+    .join(' ');
+
+  // Direction arrow from FIRST vs LAST observation. Threshold of ±2 to
+  // avoid claiming "rising" for noise within a couple of points.
+  const first = points[0].v;
+  const last = points[points.length - 1].v;
+  const delta = last - first;
+  const arrow = delta > 2 ? '▲' : delta < -2 ? '▼' : '■';
+  const arrowColor =
+    arrow === '▲' ? 'text-emerald-600 dark:text-emerald-400' :
+    arrow === '▼' ? 'text-amber-600 dark:text-amber-400' :
+    'text-muted-foreground';
+  const strokeColor =
+    arrow === '▲' ? 'rgb(16, 185, 129)' :   // emerald-500
+    arrow === '▼' ? 'rgb(245, 158, 11)' :   // amber-500
+    'rgb(148, 163, 184)';                    // slate-400
+
+  // Honest direction label. < 24h history is "too early to call" — we
+  // refuse to claim a direction from < a day of data.
+  const hoursSpan = tSpan / 36e5;
+  const tooEarly = hoursSpan < 24;
+  const directionLabel = tooEarly
+    ? 'Fresh signal — too early to call direction'
+    : delta > 2 ? `Up ${delta} pts over ${hoursSpan < 48 ? `${Math.round(hoursSpan)}h` : `${Math.round(hoursSpan / 24)}d`}`
+    : delta < -2 ? `Down ${Math.abs(delta)} pts over ${hoursSpan < 48 ? `${Math.round(hoursSpan)}h` : `${Math.round(hoursSpan / 24)}d`}`
+    : `Flat across ${hoursSpan < 48 ? `${Math.round(hoursSpan)}h` : `${Math.round(hoursSpan / 24)}d`}`;
+
+  const tooltipTitle = `Virality ${first} → ${last} (${points.length} observations · ${directionLabel})`;
+
+  return (
+    <span
+      className="inline-flex items-center gap-1 align-middle"
+      title={tooltipTitle}
+      aria-label={tooltipTitle}
+    >
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img">
+        <path
+          d={pathData}
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {/* Latest point dot */}
+        <circle
+          cx={xScale(points[points.length - 1].t).toFixed(1)}
+          cy={yScale(points[points.length - 1].v).toFixed(1)}
+          r="1.8"
+          fill={strokeColor}
+        />
+      </svg>
+      <span className={`text-[10px] font-bold tabular-nums ${arrowColor}`}>
+        {tooEarly ? '·' : arrow}
+      </span>
+    </span>
+  );
+};
+
 const ViralityBar = ({ score }: { score?: number }) => {
   if (!score) return null;
   const width = `${score}%`;
@@ -477,10 +586,15 @@ export const RecommendedTrends = ({
                   </div>
                 )}
 
-                {/* Virality score bar */}
+                {/* Virality score bar + observation-history sparkline.
+                    Sparkline only renders when ≥2 observations exist —
+                    a single point is not a timeline. */}
                 {trend.virality_score != null && (
-                  <div className="mt-2">
-                    <ViralityBar score={trend.virality_score} />
+                  <div className="mt-2 flex items-center gap-3">
+                    <div className="flex-1">
+                      <ViralityBar score={trend.virality_score} />
+                    </div>
+                    <TrendSparkline history={trend.observation_history} />
                   </div>
                 )}
               </div>
