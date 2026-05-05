@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { RecommendedTrend, TrendTiming, TrendCategory, TrendObservation, CompetitorCoverage } from "@/types/trends";
-import { TrendingUp, ArrowRight, RefreshCw, Zap, Clock, Flame, ShieldCheck, AlertTriangle, Youtube, ThumbsUp, MessageCircle, Users, Trophy } from "lucide-react";
+import { RecommendedTrend, TrendTiming, TrendCategory, TrendObservation, CompetitorCoverage, YouTubeVelocity } from "@/types/trends";
+import { TrendingUp, ArrowRight, RefreshCw, Zap, Clock, Flame, ShieldCheck, AlertTriangle, Youtube, ThumbsUp, MessageCircle, Users, Trophy, Rocket, Gauge } from "lucide-react";
 
 interface RecommendedTrendsProps {
   recommendations: RecommendedTrend[];
@@ -274,6 +274,76 @@ const YouTubeEngagementBadge = ({
         </>
       )}
     </a>
+  );
+};
+
+/**
+ * Velocity signal — views accumulated since the matched YouTube video was
+ * uploaded, normalized to a per-hour rate.
+ *
+ * Honesty rules (mirror the contract in recommend-trends/computeYouTubeVelocity):
+ *   - Hide entirely when velocity is null. The server already encodes "we
+ *     can't make this claim" by returning null (matched video too new, or
+ *     no match at all). Rendering "0/hr" or "slow" with no data would
+ *     fabricate a verdict we don't have.
+ *   - Tooltip shows literal "X views in Yh since upload" — past-tense,
+ *     descriptive. NEVER projects forward (e.g. no "240K views/day").
+ *   - The view rate is shown only in the tooltip, not the visible badge,
+ *     so the visible label stays a tier word — easier to scan, harder to
+ *     misread as a forecast.
+ *
+ * Tier → color mapping picked to be distinct from YouTubeEngagementBadge
+ * (which is red): velocity is amber/orange family so the two badges
+ * don't visually merge into one signal.
+ */
+const YouTubeVelocityBadge = ({ velocity }: { velocity?: YouTubeVelocity | null }) => {
+  if (!velocity) return null;
+
+  // Display: tier word for the badge, literal numbers in tooltip.
+  // We deliberately do NOT show the views/hr number on the badge itself —
+  // it's an aid in the tooltip, not a headline metric, because rates can
+  // be misread as forecasts.
+  const tierMap = {
+    racing: {
+      label: 'Racing',
+      classes: 'bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/40',
+      icon: <Rocket className="w-3 h-3" />,
+    },
+    strong: {
+      label: 'Strong velocity',
+      classes: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30',
+      icon: <Rocket className="w-3 h-3" />,
+    },
+    steady: {
+      label: 'Steady',
+      classes: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/30',
+      icon: <Gauge className="w-3 h-3" />,
+    },
+    slow: {
+      label: 'Slow',
+      classes: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400 border-zinc-500/30',
+      icon: <Gauge className="w-3 h-3" />,
+    },
+  } as const;
+  const cfg = tierMap[velocity.tier];
+
+  // hours_since_publish is rounded to 1 decimal upstream. Show "Xh" for
+  // whole-hour values and "X.Yh" otherwise so we don't render "6.0h".
+  const hoursLabel = Number.isInteger(velocity.hours_since_publish)
+    ? `${velocity.hours_since_publish}h`
+    : `${velocity.hours_since_publish}h`;
+
+  // Tooltip is the contract: literal numbers, past-tense framing.
+  const title = `Matched YouTube video pulled ${velocity.views.toLocaleString()} views in ${hoursLabel} since upload (~${velocity.views_per_hour.toLocaleString()} views/hr so far). Snapshot of the recent past — not a forecast.`;
+
+  return (
+    <span
+      title={title}
+      className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${cfg.classes}`}
+    >
+      {cfg.icon}
+      <span>{cfg.label}</span>
+    </span>
   );
 };
 
@@ -666,6 +736,7 @@ export const RecommendedTrends = ({
                     commentCount={trend.yt_comment_count}
                     fetchedAt={trend.yt_fetched_at}
                   />
+                  <YouTubeVelocityBadge velocity={trend.yt_velocity} />
                   <CompetitorCoverageBadge coverage={trend.competitor_coverage} />
                   {trend.region && (
                     <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">

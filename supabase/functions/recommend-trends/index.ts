@@ -238,6 +238,84 @@ function computeCompetitorCoverage(
   };
 }
 
+// Tier 3 / Fix #5 — YouTube velocity signal.
+//
+// Without Reddit (currently policy-gated), we lose the "discussion intensity"
+// signal — proof that people are actively talking about a trend RIGHT NOW.
+// The substitute we already have but never surfaced: views accumulated on
+// the best-matching recent YouTube video, divided by hours since that
+// video was uploaded. A 100K-view video published 6h ago is a categorically
+// different signal than a 100K-view video from 10 days ago — fetch-trends
+// captures both numbers, recommend-trends now puts them in conversation.
+//
+// Honesty rules:
+//   • Suppress entirely when yt_view_count OR yt_video_published_at is null.
+//     "couldn't check" is not "the trend has zero reach."
+//   • Suppress when hours_since_publish < 3. Three hours of view data is too
+//     thin to claim a stable rate; a freshly posted video might pull 50K
+//     views in its first hour and stall — we'd badge it "racing" and be
+//     wrong an hour later. Honest abstention beats fast-and-wrong.
+//   • Tier thresholds are tuned against typical YouTube performance bands
+//     (see THRESHOLDS comment). The TIER is a UI hint; the LITERAL numbers
+//     (views + hours_since_publish) are the contract — the badge tooltip
+//     shows "X views in Yh since upload" past-tense, descriptive, no
+//     forward extrapolation. We never tell the user "this trend will hit
+//     N views by tomorrow" — that's a forecast we can't honestly make.
+type YouTubeVelocityTier = 'racing' | 'strong' | 'steady' | 'slow';
+
+type YouTubeVelocity = {
+  tier: YouTubeVelocityTier;
+  views: number;
+  hours_since_publish: number;
+  views_per_hour: number;
+};
+
+/**
+ * Compute the velocity signal for a trend's matched YouTube video.
+ * Returns NULL when:
+ *   - either input is missing (we can't compute a rate),
+ *   - the published_at timestamp parses to NaN,
+ *   - hours_since_publish < 3 (sample too thin — see honesty rules).
+ *
+ * THRESHOLDS — calibrated against YouTube's typical bands for trending
+ * content. Examples:
+ *   - racing  ≥ 20K views/hr → big music drops, viral news (rare).
+ *   - strong  ≥  5K views/hr → solid trending creator/news content.
+ *   - steady  ≥  1K views/hr → real audience interest, not background noise.
+ *   - slow    <  1K views/hr → still real data, but signal is muted —
+ *                              show the badge so users see the honest read.
+ */
+function computeYouTubeVelocity(
+  viewCount: number | null | undefined,
+  publishedAt: string | null | undefined,
+  now: Date = new Date(),
+): YouTubeVelocity | null {
+  if (viewCount == null || !publishedAt) return null;
+  const published = new Date(publishedAt);
+  const publishedMs = published.getTime();
+  if (Number.isNaN(publishedMs)) return null;
+  if (viewCount < 0) return null;
+
+  const hoursSincePublish = (now.getTime() - publishedMs) / 3_600_000;
+  if (hoursSincePublish < 3) return null;
+
+  const viewsPerHour = viewCount / hoursSincePublish;
+  let tier: YouTubeVelocityTier;
+  if (viewsPerHour >= 20_000)     tier = 'racing';
+  else if (viewsPerHour >=  5_000) tier = 'strong';
+  else if (viewsPerHour >=  1_000) tier = 'steady';
+  else                              tier = 'slow';
+
+  return {
+    tier,
+    views: viewCount,
+    // Round to 1 decimal so the tooltip reads "in 6.4h" not "6.371h".
+    hours_since_publish: Math.round(hoursSincePublish * 10) / 10,
+    // Whole-number views/hour for the tooltip — no decimals on view counts.
+    views_per_hour: Math.round(viewsPerHour),
+  };
+}
+
 type BrandMemory = {
   user_id: string | null;
   brand_name: string;
@@ -372,6 +450,7 @@ Your job:
   - source_signals (which raw signals confirmed it: google_trends_uk, reddit, youtube_us, etc.),
   - a corroboration_score and corroboration_max — score = how many DISTINCT platforms confirmed this trend; max = how many platforms we successfully reached this run (out of Google Trends / Reddit / YouTube). When score == max the trend has full coverage of the platforms we could check; when max < 3, that's because one of the platforms (currently Reddit) was unreachable this run. NEVER tell the user a trend is "missing a platform" if score == max — that's full coverage of available sources.
   - optional yt_view_count / yt_like_count — REAL YouTube engagement on the best-matching recent video for this trend. When present, this is externally-verifiable proof that audiences are actually engaging (not just searching). When null, it just means we couldn't find a qualifying recent video — treat it as "no extra evidence", NOT as "this trend has no reach".
+  - optional yt_velocity — derived from yt_view_count divided by hours since the matched video was uploaded. Tiers: 'racing' (≥20K views/hr), 'strong' (≥5K/hr), 'steady' (≥1K/hr), 'slow' (<1K/hr). When tier is 'racing' or 'strong', cite it as evidence the trend is actively accelerating. When null, treat it as "we couldn't compute a rate yet" (video too new, or no matched video) — never as "the trend is dead". The tier is a snapshot of the recent past, NOT a forecast — phrase any reference past-tense ("pulled X views in Yh since upload"), never "will hit N views".
   - a category and region.
 - Pick exactly 5 trends that will perform best for this brand.
 
@@ -429,6 +508,15 @@ Always respond with a single valid JSON object.`;
         yt_view_count: (t as any).yt_view_count ?? null,
         yt_like_count: (t as any).yt_like_count ?? null,
         yt_channel_title: (t as any).yt_channel_title ?? null,
+        // Tier 3 / Fix #5 — accelerating-reach signal. Computed inline so
+        // the LLM can weight it. Returns null when video was published
+        // <3h ago or when either yt_view_count / yt_video_published_at
+        // is missing — the LLM is instructed to treat null as "no extra
+        // evidence", never as "trend is dead".
+        yt_velocity: computeYouTubeVelocity(
+          (t as any).yt_view_count,
+          (t as any).yt_video_published_at,
+        ),
         category: t.category || null,
         region: t.region || null,
       }));
@@ -562,6 +650,14 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
             yt_comment_count: (fullTrend as any).yt_comment_count ?? null,
             yt_video_published_at: (fullTrend as any).yt_video_published_at ?? null,
             yt_fetched_at: (fullTrend as any).yt_fetched_at ?? null,
+            // Tier 3 / Fix #5 — accelerating-reach signal derived from real
+            // YT data we already have. NULL when the matched video is too
+            // new (< 3h) or no match exists. UI MUST hide the badge in that
+            // case — claiming "slow" with no data would be a fabrication.
+            yt_velocity: computeYouTubeVelocity(
+              (fullTrend as any).yt_view_count,
+              (fullTrend as any).yt_video_published_at,
+            ),
             // Time-series observation history (Tier 3 / Fix #1). Up to 14
             // most recent observations, ascending by observed_at. UI MUST
             // hide the sparkline if length < 2.
@@ -662,6 +758,16 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
         const ytLine = ytViews !== null
           ? ` Recent YouTube uploads on this topic are pulling ${ytViews.toLocaleString()} views${ytLikes !== null ? ` / ${ytLikes.toLocaleString()} likes` : ''}.`
           : '';
+        // Tier 3 / Fix #5 — append a past-tense velocity note when the
+        // matched video is racing or strong. Strict past-tense framing —
+        // never "will hit X" (that's a forecast we can't make).
+        const velocity = computeYouTubeVelocity(
+          ytViews,
+          (trend as any).yt_video_published_at,
+        );
+        const velocityLine = velocity && (velocity.tier === 'racing' || velocity.tier === 'strong')
+          ? ` That's ${velocity.views.toLocaleString()} views in ${velocity.hours_since_publish}h since upload — accelerating right now.`
+          : '';
 
         return {
           trend_id: trend.trend_id,
@@ -686,10 +792,16 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
           yt_comment_count: (trend as any).yt_comment_count ?? null,
           yt_video_published_at: (trend as any).yt_video_published_at ?? null,
           yt_fetched_at: (trend as any).yt_fetched_at ?? null,
+          // Tier 3 / Fix #5 — same velocity signal as AI path. Keeps parity
+          // when AI ranking is degraded.
+          yt_velocity: computeYouTubeVelocity(
+            ytViews,
+            (trend as any).yt_video_published_at,
+          ),
           observation_history: observationHistoryMap.get(trend.trend_id) || [],
           competitor_coverage,
           category,
-          why_good_fit: `${lead} ${timingPhrase(timing)}. ${signalLine}${ytLine}`.trim(),
+          why_good_fit: `${lead} ${timingPhrase(timing)}. ${signalLine}${ytLine}${velocityLine}`.trim(),
           example_hook: `${trend.trend_name}${category ? ` × ${user_profile.brand_name}` : ''} — here's the angle nobody's posted yet.`,
           angle_summary: `Tie ${trend.trend_name} into ${user_profile.brand_name}'s ${user_profile.niche || user_profile.industry || 'core message'} by leading with the specific moment driving the trend (see description), then bridging to the brand's POV.`,
         };

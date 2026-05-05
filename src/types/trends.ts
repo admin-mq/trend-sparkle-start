@@ -132,6 +132,20 @@ export interface Trend {
    */
   yt_fetched_at?: string | null;
   /**
+   * Tier 3 / Fix #5 — velocity signal derived from yt_view_count divided
+   * by hours since the matched video was uploaded. NULL when:
+   *   • either yt_view_count or yt_video_published_at is missing,
+   *   • the matched video is < 3h old (sample too thin to claim a rate).
+   *
+   * UI MUST hide the badge when null — claiming "slow" with no data would
+   * be a fabrication. The `tier` is a UI hint (racing / strong / steady /
+   * slow), but `views` and `hours_since_publish` are the contract: the
+   * tooltip MUST show literal "X views in Yh since upload" past-tense —
+   * never project forward ("will hit N views by tomorrow"). This is a
+   * snapshot of the recent past, not a forecast.
+   */
+  yt_velocity?: YouTubeVelocity | null;
+  /**
    * Time-series observation history (Tier 3 / Fix #1). Up to 14 most
    * recent observations, sorted ASCENDING by observed_at. UI MUST hide
    * the sparkline when length < 2 — a single point is not a "timeline".
@@ -154,6 +168,26 @@ export interface Trend {
    */
   competitor_coverage?: CompetitorCoverage;
   category?: TrendCategory | string;
+}
+
+// ── YouTube velocity (Tier 3 / Fix #5) ───────────────────────────────────────
+
+/**
+ * Tier of velocity for the matched YouTube video. Calibrated against
+ * typical YouTube performance bands. UI uses this for the badge color +
+ * label; the literal numbers (views, hours_since_publish) drive the
+ * tooltip and remain the source of truth.
+ */
+export type YouTubeVelocityTier = 'racing' | 'strong' | 'steady' | 'slow';
+
+export interface YouTubeVelocity {
+  tier: YouTubeVelocityTier;
+  /** Total view count at last fetch. */
+  views: number;
+  /** Hours between video publication and now (rounded to 1 decimal). */
+  hours_since_publish: number;
+  /** Convenience: views / hours_since_publish, rounded to whole numbers. */
+  views_per_hour: number;
 }
 
 // ── Competitor coverage (Tier 3 / Fix #2) ────────────────────────────────────
