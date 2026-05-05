@@ -15,6 +15,8 @@ import { toast } from "@/hooks/use-toast";
 const GOOGLE_CLIENT_ID = "15288709945-jm6vm0v7bse012dfr19t7iltpkcr4mvg.apps.googleusercontent.com";
 const GSC_REDIRECT_URI = "https://njnnpdrevbkhbhzwccuz.supabase.co/functions/v1/gsc-oauth-callback";
 const GSC_SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
+const GA4_REDIRECT_URI = "https://njnnpdrevbkhbhzwccuz.supabase.co/functions/v1/ga4-oauth-callback";
+const GA4_SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -123,12 +125,16 @@ function SiteCard({
   scanningId,
   gscConnectedSites,
   onConnectGsc,
+  ga4ConnectedSites,
+  onConnectGa4,
 }: {
   site: SiteWithHistory;
   onScanAgain: (siteId: string, siteUrl: string) => void;
   scanningId: string | null;
   gscConnectedSites: Set<string>;
   onConnectGsc: (siteId: string, siteUrl: string) => void;
+  ga4ConnectedSites: Set<string>;
+  onConnectGa4: (siteId: string, siteUrl: string) => void;
 }) {
   const navigate = useNavigate();
   const completed = site.snapshots.filter((s) => s.status === "completed");
@@ -211,7 +217,7 @@ function SiteCard({
           </Button>
           {gscConnectedSites.has(site.id) ? (
             <Badge variant="outline" className="h-7 text-xs gap-1 bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
-              <CheckCircle2 className="w-3 h-3" /> GSC Connected
+              <CheckCircle2 className="w-3 h-3" /> GSC
             </Badge>
           ) : (
             <Button
@@ -220,7 +226,21 @@ function SiteCard({
               className="h-7 text-xs gap-1 text-muted-foreground hover:text-primary"
               onClick={() => onConnectGsc(site.id, site.site_url)}
             >
-              <Link2 className="w-3 h-3" /> Connect GSC
+              <Link2 className="w-3 h-3" /> GSC
+            </Button>
+          )}
+          {ga4ConnectedSites.has(site.id) ? (
+            <Badge variant="outline" className="h-7 text-xs gap-1 bg-blue-500/10 text-blue-400 border-blue-500/30">
+              <CheckCircle2 className="w-3 h-3" /> GA4
+            </Badge>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs gap-1 text-muted-foreground hover:text-blue-400"
+              onClick={() => onConnectGa4(site.id, site.site_url)}
+            >
+              <Link2 className="w-3 h-3" /> GA4
             </Button>
           )}
           <a
@@ -251,6 +271,7 @@ const SEO = () => {
   const [scanningId, setScanningId] = useState<string | null>(null);
   const [maxPages, setMaxPages] = useState<PageOption>(8);
   const [gscConnectedSites, setGscConnectedSites] = useState<Set<string>>(new Set());
+  const [ga4ConnectedSites, setGa4ConnectedSites] = useState<Set<string>>(new Set());
 
   const [sites, setSites] = useState<SiteWithHistory[]>([]);
   const [loadingSites, setLoadingSites] = useState(true);
@@ -312,10 +333,29 @@ const SEO = () => {
 
   useEffect(() => { void loadGscConnections(); }, [loadGscConnections]);
 
+  // ── GA4 connections ───────────────────────────────────────────────────────
+
+  const loadGa4Connections = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data } = await (supabase as any)
+      .from("scc_ga4_connections")
+      .select("site_id")
+      .eq("user_id", user.id);
+    if (data) {
+      setGa4ConnectedSites(new Set(data.map((r: { site_id: string }) => r.site_id)));
+    }
+  }, []);
+
+  useEffect(() => { void loadGa4Connections(); }, [loadGa4Connections]);
+
   // Handle return from Google OAuth
   useEffect(() => {
     const gscConnected = searchParams.get("gsc_connected");
     const gscError = searchParams.get("gsc_error");
+    const ga4Connected = searchParams.get("ga4_connected");
+    const ga4Error = searchParams.get("ga4_error");
+
     if (gscConnected === "1") {
       const property = searchParams.get("property") || "";
       toast({ title: "Search Console connected!", description: property ? `Property: ${property}` : "GSC data will appear in your next scan." });
@@ -324,8 +364,16 @@ const SEO = () => {
     } else if (gscError) {
       toast({ title: "GSC connection failed", description: gscError, variant: "destructive" });
       setSearchParams({}, { replace: true });
+    } else if (ga4Connected === "1") {
+      const propName = searchParams.get("ga4_name") ? decodeURIComponent(searchParams.get("ga4_name")!) : "";
+      toast({ title: "Google Analytics 4 connected!", description: propName ? `Property: ${propName}` : "GA4 data is now available." });
+      void loadGa4Connections();
+      setSearchParams({}, { replace: true });
+    } else if (ga4Error) {
+      toast({ title: "GA4 connection failed", description: ga4Error, variant: "destructive" });
+      setSearchParams({}, { replace: true });
     }
-  }, [searchParams, setSearchParams, loadGscConnections]);
+  }, [searchParams, setSearchParams, loadGscConnections, loadGa4Connections]);
 
   const handleConnectGsc = useCallback(async (siteId: string, siteUrl: string) => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -342,6 +390,29 @@ const SEO = () => {
       redirect_uri: GSC_REDIRECT_URI,
       response_type: "code",
       scope: GSC_SCOPE,
+      access_type: "offline",
+      prompt: "consent",
+      state,
+    }).toString();
+
+    window.location.href = oauthUrl;
+  }, []);
+
+  const handleConnectGa4 = useCallback(async (siteId: string, _siteUrl: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { toast({ title: "Not logged in", variant: "destructive" }); return; }
+
+    const state = btoa(JSON.stringify({
+      site_id: siteId,
+      user_id: user.id,
+      return_to: window.location.origin + "/seo",
+    }));
+
+    const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` + new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: GA4_REDIRECT_URI,
+      response_type: "code",
+      scope: GA4_SCOPE,
       access_type: "offline",
       prompt: "consent",
       state,
@@ -487,6 +558,8 @@ const SEO = () => {
                 scanningId={scanningId}
                 gscConnectedSites={gscConnectedSites}
                 onConnectGsc={handleConnectGsc}
+                ga4ConnectedSites={ga4ConnectedSites}
+                onConnectGa4={handleConnectGa4}
               />
             ))}
           </div>
