@@ -15,7 +15,7 @@ const PLATFORMS: { value: string; label: string; icon: ReactNode; enabled: boole
   { value: 'Instagram',  label: 'Instagram',  icon: <img src={instagramIcon} alt="Instagram" className="w-3.5 h-3.5 object-contain" />, enabled: true  },
   { value: 'TikTok',     label: 'TikTok',     icon: <img src={tiktokIcon} alt="TikTok" className="w-3.5 h-3.5 object-contain" />, enabled: false },
   { value: 'LinkedIn',   label: 'LinkedIn',   icon: <img src={linkedinIcon} alt="LinkedIn" className="w-3.5 h-3.5 object-contain" />, enabled: false },
-  { value: 'YouTube',    label: 'YouTube',    icon: <img src={youtubeIcon} alt="YouTube" className="w-3.5 h-3.5 object-contain" />, enabled: false },
+  { value: 'YouTube',    label: 'YouTube',    icon: <img src={youtubeIcon} alt="YouTube" className="w-7 h-7 object-contain" />, enabled: false },
 ];
 
 const TWITTER_REGIONS = [
