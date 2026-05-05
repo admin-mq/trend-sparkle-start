@@ -194,7 +194,7 @@ export const TrendQuestInputs = ({ values, onChange }: TrendQuestInputsProps) =>
                 onClick={() => !disabled && handleChange("platform", p.value)}
                 title={disabled ? `${p.label} support coming soon — Twitter is live now` : p.label}
                 aria-disabled={disabled}
-                className={`relative flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg border text-[10px] font-medium transition-colors ${
+                className={`relative flex-col gap-0.5 py-2 px-1 rounded-lg border text-[10px] font-medium transition-colors flex items-center justify-center ${
                   isActive
                     ? 'bg-primary/15 border-primary text-primary'
                     : disabled
