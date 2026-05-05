@@ -90,7 +90,6 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
         .not("tone_analysis", "is", null)
         .order("created_at", { ascending: false })
         .limit(5),
-        .limit(1),
     ]);
 
     // Second round: fetches that depend on IDs from round 1
@@ -123,7 +122,7 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
 
       seoSiteId
         ? supabase.from("scc_snapshots")
-            .select("id, finished_at, created_at")
+            .select("id, finished_at, created_at, notes, market, industry, business_name, currency_symbol, value_per_visitor, estimated_monthly_traffic, total_monthly_loss_min, total_monthly_loss_max, competitor_domains, competitor_traffic_gap_min, competitor_traffic_gap_max, executive_summary, confidence_score, safe_browsing_threat")
             .eq("site_id", seoSiteId)
             .eq("status", "completed")
             .order("created_at", { ascending: false })
@@ -193,9 +192,67 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
 
     // ── Format: SEO ───────────────────────────────────────────────────────────
     if (seoSites?.[0] && seoSnapshot) {
-      const snap = seoSnapshot as Record<string, string>;
-      const date = snap.finished_at || snap.created_at;
-      sections.push(`### SEO\nSite: ${seoSites[0].site_url}\nLast crawl completed: ${new Date(date).toLocaleDateString()}`);
+      const snap = seoSnapshot as Record<string, unknown>;
+      const date = (snap.finished_at || snap.created_at) as string;
+      const sym = (snap.currency_symbol as string) || "$";
+      const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(Math.round(n));
+
+      const lines: string[] = [
+        `Site: ${seoSites[0].site_url}`,
+        `Last crawl: ${new Date(date).toLocaleDateString()}`,
+      ];
+
+      if (snap.business_name) lines.push(`Business: ${snap.business_name}`);
+      if (snap.market) lines.push(`Market: ${snap.market}`);
+      if (snap.industry) lines.push(`Industry (SEO-detected): ${snap.industry}`);
+      if (snap.safe_browsing_threat) lines.push(`⚠️ Google Safe Browsing threat detected — site traffic is being blocked`);
+
+      // Money data (dedicated columns)
+      const lossMin = Number(snap.total_monthly_loss_min || 0);
+      const lossMax = Number(snap.total_monthly_loss_max || lossMin);
+      if (lossMin > 0) {
+        const lossStr = lossMax > lossMin ? `${sym}${fmt(lossMin)}–${sym}${fmt(lossMax)}` : `${sym}${fmt(lossMin)}`;
+        lines.push(`Estimated Monthly Revenue Loss from SEO Issues: ${lossStr}/mo`);
+      }
+      if (snap.estimated_monthly_traffic) lines.push(`Estimated Monthly Traffic: ${Number(snap.estimated_monthly_traffic).toLocaleString()} visits`);
+      if (snap.value_per_visitor) lines.push(`Value per Visitor: ${sym}${Number(snap.value_per_visitor).toFixed(2)}`);
+      if (snap.confidence_score) lines.push(`Money Estimate Confidence: ${snap.confidence_score}%`);
+      if (snap.executive_summary) lines.push(`SEO Executive Summary: ${snap.executive_summary}`);
+
+      // Competitor data (dedicated columns)
+      if (Array.isArray(snap.competitor_domains) && (snap.competitor_domains as string[]).length) {
+        lines.push(`Top SEO Competitors (outranking this site): ${(snap.competitor_domains as string[]).join(", ")}`);
+        const gMin = Number(snap.competitor_traffic_gap_min || 0);
+        const gMax = Number(snap.competitor_traffic_gap_max || gMin);
+        if (gMin > 0) {
+          const gapStr = gMax > gMin ? `${sym}${fmt(gMin)}–${sym}${fmt(gMax)}` : `${sym}${fmt(gMin)}`;
+          lines.push(`Monthly Revenue Flowing to Competitors: ${gapStr}/mo`);
+        }
+      }
+
+      // Top issues and focus areas from notes JSON
+      try {
+        const notesRaw = typeof snap.notes === "string" ? snap.notes : JSON.stringify(snap.notes ?? "{}");
+        const notes = JSON.parse(notesRaw);
+        const topIssues = Array.isArray(notes?.top_issues) ? notes.top_issues : [];
+        if (topIssues.length) {
+          lines.push(`Top SEO Issues: ${topIssues.slice(0, 5).map((i: Record<string, unknown>) => `${i.label} (${i.count})`).join(", ")}`);
+        }
+        const focusAreas = Array.isArray(notes?.focus_areas) ? notes.focus_areas : [];
+        if (focusAreas.length) {
+          lines.push(`Priority Focus Areas: ${(focusAreas as string[]).slice(0, 4).join("; ")}`);
+        }
+        // Avg scores from notes
+        const scores = notes?.avg_scores;
+        if (scores) {
+          const scoreStr = Object.entries(scores as Record<string, number>)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(", ");
+          lines.push(`Avg Scores — ${scoreStr}`);
+        }
+      } catch { /* ignore JSON parse errors */ }
+
+      sections.push(`### SEO Analysis\n${lines.join("\n")}`);
     } else if (seoSites?.[0]) {
       sections.push(`### SEO\nSite connected: ${seoSites[0].site_url} (no completed crawl yet)`);
     }
