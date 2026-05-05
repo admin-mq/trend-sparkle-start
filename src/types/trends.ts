@@ -78,6 +78,19 @@ export interface Trend {
    */
   corroboration_score?: number;
   /**
+   * Tier 3 / Fix #3 — Number of distinct platforms the fetch run actually
+   * reached when this trend was last upserted. Render UI as
+   * `corroboration_score / corroboration_max` so a 2/2 trend (perfect
+   * coverage of the platforms we could check) stops looking weaker than
+   * a 2/3 trend (one platform reached but didn't corroborate).
+   *
+   * NULL on rows from before this field shipped — UI must fall back
+   * gracefully (e.g. show "N platforms" without a denominator). When
+   * Reddit comes back online, max naturally bumps from 2 to 3 with no
+   * UI change required.
+   */
+  corroboration_max?: number | null;
+  /**
    * The very first time we observed this trend in our pipeline. Set on
    * insert, never overwritten. Powers "broke Xh ago" copy.
    */

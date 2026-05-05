@@ -321,7 +321,7 @@ serve(async (req) => {
     // and let brand-fit be the LLM's job.
     let query = externalSupabase
       .from('trends')
-      .select('trend_id, trend_name, description, hashtags, region, premium_only, active, timing, ig_confirmed, ig_validated, virality_score, source_signals, corroboration_score, first_seen_at, last_seen_at, peaked_at, peak_virality_score, category, yt_video_id, yt_video_title, yt_channel_title, yt_view_count, yt_like_count, yt_comment_count, yt_video_published_at, yt_fetched_at, yt_top_publishers')
+      .select('trend_id, trend_name, description, hashtags, region, premium_only, active, timing, ig_confirmed, ig_validated, virality_score, source_signals, corroboration_score, corroboration_max, first_seen_at, last_seen_at, peaked_at, peak_virality_score, category, yt_video_id, yt_video_title, yt_channel_title, yt_view_count, yt_like_count, yt_comment_count, yt_video_published_at, yt_fetched_at, yt_top_publishers')
       .eq('premium_only', false)
       .eq('active', true)
       .order('virality_score', { ascending: false })
@@ -370,7 +370,7 @@ Your job:
   - a virality_score (10–99) reflecting cross-source corroboration + timing,
   - a timing label (early / peaking / saturated),
   - source_signals (which raw signals confirmed it: google_trends_uk, reddit, youtube_us, etc.),
-  - a corroboration_score (1–3) — the count of DISTINCT platforms (Google Trends / Reddit / YouTube) that confirmed it. 3 = all three platforms agree (highest credibility), 1 = only one platform (treat as weaker signal),
+  - a corroboration_score and corroboration_max — score = how many DISTINCT platforms confirmed this trend; max = how many platforms we successfully reached this run (out of Google Trends / Reddit / YouTube). When score == max the trend has full coverage of the platforms we could check; when max < 3, that's because one of the platforms (currently Reddit) was unreachable this run. NEVER tell the user a trend is "missing a platform" if score == max — that's full coverage of available sources.
   - optional yt_view_count / yt_like_count — REAL YouTube engagement on the best-matching recent video for this trend. When present, this is externally-verifiable proof that audiences are actually engaging (not just searching). When null, it just means we couldn't find a qualifying recent video — treat it as "no extra evidence", NOT as "this trend has no reach".
   - a category and region.
 - Pick exactly 5 trends that will perform best for this brand.
@@ -419,6 +419,10 @@ Always respond with a single valid JSON object.`;
         timing: t.timing || null,
         source_signals: t.source_signals || [],
         corroboration_score: t.corroboration_score ?? 1,
+        // Tier 3 / Fix #3 — number of platforms reached this run. Lets the
+        // LLM reason about score/max ratios honestly instead of comparing
+        // every trend against a hardcoded /3.
+        corroboration_max: (t as any).corroboration_max ?? null,
         // Real YouTube engagement evidence (Tier 2 / Fix #6). Null when no
         // qualifying match was found — the LLM is instructed to treat null
         // as "no extra evidence", never as "zero reach".
@@ -535,6 +539,11 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
             virality_score: fullTrend.virality_score ?? null,
             source_signals: fullTrend.source_signals || [],
             corroboration_score: fullTrend.corroboration_score ?? 1,
+            // Tier 3 / Fix #3 — number of platforms the fetch run actually
+            // checked. UI renders score/max so 2/2 (perfect coverage of
+            // available sources) stops looking like 2/3 (partial). NULL
+            // on legacy rows; UI must fall back to score-only display.
+            corroboration_max: (fullTrend as any).corroboration_max ?? null,
             // Lifecycle history. peaked_at can be NULL (no observed peak
             // drop yet), and that's intentional — UI must distinguish
             // "still climbing" (NULL) from "peaked Xh ago" (timestamp).
@@ -619,6 +628,7 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
         const timing = (trend as any).timing || null;
         const sources: string[] = (trend as any).source_signals || [];
         const corroboration: number = (trend as any).corroboration_score ?? 1;
+        const corroborationMax: number | null = (trend as any).corroboration_max ?? null;
         const category = (trend as any).category || null;
 
         const ytViews: number | null = (trend as any).yt_view_count ?? null;
@@ -635,8 +645,14 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
 
         const lead = firstSentence(description) ||
           `${trend.trend_name} is currently active${category ? ` in the ${category} space` : ''}.`;
+        // Tier 3 / Fix #3 — frame corroboration against the platforms we
+        // actually reached this run, not a hardcoded /3. A 2/2 trend has
+        // full coverage and reads as such. Legacy rows (corroboration_max
+        // null) keep the simpler "N distinct platforms" copy.
         const signalLine = corroboration >= 2
-          ? `Confirmed across ${corroboration} distinct platforms (${sources.slice(0, 3).join(', ')}).`
+          ? (corroborationMax !== null && corroboration >= corroborationMax
+              ? `Full corroboration across ${corroboration}/${corroborationMax} platforms checked (${sources.slice(0, 3).join(', ')}).`
+              : `Confirmed across ${corroboration} distinct platforms (${sources.slice(0, 3).join(', ')}).`)
           : sources.length > 0
             ? `Single-platform signal so far (${sources[0]}) — verify before posting.`
             : `Surfaced from cross-source aggregation.`;
@@ -657,6 +673,7 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
           virality_score: (trend as any).virality_score ?? null,
           source_signals: sources,
           corroboration_score: corroboration,
+          corroboration_max: (trend as any).corroboration_max ?? null,
           first_seen_at: (trend as any).first_seen_at ?? null,
           last_seen_at: (trend as any).last_seen_at ?? null,
           peaked_at: (trend as any).peaked_at ?? null,

@@ -111,6 +111,26 @@ function computeCorroborationScore(sources: SignalSource[]): number {
   return Math.max(1, Math.min(3, platforms.size));
 }
 
+/**
+ * Tier 3 / Fix #3 — per-fetcher availability. Each Layer-1 fetcher returns
+ * BOTH the raw signals AND a boolean indicating whether the platform was
+ * actually reachable this run. The orchestration layer aggregates these
+ * into a `platforms_checked` count that becomes `corroboration_max` on
+ * every trend. Without this, Reddit being policy-gated silently caps
+ * every trend at 2/3 corroboration — making the system look broken when
+ * it's actually doing the best it can with available sources.
+ *
+ * Honesty rule: "available" means we got a SUCCESSFUL response from the
+ * platform's API at least once. That's distinct from "returned signals":
+ *   • Reachable + zero items → available: true  (real "no signal" data)
+ *   • 403 / 429 / network err → available: false ("we couldn't check")
+ *   • Missing creds entirely  → available: false (we didn't even try)
+ */
+interface FetchResult {
+  signals: RawSignal[];
+  available: boolean;
+}
+
 interface IGValidation {
   ig_confirmed: boolean;
   ig_validated: IgValidated;
@@ -123,7 +143,7 @@ interface IGValidation {
 // Endpoint: https://trends.google.com/trending/rss?geo=GB|US
 // Free, no auth, updates ~hourly. Returns top 20 breakout searches per region.
 // ─────────────────────────────────────────────────────────────────────────────
-async function fetchGoogleTrends(geo: string, region: 'UK' | 'USA'): Promise<RawSignal[]> {
+async function fetchGoogleTrends(geo: string, region: 'UK' | 'USA'): Promise<FetchResult> {
   try {
     const res = await fetch(`https://trends.google.com/trending/rss?geo=${geo}`, {
       headers: {
@@ -134,7 +154,9 @@ async function fetchGoogleTrends(geo: string, region: 'UK' | 'USA'): Promise<Raw
     });
     if (!res.ok) {
       console.warn(`[fetch-trends] Google Trends ${geo}: HTTP ${res.status}`);
-      return [];
+      // available=false: we tried, the server refused. corroboration_max
+      // should not credit this platform on this run.
+      return { signals: [], available: false };
     }
 
     const xml = await res.text();
@@ -161,10 +183,13 @@ async function fetchGoogleTrends(geo: string, region: 'UK' | 'USA'): Promise<Raw
     }
 
     console.log(`[fetch-trends] Google Trends ${geo}: ${signals.length} topics`);
-    return signals;
+    // available=true: HTTP fetch succeeded and we parsed the XML. Zero
+    // items here would still count as "Google Trends checked, no hits"
+    // — distinct from "couldn't check" above.
+    return { signals, available: true };
   } catch (e) {
     console.warn(`[fetch-trends] Google Trends ${geo} error:`, e);
-    return [];
+    return { signals: [], available: false };
   }
 }
 
@@ -207,7 +232,7 @@ async function getRedditToken(clientId: string, clientSecret: string): Promise<s
   }
 }
 
-async function fetchRedditSignals(clientId?: string, clientSecret?: string): Promise<RawSignal[]> {
+async function fetchRedditSignals(clientId?: string, clientSecret?: string): Promise<FetchResult> {
   const signals: RawSignal[] = [];
 
   // Try OAuth2 first (avoids IP rate-limits on Edge Functions)
@@ -219,6 +244,12 @@ async function fetchRedditSignals(clientId?: string, clientSecret?: string): Pro
     : { 'User-Agent': 'TrendBot/2.0 (social trend analysis; contact: hello@marketers.quest)' };
 
   console.log(`[fetch-trends] Reddit: using ${token ? 'OAuth2' : 'anonymous'} access`);
+
+  // Tier 3 / Fix #3 — track availability per fetch run.
+  // Reddit is "available" iff at least one feed call returned 2xx with
+  // parseable data. All non-ok responses (403 from policy gate, 429
+  // rate-limit, etc.) keep us in unavailable territory.
+  let okFeedCount = 0;
 
   for (const feed of REDDIT_FEEDS) {
     try {
@@ -233,6 +264,7 @@ async function fetchRedditSignals(clientId?: string, clientSecret?: string): Pro
       }
 
       const data = await res.json();
+      okFeedCount++;
       const posts = data?.data?.children || [];
 
       for (const post of posts.slice(0, 5)) {
@@ -254,8 +286,11 @@ async function fetchRedditSignals(clientId?: string, clientSecret?: string): Pro
     await delay(150);
   }
 
-  console.log(`[fetch-trends] Reddit: ${signals.length} signals`);
-  return signals;
+  console.log(`[fetch-trends] Reddit: ${signals.length} signals across ${okFeedCount}/${REDDIT_FEEDS.length} reachable feeds`);
+  // Available iff at least one feed returned a 2xx. Empty signals from
+  // a reachable feed (e.g. all posts filtered out) still counts as
+  // "Reddit checked" — that's the honest distinction we need.
+  return { signals, available: okFeedCount > 0 };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -263,9 +298,15 @@ async function fetchRedditSignals(clientId?: string, clientSecret?: string): Pro
 // Uses YouTube Data API v3 mostPopular chart, regionCode=GB/US
 // Free tier: 10,000 units/day. This call costs 1 unit per region.
 // ─────────────────────────────────────────────────────────────────────────────
-async function fetchYouTubeTrending(apiKey: string): Promise<RawSignal[]> {
+async function fetchYouTubeTrending(apiKey: string): Promise<FetchResult> {
   const signals: RawSignal[] = [];
   const regions: [string, 'UK' | 'USA'][] = [['GB', 'UK'], ['US', 'USA']];
+
+  // Tier 3 / Fix #3 — track whether at least one regional fetch
+  // succeeded. Quota-blocked / 403 / network errors leave us in
+  // unavailable state. Empty trending chart from a 200 response IS
+  // available (just an honest "nothing trending" verdict).
+  let okRegionCount = 0;
 
   for (const [regionCode, region] of regions) {
     try {
@@ -278,6 +319,7 @@ async function fetchYouTubeTrending(apiKey: string): Promise<RawSignal[]> {
         console.warn(`[fetch-trends] YouTube ${regionCode}: HTTP ${res.status}`);
         continue;
       }
+      okRegionCount++;
       const data = await res.json();
 
       for (const item of (data.items || [])) {
@@ -298,8 +340,8 @@ async function fetchYouTubeTrending(apiKey: string): Promise<RawSignal[]> {
     }
   }
 
-  console.log(`[fetch-trends] YouTube: ${signals.length} signals`);
-  return signals;
+  console.log(`[fetch-trends] YouTube: ${signals.length} signals across ${okRegionCount}/${regions.length} reachable regions`);
+  return { signals, available: okRegionCount > 0 };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -743,22 +785,44 @@ serve(async (req) => {
 
     // ── LAYER 1: Multi-source discovery (all in parallel) ─────────────────
     console.log('[fetch-trends] Layer 1: Fetching signals from all sources...');
-    const [gtUK, gtUS, redditSignals, ytSignals] = await Promise.all([
+    const [gtUK, gtUS, redditR, ytR] = await Promise.all([
       fetchGoogleTrends('GB', 'UK'),
       fetchGoogleTrends('US', 'USA'),
       fetchRedditSignals(REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET),
-      YOUTUBE_API_KEY ? fetchYouTubeTrending(YOUTUBE_API_KEY) : Promise.resolve([]),
+      // YouTube depends on the API key. No key → not even attempted →
+      // not counted toward platforms_checked. Same honesty contract as
+      // a quota-blocked Reddit run.
+      YOUTUBE_API_KEY
+        ? fetchYouTubeTrending(YOUTUBE_API_KEY)
+        : Promise.resolve<FetchResult>({ signals: [], available: false }),
     ]);
 
-    const allSignals: RawSignal[] = [...gtUK, ...gtUS, ...redditSignals, ...ytSignals];
+    const allSignals: RawSignal[] = [
+      ...gtUK.signals, ...gtUS.signals, ...redditR.signals, ...ytR.signals,
+    ];
     const sourceBreakdown = {
-      google_trends_uk: gtUK.length,
-      google_trends_us: gtUS.length,
-      reddit: redditSignals.length,
-      youtube: ytSignals.length,
+      google_trends_uk: gtUK.signals.length,
+      google_trends_us: gtUS.signals.length,
+      reddit: redditR.signals.length,
+      youtube: ytR.signals.length,
       total: allSignals.length,
     };
     console.log('[fetch-trends] Layer 1 complete:', sourceBreakdown);
+
+    // Tier 3 / Fix #3 — track which platforms we actually reached this
+    // run. corroboration_max gets set to this size on every upserted
+    // trend so the UI can render `score / max-checked` honestly. Reddit
+    // gated → max=2; Reddit comes back online → max=3; nothing else
+    // changes. Either Google Trends region counts as one platform check.
+    const platformsChecked = new Set<'google_trends' | 'reddit' | 'youtube'>();
+    if (gtUK.available || gtUS.available) platformsChecked.add('google_trends');
+    if (redditR.available)                platformsChecked.add('reddit');
+    if (ytR.available)                    platformsChecked.add('youtube');
+    const corroboration_max = Math.max(1, platformsChecked.size);
+    console.log(
+      `[fetch-trends] Platforms checked this run: [${[...platformsChecked].join(', ')}] ` +
+      `→ corroboration_max=${corroboration_max}`,
+    );
 
     if (allSignals.length < 5) {
       throw new Error(`Insufficient signals (only ${allSignals.length}). Check network access from Edge Function.`);
@@ -863,9 +927,15 @@ serve(async (req) => {
       const igTag = c.ig_validated === 'confirmed' ? '✓ confirmed'
                   : c.ig_validated === 'not_found' ? '✗ not on IG yet'
                   : '? unknown';
-      const corrTag = c.corroboration_score === 3 ? '🟢 3/3 platforms'
-                    : c.corroboration_score === 2 ? '🟡 2/3 platforms'
-                    : '⚠ single-platform';
+      // Tier 3 / Fix #3 — render score against the actual platforms
+      // checked this run, not a hardcoded /3. A 2/2 here is a STRONGER
+      // signal (perfect coverage of available sources) than 2/3.
+      const fullCoverage = c.corroboration_score >= corroboration_max && c.corroboration_score >= 2;
+      const corrTag = fullCoverage
+        ? `🟢 ${c.corroboration_score}/${corroboration_max} platforms (full coverage)`
+        : c.corroboration_score >= 2
+          ? `🟡 ${c.corroboration_score}/${corroboration_max} platforms`
+          : `⚠ single-platform (of ${corroboration_max} checked)`;
       // Real YouTube engagement, when we have it. "no YT match" is an honest
       // statement (we looked, found nothing above the floor), distinct from
       // "didn't check" — the LLM can use both legitimately.
@@ -1071,6 +1141,12 @@ Rules:
         // happen post-filter), fall back to computing from whatever
         // sources came through; otherwise default to 1 = single-platform.
         corroboration_score:     corroboration,
+        // Tier 3 / Fix #3 — number of platforms we successfully reached
+        // this fetch run. Constant across all trends in this run. Reddit
+        // gated → 2; Reddit reachable → 3. UI renders score / max so a
+        // 2/2 perfect-corroboration trend stops looking like a 2/3
+        // partial-corroboration one. Honest rendering with the same data.
+        corroboration_max,
         category:                trend.category || 'Entertainment',
         // Lifecycle observation fields.
         last_seen_at:            nowIso,
@@ -1155,6 +1231,11 @@ Rules:
       date: today,
       pipeline: '4-layer: google-trends + reddit + youtube + ig-validation + yt-engagement',
       source_breakdown: sourceBreakdown,
+      // Tier 3 / Fix #3 — surface the platforms we actually reached this
+      // run, plus the corroboration_max derived from them. Lets ops/users
+      // diagnose at a glance whether Reddit is back online vs still gated.
+      platforms_checked: [...platformsChecked],
+      corroboration_max,
       candidates_after_dedup: candidates.length,
       early_signals: earlyCount,
       youtube_engagement_matches: YOUTUBE_API_KEY ? `${ytMatchCount}/${enriched.length}` : 'skipped (no API key)',

@@ -131,30 +131,59 @@ const LifecycleBadge = ({
  * posting"). Hidden if score is missing — never silently shown as 1/3,
  * since that would falsely imply we checked and found one.
  */
-const CorroborationBadge = ({ score }: { score?: number }) => {
+const CorroborationBadge = ({
+  score,
+  max,
+}: {
+  score?: number;
+  max?: number | null;
+}) => {
   if (score == null) return null;
-  if (score >= 3) {
+
+  // Tier 3 / Fix #3 — render score/max where max is the platforms we
+  // actually reached. When max is null (legacy rows from before the
+  // field shipped), fall back to the old display so we don't fabricate
+  // a denominator we don't actually know.
+  const knownMax = max != null && max > 0 ? max : null;
+  const fullCoverage = knownMax !== null && score >= knownMax && score >= 2;
+
+  if (fullCoverage) {
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
-            title="Confirmed across all 3 platforms (Google Trends + Reddit + YouTube)">
+      <span
+        className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+        title={`Full corroboration — confirmed on every platform we reached this run (${score}/${knownMax}). When more platforms come online, this max will grow.`}
+      >
         <ShieldCheck className="w-3 h-3" />
-        3-platform confirmed
+        {score}/{knownMax} platforms
       </span>
     );
   }
-  if (score === 2) {
+
+  if (score >= 2) {
+    const label = knownMax !== null ? `${score}/${knownMax} platforms` : `${score} platforms`;
+    const tooltip = knownMax !== null
+      ? `Confirmed on ${score} of the ${knownMax} platforms we reached this run.`
+      : `Confirmed across ${score} distinct platforms.`;
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30"
-            title="Confirmed across 2 distinct platforms">
+      <span
+        className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30"
+        title={tooltip}
+      >
         <ShieldCheck className="w-3 h-3" />
-        2-platform
+        {label}
       </span>
     );
   }
+
   // score === 1 → single-platform — caveat the user, don't pretend it's strong
+  const tooltip = knownMax !== null
+    ? `Single-platform signal only (1/${knownMax} platforms reached this run). Verify on the source platform before posting.`
+    : `Single-platform signal only. Verify on the source platform before posting.`;
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30"
-          title="Single-platform signal only. Verify on the source platform before posting.">
+    <span
+      className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30"
+      title={tooltip}
+    >
       <AlertTriangle className="w-3 h-3" />
       Single-source — verify
     </span>
@@ -621,7 +650,7 @@ export const RecommendedTrends = ({
                     {trend.trend_name}
                   </h4>
                   <TimingBadge timing={trend.timing} />
-                  <CorroborationBadge score={trend.corroboration_score} />
+                  <CorroborationBadge score={trend.corroboration_score} max={trend.corroboration_max} />
                   <LifecycleBadge
                     firstSeenAt={trend.first_seen_at}
                     peakedAt={trend.peaked_at}
