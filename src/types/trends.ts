@@ -146,6 +146,27 @@ export interface Trend {
    */
   yt_velocity?: YouTubeVelocity | null;
   /**
+   * Tier 3 / Fix #6 — Linear projection of when this trend's virality_score
+   * will cross the "no longer worth posting" threshold (default 30).
+   *
+   * NULL when ANY of these is true:
+   *   • < 5 days span between earliest and latest observation,
+   *   • < 3 observations after filtering null scores,
+   *   • slope is flat or rising (no decay to forecast),
+   *   • R² < 0.3 (linear fit too noisy to project),
+   *   • projected horizon > 7 days from now (slope too flat to trust),
+   *   • current_score already ≤ threshold (already decayed).
+   *
+   * UI MUST render NULL as "no forecast available", NEVER as "won't decay"
+   * or "will last forever". A NULL forecast is an honest abstention from
+   * a claim we don't have the data to make.
+   *
+   * Tooltip MUST show: method (linear regression), span used, observation
+   * count, R². The forecast is an ESTIMATE, not a prediction — the badge
+   * copy must use "approximately"/"around" language, never a precise time.
+   */
+  decay_forecast?: DecayForecast | null;
+  /**
    * Time-series observation history (Tier 3 / Fix #1). Up to 14 most
    * recent observations, sorted ASCENDING by observed_at. UI MUST hide
    * the sparkline when length < 2 — a single point is not a "timeline".
@@ -188,6 +209,33 @@ export interface YouTubeVelocity {
   hours_since_publish: number;
   /** Convenience: views / hours_since_publish, rounded to whole numbers. */
   views_per_hour: number;
+}
+
+// ── Decay forecast (Tier 3 / Fix #6) ─────────────────────────────────────────
+
+/**
+ * Linear projection of when a trend's virality_score will drop below the
+ * "no longer worth posting" threshold. See computeDecayForecast in
+ * recommend-trends/index.ts for the abstention rules. Every field is the
+ * literal output of a transparent linear regression — UI MUST surface
+ * `r_squared`, `observation_count`, and `history_span_days` in the tooltip
+ * so users can verify the math themselves.
+ */
+export interface DecayForecast {
+  /** ISO timestamp when virality_score is projected to cross threshold. */
+  est_decays_below_at: string;
+  /** The score threshold (default 30). Below this we treat the trend as weak. */
+  decay_threshold: number;
+  /** Most recent observed virality_score. */
+  current_score: number;
+  /** Linear slope in score/day. ALWAYS negative (we abstain when flat or rising). */
+  slope_per_day: number;
+  /** Span between earliest and latest observation, in days. */
+  history_span_days: number;
+  /** How many observations we fit on (after filtering nulls). */
+  observation_count: number;
+  /** Quality of fit, 0..1. We abstain below 0.3. */
+  r_squared: number;
 }
 
 // ── Competitor coverage (Tier 3 / Fix #2) ────────────────────────────────────

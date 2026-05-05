@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { RecommendedTrend, TrendTiming, TrendCategory, TrendObservation, CompetitorCoverage, YouTubeVelocity } from "@/types/trends";
-import { TrendingUp, ArrowRight, RefreshCw, Zap, Clock, Flame, ShieldCheck, AlertTriangle, Youtube, ThumbsUp, MessageCircle, Users, Trophy, Rocket, Gauge } from "lucide-react";
+import { RecommendedTrend, TrendTiming, TrendCategory, TrendObservation, CompetitorCoverage, YouTubeVelocity, DecayForecast } from "@/types/trends";
+import { TrendingUp, ArrowRight, RefreshCw, Zap, Clock, Flame, ShieldCheck, AlertTriangle, Youtube, ThumbsUp, MessageCircle, Users, Trophy, Rocket, Gauge, Hourglass } from "lucide-react";
 
 interface RecommendedTrendsProps {
   recommendations: RecommendedTrend[];
@@ -343,6 +343,66 @@ const YouTubeVelocityBadge = ({ velocity }: { velocity?: YouTubeVelocity | null 
     >
       {cfg.icon}
       <span>{cfg.label}</span>
+    </span>
+  );
+};
+
+/**
+ * Decay forecast — when this trend is projected to cross the "no longer
+ * worth posting" virality threshold (default 30). Server-side helper
+ * does all the abstention work; UI just renders what's there or nothing.
+ *
+ * Honesty rules:
+ *   - Hide entirely when `forecast` is null. Server already encoded "we
+ *     don't have the data to make this claim" — UI MUST NOT pretend
+ *     null means "won't decay".
+ *   - Visible label uses approximate language ("~Xd left", "~Xh left").
+ *     Never a precise timestamp on the badge — that would imply we know
+ *     the exact moment, which we don't.
+ *   - Tooltip surfaces the literal math: how many observations, span in
+ *     days, R² (as a percentage). Users can verify the forecast quality
+ *     themselves. The method ("linear projection") is named explicitly.
+ *
+ * Color is rose-tinted for short forecasts (≤2 days) so users notice
+ * the urgency, neutral slate for longer ones — never alarming, since
+ * a forecast IS just a forecast.
+ */
+const DecayForecastBadge = ({ forecast }: { forecast?: DecayForecast | null }) => {
+  if (!forecast) return null;
+
+  const msUntil = new Date(forecast.est_decays_below_at).getTime() - Date.now();
+  if (msUntil <= 0) return null; // already crossed by the time client sees it
+
+  const hoursUntil = msUntil / 3_600_000;
+  const daysUntil = hoursUntil / 24;
+
+  // Approximate label. < 1 day → hours; ≥ 1 day → days, no decimals
+  // (decimals on a forecast imply false precision).
+  const visibleLabel = hoursUntil < 24
+    ? `~${Math.max(1, Math.round(hoursUntil))}h left`
+    : `~${Math.max(1, Math.round(daysUntil))}d left`;
+
+  const isUrgent = daysUntil <= 2;
+  const colorClasses = isUrgent
+    ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30'
+    : 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/30';
+
+  // Tooltip is the contract: literal numbers + method.
+  const fitPct = Math.round(forecast.r_squared * 100);
+  const title = [
+    `Projected to drop below virality ${forecast.decay_threshold}.`,
+    `Method: linear regression on ${forecast.observation_count} observations over ${forecast.history_span_days}d (fit quality R²=${fitPct}%).`,
+    `Slope: ${forecast.slope_per_day} score/day from current ${forecast.current_score}.`,
+    `Estimate, not a prediction — re-evaluated each fetch run.`,
+  ].join(' ');
+
+  return (
+    <span
+      title={title}
+      className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${colorClasses}`}
+    >
+      <Hourglass className="w-3 h-3" />
+      <span>{visibleLabel}</span>
     </span>
   );
 };
@@ -737,6 +797,7 @@ export const RecommendedTrends = ({
                     fetchedAt={trend.yt_fetched_at}
                   />
                   <YouTubeVelocityBadge velocity={trend.yt_velocity} />
+                  <DecayForecastBadge forecast={trend.decay_forecast} />
                   <CompetitorCoverageBadge coverage={trend.competitor_coverage} />
                   {trend.region && (
                     <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">

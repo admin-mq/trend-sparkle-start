@@ -316,6 +316,130 @@ function computeYouTubeVelocity(
   };
 }
 
+// Tier 3 / Fix #6 — Trend decay forecast.
+//
+// Now that `trend_observations` is accumulating real time-series data,
+// we can do something we couldn't before: project when a declining
+// trend will cross a "no longer worth posting" threshold. This is the
+// first forecast signal in the system — every prior signal was a
+// snapshot or a past observation.
+//
+// Method: simple linear regression of virality_score vs. observed_at
+// (treated as days from the earliest observation). Picked because:
+//   - it's transparent — users can verify the math from the tooltip,
+//   - it doesn't pretend to capture nuance we can't actually see in
+//     the data (no kalman filters, no exponential decay assumptions),
+//   - low R² is grounds for honest abstention (return null).
+//
+// Honesty rules — every one of these triggers null (no badge):
+//   1. < 5 days span between earliest and latest observation. The user
+//      explicitly calibrated this threshold: long enough to be more
+//      than noise, short enough to be useful before the trend dies.
+//   2. < 3 observations after filtering nulls. A two-point line gives
+//      perfect R² mechanically — that's not signal, it's geometry.
+//   3. slope >= -0.5 score/day. A flat or rising trend has no decay
+//      to forecast. We will not invent one.
+//   4. R² < 0.3. The fit is too noisy to project — saying "decays in
+//      4d" when the data wobbles ±20 points/day would be a fabrication.
+//   5. Forecast horizon > 7 days from now. A nearly-flat slope can
+//      mathematically predict "decays in 47 days" — that's noise, not
+//      a forecast.
+//   6. current_score already at or below threshold. Already decayed —
+//      nothing to project.
+//
+// Threshold: virality_score = 30. Below this, our scoring already
+// treats a trend as weak — that's the natural "no longer worth posting"
+// line. Tunable via constant if calibration changes.
+type DecayForecast = {
+  est_decays_below_at: string;
+  decay_threshold: number;
+  current_score: number;
+  slope_per_day: number;
+  history_span_days: number;
+  observation_count: number;
+  r_squared: number;
+};
+
+function computeDecayForecast(
+  history: Array<{ observed_at: string; virality_score: number | null }> | undefined,
+  now: Date = new Date(),
+): DecayForecast | null {
+  const DECAY_THRESHOLD = 30;
+  const MIN_SPAN_DAYS = 5;
+  const MIN_POINTS = 3;
+  const MIN_DECAY_SLOPE = -0.5; // score/day; less negative than this = "not declining"
+  const MIN_R_SQUARED = 0.3;
+  const MAX_FORECAST_DAYS = 7;
+
+  if (!history || history.length < MIN_POINTS) return null;
+
+  const points = history
+    .filter(o => o.virality_score != null)
+    .map(o => ({
+      t: new Date(o.observed_at).getTime(),
+      v: o.virality_score as number,
+    }))
+    .filter(p => !Number.isNaN(p.t))
+    .sort((a, b) => a.t - b.t);
+  if (points.length < MIN_POINTS) return null;
+
+  const tMin = points[0].t;
+  const tMax = points[points.length - 1].t;
+  const spanDays = (tMax - tMin) / 86_400_000;
+  if (spanDays < MIN_SPAN_DAYS) return null;
+
+  // Linear regression: x = days from earliest obs, y = virality_score.
+  const xs = points.map(p => (p.t - tMin) / 86_400_000);
+  const ys = points.map(p => p.v);
+  const n = xs.length;
+  const meanX = xs.reduce((a, b) => a + b, 0) / n;
+  const meanY = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < n; i++) {
+    num += (xs[i] - meanX) * (ys[i] - meanY);
+    den += (xs[i] - meanX) ** 2;
+  }
+  if (den === 0) return null;
+  const slope = num / den;
+  if (slope >= MIN_DECAY_SLOPE) return null; // flat or rising — no decay to forecast
+
+  const intercept = meanY - slope * meanX;
+
+  // R² — quality of fit. Low R² means the line is a poor explanation
+  // of the data; we abstain rather than forecast off noise.
+  let ssRes = 0;
+  let ssTot = 0;
+  for (let i = 0; i < n; i++) {
+    const yPred = intercept + slope * xs[i];
+    ssRes += (ys[i] - yPred) ** 2;
+    ssTot += (ys[i] - meanY) ** 2;
+  }
+  const rSquared = ssTot === 0 ? 0 : 1 - ssRes / ssTot;
+  if (rSquared < MIN_R_SQUARED) return null;
+
+  const currentScore = ys[ys.length - 1];
+  if (currentScore <= DECAY_THRESHOLD) return null; // already decayed — nothing to project
+
+  // Solve for x where y = threshold: x = (threshold - intercept) / slope.
+  const xAtThreshold = (DECAY_THRESHOLD - intercept) / slope;
+  const nowX = (now.getTime() - tMin) / 86_400_000;
+  const daysFromNow = xAtThreshold - nowX;
+  if (daysFromNow <= 0) return null;            // line says we should have already crossed
+  if (daysFromNow > MAX_FORECAST_DAYS) return null; // too far out — slope too flat to trust
+
+  const estTime = new Date(now.getTime() + daysFromNow * 86_400_000);
+  return {
+    est_decays_below_at: estTime.toISOString(),
+    decay_threshold: DECAY_THRESHOLD,
+    current_score: currentScore,
+    slope_per_day: Math.round(slope * 10) / 10,
+    history_span_days: Math.round(spanDays * 10) / 10,
+    observation_count: n,
+    r_squared: Math.round(rSquared * 100) / 100,
+  };
+}
+
 type BrandMemory = {
   user_id: string | null;
   brand_name: string;
@@ -662,6 +786,13 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
             // most recent observations, ascending by observed_at. UI MUST
             // hide the sparkline if length < 2.
             observation_history: observationHistoryMap.get(fullTrend.trend_id) || [],
+            // Tier 3 / Fix #6 — decay forecast. Linear projection of when
+            // virality_score crosses the "no longer worth posting" line.
+            // NULL when history is too thin (< 5 days span / < 3 obs),
+            // when the trend is flat or rising, when fit is too noisy
+            // (R² < 0.3), or when projected horizon > 7 days. UI MUST
+            // render NULL as "no forecast available", never as "won't decay".
+            decay_forecast: computeDecayForecast(observationHistoryMap.get(fullTrend.trend_id)),
             // Tier 3 / Fix #2 — competitor coverage. publishers===null
             // means we couldn't check; UI MUST render that as ambiguous
             // and never as a positive first-mover claim.
@@ -799,6 +930,8 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
             (trend as any).yt_video_published_at,
           ),
           observation_history: observationHistoryMap.get(trend.trend_id) || [],
+          // Tier 3 / Fix #6 — decay forecast (same contract as AI path).
+          decay_forecast: computeDecayForecast(observationHistoryMap.get(trend.trend_id)),
           competitor_coverage,
           category,
           why_good_fit: `${lead} ${timingPhrase(timing)}. ${signalLine}${ytLine}${velocityLine}`.trim(),
