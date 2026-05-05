@@ -167,6 +167,22 @@ export interface Trend {
    */
   decay_forecast?: DecayForecast | null;
   /**
+   * Tier 3 / Fix #4 — Story-arc context. NULL when this trend is a
+   * singleton (no other candidate trend belongs to its news cycle).
+   * When present, it means ≥1 OTHER candidate trend shares ≥2 significant
+   * tokens with this one — same news cycle, different angle.
+   *
+   * UI MUST surface `shared_tokens` in the tooltip so users can verify
+   * the merge ("oh, both 'Rodrigo' and 'tour' — yes, same arc"). Never
+   * cluster opaquely — if the shared signal isn't explainable, we
+   * shouldn't be making the claim.
+   *
+   * `alternates` lists the other trends in this arc, sorted by
+   * virality_score desc. UI typically shows the rep's badge with a
+   * tooltip listing alternates by name.
+   */
+  arc?: TrendArc | null;
+  /**
    * Time-series observation history (Tier 3 / Fix #1). Up to 14 most
    * recent observations, sorted ASCENDING by observed_at. UI MUST hide
    * the sparkline when length < 2 — a single point is not a "timeline".
@@ -209,6 +225,43 @@ export interface YouTubeVelocity {
   hours_since_publish: number;
   /** Convenience: views / hours_since_publish, rounded to whole numbers. */
   views_per_hour: number;
+}
+
+// ── Story arc (Tier 3 / Fix #4) ──────────────────────────────────────────────
+
+/** One alternate trend in the same story arc as the chosen rec. */
+export interface TrendArcAlternate {
+  trend_id: string;
+  trend_name: string;
+  virality_score: number | null;
+}
+
+/**
+ * Story-arc context for a clustered trend. See buildArcs() in
+ * recommend-trends/index.ts for the cluster algorithm. The contract:
+ * trends in the same arc share ≥2 significant tokens (length ≥4,
+ * stopwords stripped) — the literal `shared_tokens` field exposes
+ * those words so the UI can render an explainable merge.
+ */
+export interface TrendArc {
+  /** Stable identifier for this cluster (derived from the rep's trend_id). */
+  arc_id: string;
+  /** Total trends in this cluster (always ≥ 2 — singletons get no arc). */
+  cluster_size: number;
+  /** True iff this trend is the highest-virality rep of its cluster. */
+  is_arc_rep: boolean;
+  /** trend_id of the rep (the arc's "headline" trend). */
+  rep_trend_id: string;
+  /**
+   * Significant tokens shared across EVERY member of the cluster. UI
+   * MUST surface these in the tooltip so the merge is verifiable.
+   */
+  shared_tokens: string[];
+  /**
+   * Other trends in this arc, sorted by virality_score desc. Excludes
+   * the trend this `arc` is attached to.
+   */
+  alternates: TrendArcAlternate[];
 }
 
 // ── Decay forecast (Tier 3 / Fix #6) ─────────────────────────────────────────

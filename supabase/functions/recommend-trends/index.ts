@@ -440,6 +440,182 @@ function computeDecayForecast(
   };
 }
 
+// Tier 3 / Fix #4 — Story-arc clustering.
+//
+// The problem: every trend has a unique trend_id, but multiple trends can
+// belong to the same news cycle. "Olivia Rodrigo Presale", "Olivia Rodrigo
+// Tour Dates", "Olivia Rodrigo SNL" are three separate rows with three
+// scores — and without intervention the LLM can pick all three of them
+// as 3 of the user's 5 recommendations. That's not five trends, that's
+// one trend in a trench coat.
+//
+// Solution: cluster trends that share ≥2 significant tokens (length ≥ 4,
+// stopwords stripped) using union-find — transitive grouping so A↔B and
+// B↔C means A, B, C are one arc. Tell the LLM about each candidate's
+// arc_id and cluster size and instruct it to pick AT MOST ONE per arc.
+// Surface the rest as `alternates` on the chosen rec so the UI can offer
+// "2 more in this arc" without burning a slot.
+//
+// Honesty rules:
+//   • Cluster decisions must be explainable. We expose the literal
+//     `shared_tokens` on every clustered trend so the user can verify
+//     the merge ("oh, both about 'Rodrigo' + 'tour' — yes, same arc").
+//   • Coincidental overlap is filtered by requiring ≥2 shared tokens of
+//     length ≥4. "movie news" by itself shouldn't cluster two unrelated
+//     movies.
+//   • A singleton (no peers) gets NO arc field. We never invent a
+//     cluster of one.
+//   • The chosen rep is the highest-virality member of the cluster —
+//     deterministic, ties broken by trend_id for stability across runs.
+
+// Tight stopword list. Includes trend-corpus filler ("buzz", "spotlight"),
+// generic time/event words ("season", "episode", "recent"), and obvious
+// English filler. Adding too many breaks legitimate clustering — adding
+// too few causes false merges. This list errs toward NOT clustering.
+const ARC_STOPWORDS = new Set([
+  'trend', 'trends', 'trending', 'video', 'videos', 'show', 'shows',
+  'spotlight', 'buzz', 'discussion', 'discussions', 'controversy', 'drama',
+  'celebrations', 'season', 'episode', 'series', 'movie', 'movies', 'film',
+  'films', 'star', 'stars', 'with', 'from', 'this', 'that', 'about', 'their',
+  'recent', 'making', 'gaining', 'being', 'currently', 'after', 'before',
+  'into', 'when', 'over', 'fans', 'social', 'media', 'just', 'have', 'they',
+  'will', 'would', 'could', 'should', 'what', 'which', 'where', 'because',
+  'people', 'world', 'sparking', 'attention', 'released', 'launched',
+  'announced', 'reveal', 'reveals', 'revealed',
+]);
+
+type ArcAlternate = {
+  trend_id: string;
+  trend_name: string;
+  virality_score: number | null;
+};
+
+type ArcInfo = {
+  arc_id: string;
+  cluster_size: number;
+  is_arc_rep: boolean;
+  rep_trend_id: string;
+  shared_tokens: string[];
+  alternates: ArcAlternate[];
+};
+
+function arcExtractTokens(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(t => t.length >= 4 && !ARC_STOPWORDS.has(t))
+  );
+}
+
+/**
+ * Cluster the given trends by shared significant-token overlap. Returns
+ * a Map keyed by trend_id. Trends in singleton clusters are absent from
+ * the map — callers should treat "no entry" as "no arc context".
+ */
+function buildArcs(trends: Array<{
+  trend_id: string;
+  trend_name: string;
+  description?: string | null;
+  virality_score?: number | null;
+}>): Map<string, ArcInfo> {
+  const out = new Map<string, ArcInfo>();
+  if (!trends || trends.length < 2) return out;
+
+  // Tokenize ONLY trend_name. Descriptions introduce too much shared
+  // filler vocabulary ("prominent", "industry", "spotlight") and a
+  // pairwise ≥2-token threshold compounds via union-find into runaway
+  // mega-clusters. Names are short and discriminating — if two names
+  // share ≥2 significant tokens, they're almost certainly the same arc.
+  const tokens = trends.map(t => arcExtractTokens(t.trend_name || ''));
+
+  // Union-find with path compression.
+  const parent = trends.map((_, i) => i);
+  const find = (i: number): number => {
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]];
+      i = parent[i];
+    }
+    return i;
+  };
+  const union = (a: number, b: number) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[ra] = rb;
+  };
+
+  // Pairwise check — O(N²) on a set of 30 candidates is trivial (<1k ops).
+  for (let i = 0; i < trends.length; i++) {
+    for (let j = i + 1; j < trends.length; j++) {
+      let shared = 0;
+      for (const tok of tokens[i]) {
+        if (tokens[j].has(tok)) {
+          shared++;
+          if (shared >= 2) break;
+        }
+      }
+      if (shared >= 2) union(i, j);
+    }
+  }
+
+  // Group by root.
+  const groups = new Map<number, number[]>();
+  for (let i = 0; i < trends.length; i++) {
+    const root = find(i);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root)!.push(i);
+  }
+
+  // Emit ArcInfo for clusters of ≥2.
+  for (const [root, members] of groups) {
+    if (members.length < 2) continue;
+
+    // Shared tokens across the WHOLE cluster (intersection of all members).
+    let sharedAcrossCluster = new Set(tokens[members[0]]);
+    for (let m = 1; m < members.length; m++) {
+      const next = new Set<string>();
+      for (const tok of sharedAcrossCluster) {
+        if (tokens[members[m]].has(tok)) next.add(tok);
+      }
+      sharedAcrossCluster = next;
+    }
+    const sharedTokensList = [...sharedAcrossCluster].sort();
+
+    // Rep = highest virality_score; tiebreak on trend_id ascending for
+    // determinism across fetch runs.
+    const sortedMembers = [...members].sort((ai, bi) => {
+      const va = trends[ai].virality_score ?? -Infinity;
+      const vb = trends[bi].virality_score ?? -Infinity;
+      if (vb !== va) return vb - va;
+      return trends[ai].trend_id.localeCompare(trends[bi].trend_id);
+    });
+    const repIdx = sortedMembers[0];
+    const repTrendId = trends[repIdx].trend_id;
+    const arcId = `arc_${repTrendId}`; // stable, content-addressed
+
+    for (const i of members) {
+      const alternates: ArcAlternate[] = members
+        .filter(j => j !== i)
+        .map(j => ({
+          trend_id: trends[j].trend_id,
+          trend_name: trends[j].trend_name,
+          virality_score: trends[j].virality_score ?? null,
+        }))
+        .sort((a, b) => (b.virality_score ?? -Infinity) - (a.virality_score ?? -Infinity));
+      out.set(trends[i].trend_id, {
+        arc_id: arcId,
+        cluster_size: members.length,
+        is_arc_rep: i === repIdx,
+        rep_trend_id: repTrendId,
+        shared_tokens: sharedTokensList,
+        alternates,
+      });
+    }
+  }
+
+  return out;
+}
+
 type BrandMemory = {
   user_id: string | null;
   brand_name: string;
@@ -557,11 +733,31 @@ serve(async (req) => {
         throw new Error('OPENAI_API_KEY not configured');
       }
 
+      // Tier 3 / Fix #4 — Build story-arc clusters BEFORE the LLM sees
+      // the trends so we can warn it not to pick three flavors of the
+      // same news cycle. Map keyed by trend_id; trends in singleton
+      // clusters are absent.
+      const arcMap = buildArcs(trends);
+
       // Lock in the 2 highest-virality trends so the LLM can't drop them
       // for a marginal "brand fit" pick. Virality_score is computed from
       // cross-source corroboration + timing in fetch-trends — not the
       // (always-NULL) views_last_60h_millions placeholder we used to use.
-      const top2TrendIds = trends.slice(0, 2).map(t => t.trend_id);
+      //
+      // Arc-aware: if the top two trends share an arc, lock in only one
+      // (the higher-scored) and replace the second with the next-highest
+      // trend from a DIFFERENT arc. Otherwise we'd be force-feeding the
+      // user duplicate news-cycle picks.
+      const top2TrendIds: string[] = [];
+      const lockedArcs = new Set<string>();
+      for (const t of trends) {
+        if (top2TrendIds.length >= 2) break;
+        const arc = arcMap.get(t.trend_id);
+        const arcKey = arc ? arc.arc_id : `solo:${t.trend_id}`;
+        if (lockedArcs.has(arcKey)) continue;
+        top2TrendIds.push(t.trend_id);
+        lockedArcs.add(arcKey);
+      }
 
       const systemPrompt = `You are a senior social media strategist for high-growth creators and brands.
 
@@ -575,6 +771,7 @@ Your job:
   - a corroboration_score and corroboration_max — score = how many DISTINCT platforms confirmed this trend; max = how many platforms we successfully reached this run (out of Google Trends / Reddit / YouTube). When score == max the trend has full coverage of the platforms we could check; when max < 3, that's because one of the platforms (currently Reddit) was unreachable this run. NEVER tell the user a trend is "missing a platform" if score == max — that's full coverage of available sources.
   - optional yt_view_count / yt_like_count — REAL YouTube engagement on the best-matching recent video for this trend. When present, this is externally-verifiable proof that audiences are actually engaging (not just searching). When null, it just means we couldn't find a qualifying recent video — treat it as "no extra evidence", NOT as "this trend has no reach".
   - optional yt_velocity — derived from yt_view_count divided by hours since the matched video was uploaded. Tiers: 'racing' (≥20K views/hr), 'strong' (≥5K/hr), 'steady' (≥1K/hr), 'slow' (<1K/hr). When tier is 'racing' or 'strong', cite it as evidence the trend is actively accelerating. When null, treat it as "we couldn't compute a rate yet" (video too new, or no matched video) — never as "the trend is dead". The tier is a snapshot of the recent past, NOT a forecast — phrase any reference past-tense ("pulled X views in Yh since upload"), never "will hit N views".
+  - optional arc_id and arc_cluster_size — trends with the same arc_id are different angles on the same news cycle (e.g., three "Olivia Rodrigo" entries: presale, tour dates, SNL). They share ≥2 significant words in their names/descriptions. Pick AT MOST ONE per arc_id — the user has 5 slots and three flavors of one story is one story, not three. When you skip a trend because of arc deduplication, choose the one with the strongest brand fit, not just the highest virality_score within the arc. Trends WITHOUT an arc_id are unique news cycles and don't conflict with anything.
   - a category and region.
 - Pick exactly 5 trends that will perform best for this brand.
 
@@ -590,7 +787,8 @@ Tone handling:
 - If primary_tone is 'Naughty', allow premium A-rated innuendo but keep it non-explicit and brand-safe.
 
 Rules:
-- ALWAYS include the 2 trends with the highest virality_score in the final 5 (these are the strongest signals available right now).
+- ALWAYS include the 2 anchor trends from the top of the list (these are the strongest distinct signals available right now — already arc-deduplicated, so they're guaranteed to be different news cycles).
+- HARD RULE: Pick at most ONE trend per arc_id. If you find yourself wanting to pick two trends with the same arc_id, drop the weaker fit and use the slot for a different arc.
 - For the other 3:
   - Optimise for brand fit (industry, niche, audience, tone, content_format, primary_goal).
   - Prefer trends with timing="early" when brand can move fast — first-mover advantage.
@@ -641,6 +839,12 @@ Always respond with a single valid JSON object.`;
           (t as any).yt_view_count,
           (t as any).yt_video_published_at,
         ),
+        // Tier 3 / Fix #4 — arc grouping. arc_id is a stable cluster
+        // identifier; arc_cluster_size tells the LLM how many other trends
+        // in this list belong to the same news cycle. Both are absent for
+        // singleton trends — that's the signal "this trend stands alone".
+        arc_id: arcMap.get(t.trend_id)?.arc_id ?? null,
+        arc_cluster_size: arcMap.get(t.trend_id)?.cluster_size ?? null,
         category: t.category || null,
         region: t.region || null,
       }));
@@ -793,6 +997,11 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
             // (R² < 0.3), or when projected horizon > 7 days. UI MUST
             // render NULL as "no forecast available", never as "won't decay".
             decay_forecast: computeDecayForecast(observationHistoryMap.get(fullTrend.trend_id)),
+            // Tier 3 / Fix #4 — story-arc context. NULL when this trend is
+            // a singleton (no other candidates share its news cycle); the
+            // shape always includes shared_tokens and alternates so the UI
+            // can render an explainable "X more in this arc" badge.
+            arc: arcMap.get(fullTrend.trend_id) ?? null,
             // Tier 3 / Fix #2 — competitor coverage. publishers===null
             // means we couldn't check; UI MUST render that as ambiguous
             // and never as a positive first-mover claim.
@@ -840,9 +1049,26 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
         return 'Currently in active rotation across multiple platforms';
       };
 
+      // Tier 3 / Fix #4 — Same arc-dedup the AI path enforces, but now
+      // it's our job (no LLM in this branch). Walk the candidates in
+      // virality order and skip any whose arc is already represented.
+      // Without this, a Reddit-style "Olivia presale / Olivia tour /
+      // Olivia SNL" cluster could fill 3 of the 5 fallback slots.
+      const fallbackArcMap = buildArcs(trends);
+      const fallbackPicked: typeof trends = [];
+      const fallbackArcsUsed = new Set<string>();
+      for (const t of trends) {
+        if (fallbackPicked.length >= 5) break;
+        const arc = fallbackArcMap.get(t.trend_id);
+        const arcKey = arc ? arc.arc_id : `solo:${t.trend_id}`;
+        if (fallbackArcsUsed.has(arcKey)) continue;
+        fallbackPicked.push(t);
+        fallbackArcsUsed.add(arcKey);
+      }
+
       // Same observation-history fetch as the AI path — keep parity so
       // sparklines render in the degraded mode too.
-      const fallbackTrendIds = trends.slice(0, 5).map(t => t.trend_id);
+      const fallbackTrendIds = fallbackPicked.map(t => t.trend_id);
       const observationHistoryMap = await fetchObservationHistory(externalSupabase, fallbackTrendIds);
 
       // Tier 3 / Fix #2 — competitor coverage. Same intent as AI path.
@@ -850,7 +1076,7 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
         ? user_profile.competitors
         : [];
 
-      const fallbackTrends = trends.slice(0, 5).map(trend => {
+      const fallbackTrends = fallbackPicked.map(trend => {
         const description = (trend as any).description || '';
         const timing = (trend as any).timing || null;
         const sources: string[] = (trend as any).source_signals || [];
@@ -932,6 +1158,11 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
           observation_history: observationHistoryMap.get(trend.trend_id) || [],
           // Tier 3 / Fix #6 — decay forecast (same contract as AI path).
           decay_forecast: computeDecayForecast(observationHistoryMap.get(trend.trend_id)),
+          // Tier 3 / Fix #4 — story-arc context. Even though the fallback
+          // already arc-deduped its 5 picks, we still surface alternates
+          // here so the user can see "and 2 more in this arc" if their
+          // chosen trend is part of a wider news cycle.
+          arc: fallbackArcMap.get(trend.trend_id) ?? null,
           competitor_coverage,
           category,
           why_good_fit: `${lead} ${timingPhrase(timing)}. ${signalLine}${ytLine}${velocityLine}`.trim(),

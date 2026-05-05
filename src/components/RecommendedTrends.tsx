@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { RecommendedTrend, TrendTiming, TrendCategory, TrendObservation, CompetitorCoverage, YouTubeVelocity, DecayForecast } from "@/types/trends";
-import { TrendingUp, ArrowRight, RefreshCw, Zap, Clock, Flame, ShieldCheck, AlertTriangle, Youtube, ThumbsUp, MessageCircle, Users, Trophy, Rocket, Gauge, Hourglass } from "lucide-react";
+import { RecommendedTrend, TrendTiming, TrendCategory, TrendObservation, CompetitorCoverage, YouTubeVelocity, DecayForecast, TrendArc } from "@/types/trends";
+import { TrendingUp, ArrowRight, RefreshCw, Zap, Clock, Flame, ShieldCheck, AlertTriangle, Youtube, ThumbsUp, MessageCircle, Users, Trophy, Rocket, Gauge, Hourglass, Layers } from "lucide-react";
 
 interface RecommendedTrendsProps {
   recommendations: RecommendedTrend[];
@@ -407,6 +407,58 @@ const DecayForecastBadge = ({ forecast }: { forecast?: DecayForecast | null }) =
   );
 };
 
+/**
+ * Story-arc badge. Surfaces when a trend belongs to a cluster of related
+ * trends (same news cycle, different angles). Without this, the user
+ * can't tell that the LLM picked the strongest of three "Olivia Rodrigo"
+ * variants — they only see one trend and may want to know there are
+ * adjacent ones to consider.
+ *
+ * Honesty rules:
+ *   - Hide entirely when arc is null (singleton trend — no cluster).
+ *   - Tooltip MUST show the literal `shared_tokens` so the user can
+ *     verify why these trends were merged. No opaque clustering — if
+ *     the link isn't explainable in two words, we don't claim it.
+ *   - Visible label is "+N in this arc" (alternates count). Not
+ *     "1 of N" — that puts the chosen trend's position in the
+ *     foreground and reads clearer than ordinal framing.
+ *   - Alternates are listed in the tooltip with their virality_score
+ *     so the user knows what they're trading off.
+ */
+const StoryArcBadge = ({ arc }: { arc?: TrendArc | null }) => {
+  if (!arc || arc.alternates.length === 0) return null;
+
+  const tokenList = arc.shared_tokens.length > 0
+    ? arc.shared_tokens.slice(0, 4).map(t => `"${t}"`).join(', ')
+    : '(no shared tokens — should not happen)';
+
+  // Cap alternates at 4 in tooltip so it stays readable. The full
+  // list is on the data; UI can later open a drawer / modal if needed.
+  const altLines = arc.alternates.slice(0, 4).map(a => {
+    const score = a.virality_score != null ? ` (${a.virality_score})` : '';
+    return `· ${a.trend_name}${score}`;
+  });
+  const overflow = arc.alternates.length > 4
+    ? `\n…and ${arc.alternates.length - 4} more`
+    : '';
+
+  const title = [
+    `Same story arc — clustered on shared terms: ${tokenList}.`,
+    `Other trends in this arc:`,
+    altLines.join('\n') + overflow,
+  ].join('\n');
+
+  return (
+    <span
+      title={title}
+      className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-700 dark:text-violet-300 border border-violet-500/30"
+    >
+      <Layers className="w-3 h-3" />
+      <span>+{arc.alternates.length} in arc</span>
+    </span>
+  );
+};
+
 const CategoryBadge = ({ category }: { category?: string }) => {
   if (!category) return null;
   const { emoji, color } = getCategoryConfig(category);
@@ -798,6 +850,7 @@ export const RecommendedTrends = ({
                   />
                   <YouTubeVelocityBadge velocity={trend.yt_velocity} />
                   <DecayForecastBadge forecast={trend.decay_forecast} />
+                  <StoryArcBadge arc={trend.arc} />
                   <CompetitorCoverageBadge coverage={trend.competitor_coverage} />
                   {trend.region && (
                     <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">
