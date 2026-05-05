@@ -201,7 +201,7 @@ export const TrendQuestInputs = ({ values, onChange }: TrendQuestInputsProps) =>
                 }`}
               >
                 <span className="text-sm leading-none">{p.icon}</span>
-                {p.value !== 'Twitter' && <span className="leading-tight">{p.label}</span>}
+                {p.value !== 'Twitter' && p.value !== 'Instagram' && <span className="leading-tight">{p.label}</span>}
                 {disabled && (
                   <span className="absolute -top-1.5 -right-1 px-1 py-px rounded-full bg-amber-500/15 text-amber-500 text-[8px] font-semibold border border-amber-500/30 leading-none">
                     Soon
