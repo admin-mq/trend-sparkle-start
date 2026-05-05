@@ -6,11 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { X, Users, Megaphone, Target, Palette, Twitter } from "lucide-react";
 import type { ReactNode } from "react";
 import instagramIcon from "@/assets/instagram-icon.png";
+import tiktokIcon from "@/assets/tiktok-icon.webp";
 
 const PLATFORMS: { value: string; label: string; icon: ReactNode; enabled: boolean }[] = [
   { value: 'Twitter',    label: 'X',          icon: '𝕏',  enabled: true  },
   { value: 'Instagram',  label: 'Instagram',  icon: <img src={instagramIcon} alt="Instagram" className="w-3.5 h-3.5 object-contain" />, enabled: true  },
-  { value: 'TikTok',     label: 'TikTok',     icon: '🎵', enabled: false },
+  { value: 'TikTok',     label: 'TikTok',     icon: <img src={tiktokIcon} alt="TikTok" className="w-3.5 h-3.5 object-contain" />, enabled: false },
   { value: 'LinkedIn',   label: 'LinkedIn',   icon: '💼', enabled: false },
   { value: 'YouTube',    label: 'YouTube',    icon: '▶️', enabled: false },
 ];
