@@ -125,7 +125,55 @@ export interface Trend {
    * UI MUST NOT extrapolate beyond the latest observation.
    */
   observation_history?: TrendObservation[];
+  /**
+   * Competitor coverage signal (Tier 3 / Fix #2). Tells us whether the
+   * user's tracked competitors have already posted YouTube videos on
+   * this trend, vs nobody on their watchlist has touched it yet.
+   *
+   * UI MUST honor the tri-state contract:
+   *   • publishers === null  → couldn't check (no API key, search error).
+   *     Render badge as ambiguous / hidden — never claim first-mover.
+   *   • publishers === []    → checked cleanly, no recent YT videos at all.
+   *     Real first-mover signal (qualified "on YouTube").
+   *   • publishers.length >0, matches.length === 0 → first-mover signal still
+   *     valid: tracked competitors haven't posted, even though others have.
+   *   • matches.length > 0   → "X of N covering" badge.
+   */
+  competitor_coverage?: CompetitorCoverage;
   category?: TrendCategory | string;
+}
+
+// ── Competitor coverage (Tier 3 / Fix #2) ────────────────────────────────────
+
+/** One distinct YouTube channel that posted a recent video on a trend. */
+export interface YouTubePublisher {
+  channel_id: string;
+  channel_title: string;
+  video_id: string;
+  video_title: string;
+  published_at: string;
+}
+
+export interface CompetitorMatch {
+  competitor_name: string;
+  publisher: YouTubePublisher;
+}
+
+export interface CompetitorCoverage {
+  /** Always 'YouTube' today. Future expansion (TikTok/IG) gets new values. */
+  checked_platform: 'YouTube';
+  /**
+   * The publisher list we checked. NULL = "couldn't check" (no API key,
+   * search error). Empty array = checked cleanly, zero items.
+   */
+  publishers: YouTubePublisher[] | null;
+  /** Tracked competitors we matched in the publisher list. Possibly empty. */
+  matches: CompetitorMatch[];
+  /**
+   * Tracked competitors we LOOKED FOR but didn't find. Surfaced in the
+   * tooltip so the user can see which competitors we actually checked.
+   */
+  unmatched_competitors: string[];
 }
 
 /**

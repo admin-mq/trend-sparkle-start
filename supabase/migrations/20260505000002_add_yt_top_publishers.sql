@@ -1,0 +1,66 @@
+-- Tier 3 / Fix #2 — Competitor coverage signal.
+--
+-- Problem: today we tell users a trend is hot, but not whether their
+-- direct competitors are already on it. That's the difference between
+-- "great idea, but you're 6 hours late and Nike already owns the
+-- conversation" vs "first-mover window — none of your tracked
+-- competitors have posted yet". Both are actionable; conflating them
+-- isn't.
+--
+-- Honest design — what we will and WON'T claim:
+--
+-- We have one ground-truth signal we already pay for: YouTube
+-- search.list. fetch-trends already runs it per trend candidate to
+-- enrich engagement (Phase B / Fix #6). That same call returns the
+-- top relevant recent videos with channel info — we currently keep
+-- only the #1 result for engagement and throw the rest away. This
+-- migration adds storage for up to ~5 distinct publisher channels
+-- per trend so the recommend layer can intersect them against the
+-- user's `profile.competitors` list.
+--
+-- What we WILL claim:
+--   • "X competitors covering" — when we found a match in
+--     yt_top_publishers between a competitor's brand name and a
+--     channel that posted a recent video on the trend.
+--   • "first-mover window — no YouTube coverage from tracked
+--     competitors yet" — when yt_top_publishers IS NOT NULL but
+--     contains zero matches. The "YouTube" qualifier is mandatory.
+--
+-- What we will NOT claim:
+--   • Any "first-mover" verdict when yt_top_publishers IS NULL.
+--     NULL means we couldn't check (no API key, search returned
+--     nothing, error). UI must render this as ambiguous, never as
+--     a positive first-mover signal.
+--   • Coverage on Instagram, TikTok, LinkedIn — we have no signal
+--     for those yet. The badge copy is platform-explicit so a user
+--     reading "first-mover on YouTube" knows to do their own check
+--     elsewhere.
+--
+-- Storage shape (JSONB):
+--   [
+--     {
+--       "channel_id":    "UCxxxxxx",
+--       "channel_title": "ESPN",
+--       "video_id":      "abc123",
+--       "video_title":   "...",
+--       "published_at":  "2026-05-04T18:00:00Z"
+--     },
+--     ...
+--   ]
+-- Up to 5 entries. Deduped by channel_id (one entry per channel,
+-- the most relevant video that channel posted). NULL when YouTube
+-- search returned no items OR the API key isn't configured. Empty
+-- array []  is reserved for the "search ran cleanly, zero items"
+-- case to keep it distinguishable from NULL.
+--
+-- No backfill. We don't have historical YouTube search results to
+-- replay, and fabricating publishers would be a bigger lie than the
+-- problem we're solving. Existing rows stay NULL and will populate
+-- on the next fetch-trends run that touches them. This is the same
+-- pattern we used for the yt_* engagement columns (Phase B).
+
+ALTER TABLE public.trends
+  ADD COLUMN IF NOT EXISTS yt_top_publishers JSONB;
+
+COMMENT ON COLUMN public.trends.yt_top_publishers IS
+  'Up to 5 distinct YouTube channels that posted recent videos on this trend, captured from the same search.list call that powers yt_engagement. JSONB array of {channel_id, channel_title, video_id, video_title, published_at}. NULL = unknown (couldn''t check or no key). Empty array [] = checked cleanly, zero items. recommend-trends intersects this against profile.competitors[].name to compute first-mover vs N-covered signals — and MUST treat NULL as ambiguous, never as a positive first-mover claim.';

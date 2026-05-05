@@ -64,6 +64,32 @@ interface EnrichedCandidate extends ScoredCandidate {
   yt_like_count: number | null;
   yt_comment_count: number | null;
   yt_video_published_at: string | null;
+  /**
+   * Up to 5 distinct YouTube channels that posted recent videos on this
+   * trend (Tier 3 / Fix #2). Captured from the SAME search.list call that
+   * powers yt_engagement — zero extra quota cost. recommend-trends
+   * intersects this against the user's tracked competitors to compute
+   * "first-mover window" vs "X covered" badges.
+   *
+   * Tri-state contract:
+   *   • Array (possibly empty) → search ran cleanly. Empty array means
+   *     YouTube returned zero items — a real "nobody on YT yet" signal.
+   *   • null → we couldn't check (no API key, network error). UI MUST
+   *     render this as ambiguous, NEVER as a positive first-mover claim.
+   */
+  yt_top_publishers: YouTubePublisher[] | null;
+}
+
+/**
+ * One distinct publisher (channel) that has a recent video on a trend's
+ * topic. Captured from search.list snippet data — no extra API call.
+ */
+export interface YouTubePublisher {
+  channel_id: string;
+  channel_title: string;
+  video_id: string;
+  video_title: string;
+  published_at: string;
 }
 
 /**
@@ -316,35 +342,74 @@ interface YouTubeEngagement {
   yt_video_published_at: string;
 }
 
+/**
+ * Search YouTube for recent videos on a topic and return:
+ *   - bestVideoId: the #1 result's videoId (used for engagement enrichment)
+ *   - publishers:  up to 5 distinct channels (Tier 3 / Fix #2 competitor coverage)
+ *
+ * `publishers === null` means the call FAILED (network/HTTP error). An
+ * empty array means the call succeeded with zero items — that's a real
+ * "no one on YouTube yet" signal worth distinguishing.
+ *
+ * Quota: ONE search.list call serves both purposes. We bumped maxResults
+ * from 1 → 10 because additional items are part of the same response —
+ * no extra quota cost. (search.list is 100 units regardless of size.)
+ */
+interface YouTubeSearchResult {
+  bestVideoId: string | null;
+  publishers: YouTubePublisher[] | null;
+}
+
 async function searchYouTubeVideoForTopic(
   topic: string,
   apiKey: string,
   publishedAfterIso: string,
-): Promise<string | null> {
+): Promise<YouTubeSearchResult> {
   // Strip hashtag-y noise from the query so we don't pass tokens like
   // "BREAKING:" or trailing emoji into search — they hurt relevance.
   const cleanQuery = topic.replace(/[^\w\s'-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
-  if (!cleanQuery) return null;
+  if (!cleanQuery) return { bestVideoId: null, publishers: null };
 
   const url =
     `https://www.googleapis.com/youtube/v3/search` +
     `?part=snippet&type=video&order=relevance` +
     `&q=${encodeURIComponent(cleanQuery)}` +
     `&publishedAfter=${encodeURIComponent(publishedAfterIso)}` +
-    `&maxResults=1&relevanceLanguage=en` +
+    `&maxResults=10&relevanceLanguage=en` +
     `&key=${apiKey}`;
   try {
     const res = await fetch(url);
     if (!res.ok) {
       console.warn(`[fetch-trends] YT search "${cleanQuery}": HTTP ${res.status}`);
-      return null;
+      return { bestVideoId: null, publishers: null };
     }
     const data = await res.json();
-    const top = data.items?.[0];
-    return top?.id?.videoId || null;
+    const items: any[] = data.items || [];
+    const top = items[0];
+    const bestVideoId = top?.id?.videoId || null;
+
+    // Dedupe by channel_id, preserving relevance order. Keep up to 5 channels.
+    const seen = new Set<string>();
+    const publishers: YouTubePublisher[] = [];
+    for (const item of items) {
+      const channelId = item.snippet?.channelId;
+      const videoId   = item.id?.videoId;
+      if (!channelId || !videoId || seen.has(channelId)) continue;
+      seen.add(channelId);
+      publishers.push({
+        channel_id:    channelId,
+        channel_title: item.snippet?.channelTitle || '',
+        video_id:      videoId,
+        video_title:   item.snippet?.title || '',
+        published_at:  item.snippet?.publishedAt || '',
+      });
+      if (publishers.length >= 5) break;
+    }
+
+    return { bestVideoId, publishers };
   } catch (e) {
     console.warn(`[fetch-trends] YT search "${cleanQuery}" error:`, e);
-    return null;
+    return { bestVideoId: null, publishers: null };
   }
 }
 
@@ -400,15 +465,29 @@ async function batchFetchVideoStats(
 
 /**
  * For each topic, resolve a YouTube videoId via search.list, then batch
- * fetch all stats in one videos.list call. Returns a Map keyed by the
- * lowercase topic so callers can hydrate matched candidates.
+ * fetch all stats in one videos.list call. Returns:
+ *   - engagement: per-topic YouTubeEngagement (above the view floor)
+ *   - publishers: per-topic top distinct channels (Tier 3 / Fix #2)
+ *
+ * Both maps are keyed by lowercase topic. The engagement map is sparse
+ * (only topics that matched a video above the view floor). The publishers
+ * map is broader: any topic where search.list returned ≥1 item gets an
+ * entry, even an empty array — that's a real "no one on YouTube yet"
+ * signal. Topics where the search call FAILED have no entry at all
+ * (caller treats absent → NULL → "couldn't check").
  */
+interface YouTubeEnrichmentResult {
+  engagement: Map<string, YouTubeEngagement>;
+  publishers: Map<string, YouTubePublisher[]>;
+}
+
 async function enrichYouTubeEngagement(
   topics: string[],
   apiKey: string,
-): Promise<Map<string, YouTubeEngagement>> {
-  const out = new Map<string, YouTubeEngagement>();
-  if (topics.length === 0) return out;
+): Promise<YouTubeEnrichmentResult> {
+  const engagement = new Map<string, YouTubeEngagement>();
+  const publishers = new Map<string, YouTubePublisher[]>();
+  if (topics.length === 0) return { engagement, publishers };
 
   // Only consider videos uploaded in the last 14 days. A trend is
   // "right now"; we want recent uploads as evidence of *current* reach,
@@ -421,24 +500,36 @@ async function enrichYouTubeEngagement(
   // the API). 15 × ~150ms = ~2-3s of wall time, acceptable.
   const videoIdByTopic = new Map<string, string>();
   for (const topic of topics) {
-    const videoId = await searchYouTubeVideoForTopic(topic, apiKey, publishedAfterIso);
-    if (videoId) videoIdByTopic.set(topic.toLowerCase(), videoId);
+    const result = await searchYouTubeVideoForTopic(topic, apiKey, publishedAfterIso);
+    const topicKey = topic.toLowerCase();
+    // Capture publishers whenever the search call SUCCEEDED, even if the
+    // result is an empty list. That's the real "nobody on YouTube yet"
+    // signal we want to surface as first-mover. publishers === null only
+    // when the call itself failed (network/HTTP) — in which case we omit
+    // the entry entirely so the caller can store NULL ("unknown").
+    if (result.publishers !== null) {
+      publishers.set(topicKey, result.publishers);
+    }
+    if (result.bestVideoId) videoIdByTopic.set(topicKey, result.bestVideoId);
     await delay(120);
   }
 
   if (videoIdByTopic.size === 0) {
     console.log('[fetch-trends] YT enrichment: no qualifying matches across all topics');
-    return out;
+    return { engagement, publishers };
   }
 
   const stats = await batchFetchVideoStats([...videoIdByTopic.values()], apiKey);
 
   for (const [topic, videoId] of videoIdByTopic.entries()) {
     const s = stats.get(videoId);
-    if (s) out.set(topic, s);
+    if (s) engagement.set(topic, s);
   }
-  console.log(`[fetch-trends] YT enrichment: ${out.size}/${topics.length} topics matched (above ${YT_VIEW_COUNT_FLOOR.toLocaleString()}-view floor)`);
-  return out;
+  console.log(
+    `[fetch-trends] YT enrichment: ${engagement.size}/${topics.length} engagement matches (above ${YT_VIEW_COUNT_FLOOR.toLocaleString()}-view floor); ` +
+    `${publishers.size}/${topics.length} topics with publisher coverage data`,
+  );
+  return { engagement, publishers };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -711,6 +802,10 @@ serve(async (req) => {
         yt_like_count:         null,
         yt_comment_count:      null,
         yt_video_published_at: null,
+        // Publisher list also null by default — will be hydrated below
+        // when the YT search call succeeds. NULL = couldn't check;
+        // empty array = checked, no one on YouTube yet (real first-mover signal).
+        yt_top_publishers:     null,
       };
     });
 
@@ -720,24 +815,34 @@ serve(async (req) => {
     // YOUTUBE_API_KEY secret is configured. If skipped or if no qualifying
     // match is found, all yt_* fields stay null — never fabricated.
     if (YOUTUBE_API_KEY) {
-      console.log('[fetch-trends] Layer 2c: Enriching with YouTube engagement data...');
-      const ytEngagement = await enrichYouTubeEngagement(
+      console.log('[fetch-trends] Layer 2c: Enriching with YouTube engagement + publisher data...');
+      const ytResult = await enrichYouTubeEngagement(
         enriched.map(c => c.topic),
         YOUTUBE_API_KEY,
       );
       for (const c of enriched) {
-        const stats = ytEngagement.get(c.topic.toLowerCase());
-        if (!stats) continue;
-        c.yt_video_id           = stats.yt_video_id;
-        c.yt_video_title        = stats.yt_video_title;
-        c.yt_channel_title      = stats.yt_channel_title;
-        c.yt_view_count         = stats.yt_view_count;
-        c.yt_like_count         = stats.yt_like_count;
-        c.yt_comment_count      = stats.yt_comment_count;
-        c.yt_video_published_at = stats.yt_video_published_at;
+        const topicKey = c.topic.toLowerCase();
+        const stats = ytResult.engagement.get(topicKey);
+        if (stats) {
+          c.yt_video_id           = stats.yt_video_id;
+          c.yt_video_title        = stats.yt_video_title;
+          c.yt_channel_title      = stats.yt_channel_title;
+          c.yt_view_count         = stats.yt_view_count;
+          c.yt_like_count         = stats.yt_like_count;
+          c.yt_comment_count      = stats.yt_comment_count;
+          c.yt_video_published_at = stats.yt_video_published_at;
+        }
+        // Publishers are tracked SEPARATELY from engagement — the engagement
+        // path filters videos under the 10K-view floor, but a competitor
+        // posting a 500-view video on a trend is still genuine coverage.
+        // So we hydrate publishers whenever the search call succeeded,
+        // regardless of whether the engagement floor was cleared.
+        if (ytResult.publishers.has(topicKey)) {
+          c.yt_top_publishers = ytResult.publishers.get(topicKey)!;
+        }
       }
     } else {
-      console.log('[fetch-trends] Layer 2c: skipped (YOUTUBE_API_KEY not set) — all yt_* fields will be null');
+      console.log('[fetch-trends] Layer 2c: skipped (YOUTUBE_API_KEY not set) — all yt_* fields and yt_top_publishers will be null');
     }
 
     // Sort: early first (most valuable for brands), then by virality score
@@ -934,6 +1039,12 @@ Rules:
       const yt_video_published_at = enrichedMatch?.yt_video_published_at ?? null;
       const yt_fetched_at         = hasYouTubeMatch ? nowIso : null;
 
+      // Tier 3 / Fix #2 — competitor coverage publishers. Stored as JSONB
+      // (or null when the YT search call failed). Empty array IS valid and
+      // means "checked cleanly, no one on YouTube yet" — recommend-trends
+      // distinguishes that from null when computing first-mover badges.
+      const yt_top_publishers = enrichedMatch?.yt_top_publishers ?? null;
+
       const baseRow = {
         trend_id,
         trend_name:              trend.trend_name,
@@ -976,6 +1087,10 @@ Rules:
         yt_comment_count,
         yt_video_published_at,
         yt_fetched_at,
+        // Tier 3 / Fix #2 — top YouTube publishers for competitor coverage.
+        // JSONB array (possibly empty) when search succeeded, NULL when
+        // we couldn't check at all. Never fabricated.
+        yt_top_publishers,
       };
 
       const upsertRow = isInsert

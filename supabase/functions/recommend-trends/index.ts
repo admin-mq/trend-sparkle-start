@@ -91,6 +91,153 @@ async function fetchObservationHistory(
   return map;
 }
 
+// Tier 3 / Fix #2 — Competitor coverage signal.
+//
+// Goal: tell users whether their TRACKED competitors have already posted
+// about a trend, vs nobody in their watchlist has touched it yet (a true
+// "first-mover window"). The only ground-truth signal we have today is
+// YouTube — fetch-trends captures `yt_top_publishers` (up to 5 distinct
+// channels with recent videos on the trend) per trend row. We intersect
+// those publishers against the user's `profile.competitors` array.
+//
+// Honesty rules (mirrors the contract in the migration comment):
+//   • yt_top_publishers === null → "couldn't check". UI must render this
+//     as ambiguous, never as a positive first-mover claim.
+//   • yt_top_publishers === [] (empty)  → real "no one on YouTube" signal.
+//     Surface as "first-mover on YouTube — your tracked competitors
+//     haven't posted yet". The "on YouTube" qualifier is mandatory.
+//   • yt_top_publishers has items, none match → first-mover signal still
+//     valid: a non-competitor channel posted, but none of *your tracked*
+//     competitors have. Same first-mover copy.
+//   • yt_top_publishers has items, some match → "X covered" badge with
+//     the matched competitor names + links to their videos.
+//
+// We do NOT claim coverage on platforms we can't check (IG, TikTok,
+// LinkedIn). The badge copy is platform-explicit so the user knows to
+// verify elsewhere themselves.
+type Competitor = {
+  name: string;
+  domain?: string;
+  type?: string;
+  why_relevant?: string;
+  is_aspirational?: boolean;
+};
+
+type YouTubePublisher = {
+  channel_id: string;
+  channel_title: string;
+  video_id: string;
+  video_title: string;
+  published_at: string;
+};
+
+type CompetitorMatch = {
+  competitor_name: string;
+  publisher: YouTubePublisher;
+};
+
+type CompetitorCoverage = {
+  /** Which platform's data backed this verdict. Always 'YouTube' today. */
+  checked_platform: 'YouTube';
+  /**
+   * What we found. NULL = couldn't check (no API key, search error).
+   * UI MUST render NULL as ambiguous — never as first-mover.
+   */
+  publishers: YouTubePublisher[] | null;
+  /** Tracked competitors that we matched in `publishers`. May be empty. */
+  matches: CompetitorMatch[];
+  /**
+   * Tracked competitors that we LOOKED FOR but didn't find on this trend's
+   * publisher list. We surface this in the badge tooltip so the user can
+   * see exactly which competitors we checked — transparency over magic.
+   */
+  unmatched_competitors: string[];
+};
+
+/**
+ * Normalize a string for fuzzy comparison: lowercase, strip non-alpha,
+ * collapse whitespace. We compare normalized competitor names against
+ * normalized channel titles using substring containment in BOTH directions
+ * — "Nike" matches a channel called "Nike Football" and a competitor
+ * called "Nike Football" matches a channel "Nike". We intentionally do
+ * NOT do token-level matching (e.g. "Sports" alone shouldn't match every
+ * sports brand) — substring is conservative and avoids false positives.
+ */
+function normalizeName(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Domains often look like "nike.com" or "www.shopify.co.uk". Strip
+ * subdomain + TLD to get a comparable brand token.
+ */
+function domainBrandToken(domain: string | undefined): string | null {
+  if (!domain) return null;
+  const cleaned = domain.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '');
+  const firstLabel = cleaned.split('/')[0].split('.')[0];
+  return firstLabel.length >= 3 ? normalizeName(firstLabel) : null;
+}
+
+function computeCompetitorCoverage(
+  publishers: YouTubePublisher[] | null,
+  competitors: Competitor[],
+): CompetitorCoverage {
+  // No competitors configured → no badge to render. Return an empty
+  // shell so the UI's null check still works without special-casing.
+  if (!Array.isArray(competitors) || competitors.length === 0) {
+    return { checked_platform: 'YouTube', publishers, matches: [], unmatched_competitors: [] };
+  }
+
+  if (publishers === null) {
+    // We genuinely couldn't check — preserve the null and report no
+    // matches. UI MUST treat publishers===null as ambiguous.
+    return {
+      checked_platform: 'YouTube',
+      publishers: null,
+      matches: [],
+      unmatched_competitors: competitors.map(c => c.name),
+    };
+  }
+
+  const matches: CompetitorMatch[] = [];
+  const unmatched: string[] = [];
+  for (const competitor of competitors) {
+    const nameTokens: string[] = [];
+    const normName = normalizeName(competitor.name || '');
+    if (normName.length >= 3) nameTokens.push(normName);
+    const domainToken = domainBrandToken(competitor.domain);
+    if (domainToken && !nameTokens.includes(domainToken)) nameTokens.push(domainToken);
+    if (nameTokens.length === 0) {
+      unmatched.push(competitor.name);
+      continue;
+    }
+
+    let matched: YouTubePublisher | null = null;
+    for (const pub of publishers) {
+      const normChannel = normalizeName(pub.channel_title || '');
+      if (!normChannel) continue;
+      // Substring containment in either direction. Conservative — see
+      // the normalizeName() docstring for why we don't do token splits.
+      if (nameTokens.some(t => normChannel.includes(t) || t.includes(normChannel))) {
+        matched = pub;
+        break;
+      }
+    }
+    if (matched) {
+      matches.push({ competitor_name: competitor.name, publisher: matched });
+    } else {
+      unmatched.push(competitor.name);
+    }
+  }
+
+  return {
+    checked_platform: 'YouTube',
+    publishers,
+    matches,
+    unmatched_competitors: unmatched,
+  };
+}
+
 type BrandMemory = {
   user_id: string | null;
   brand_name: string;
@@ -174,7 +321,7 @@ serve(async (req) => {
     // and let brand-fit be the LLM's job.
     let query = externalSupabase
       .from('trends')
-      .select('trend_id, trend_name, description, hashtags, region, premium_only, active, timing, ig_confirmed, ig_validated, virality_score, source_signals, corroboration_score, first_seen_at, last_seen_at, peaked_at, peak_virality_score, category, yt_video_id, yt_video_title, yt_channel_title, yt_view_count, yt_like_count, yt_comment_count, yt_video_published_at, yt_fetched_at')
+      .select('trend_id, trend_name, description, hashtags, region, premium_only, active, timing, ig_confirmed, ig_validated, virality_score, source_signals, corroboration_score, first_seen_at, last_seen_at, peaked_at, peak_virality_score, category, yt_video_id, yt_video_title, yt_channel_title, yt_view_count, yt_like_count, yt_comment_count, yt_video_published_at, yt_fetched_at, yt_top_publishers')
       .eq('premium_only', false)
       .eq('active', true)
       .order('virality_score', { ascending: false })
@@ -355,6 +502,12 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
         .filter((id: any): id is string => typeof id === 'string');
       const observationHistoryMap = await fetchObservationHistory(externalSupabase, pickedTrendIds);
 
+      // Tier 3 / Fix #2 — competitor coverage. Compute per-trend, using
+      // the user's profile.competitors list (may be empty/undefined).
+      const userCompetitors: Competitor[] = Array.isArray(user_profile?.competitors)
+        ? user_profile.competitors
+        : [];
+
       // Map Marketers Quest recommendations to full trend objects
       const recommended_trends = parsedResponse.recommended_trends
         .map((rec: any) => {
@@ -363,6 +516,14 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
             console.warn(`Trend ${rec.trend_id} not found in database`);
             return null;
           }
+          // yt_top_publishers comes back as JSONB (object/array) or null.
+          // Pass through the null distinction so computeCompetitorCoverage
+          // can return its honest "couldn't check" verdict.
+          const rawPublishers = (fullTrend as any).yt_top_publishers;
+          const publishers: YouTubePublisher[] | null = rawPublishers === null || rawPublishers === undefined
+            ? null
+            : (Array.isArray(rawPublishers) ? rawPublishers : []);
+          const competitor_coverage = computeCompetitorCoverage(publishers, userCompetitors);
           return {
             trend_id: fullTrend.trend_id,
             trend_name: fullTrend.trend_name,
@@ -396,6 +557,10 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
             // most recent observations, ascending by observed_at. UI MUST
             // hide the sparkline if length < 2.
             observation_history: observationHistoryMap.get(fullTrend.trend_id) || [],
+            // Tier 3 / Fix #2 — competitor coverage. publishers===null
+            // means we couldn't check; UI MUST render that as ambiguous
+            // and never as a positive first-mover claim.
+            competitor_coverage,
             category: fullTrend.category || null,
             why_good_fit: rec.why_good_fit || '',
             example_hook: rec.example_hook || '',
@@ -444,6 +609,11 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
       const fallbackTrendIds = trends.slice(0, 5).map(t => t.trend_id);
       const observationHistoryMap = await fetchObservationHistory(externalSupabase, fallbackTrendIds);
 
+      // Tier 3 / Fix #2 — competitor coverage. Same intent as AI path.
+      const userCompetitors: Competitor[] = Array.isArray(user_profile?.competitors)
+        ? user_profile.competitors
+        : [];
+
       const fallbackTrends = trends.slice(0, 5).map(trend => {
         const description = (trend as any).description || '';
         const timing = (trend as any).timing || null;
@@ -453,6 +623,15 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
 
         const ytViews: number | null = (trend as any).yt_view_count ?? null;
         const ytLikes: number | null = (trend as any).yt_like_count ?? null;
+
+        // Same null/array discrimination as the AI path — preserve the
+        // null distinction so "couldn't check" stays distinct from
+        // "checked, found zero".
+        const rawPublishers = (trend as any).yt_top_publishers;
+        const publishers: YouTubePublisher[] | null = rawPublishers === null || rawPublishers === undefined
+          ? null
+          : (Array.isArray(rawPublishers) ? rawPublishers : []);
+        const competitor_coverage = computeCompetitorCoverage(publishers, userCompetitors);
 
         const lead = firstSentence(description) ||
           `${trend.trend_name} is currently active${category ? ` in the ${category} space` : ''}.`;
@@ -491,6 +670,7 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
           yt_video_published_at: (trend as any).yt_video_published_at ?? null,
           yt_fetched_at: (trend as any).yt_fetched_at ?? null,
           observation_history: observationHistoryMap.get(trend.trend_id) || [],
+          competitor_coverage,
           category,
           why_good_fit: `${lead} ${timingPhrase(timing)}. ${signalLine}${ytLine}`.trim(),
           example_hook: `${trend.trend_name}${category ? ` × ${user_profile.brand_name}` : ''} — here's the angle nobody's posted yet.`,

@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { RecommendedTrend, TrendTiming, TrendCategory, TrendObservation } from "@/types/trends";
-import { TrendingUp, ArrowRight, RefreshCw, Zap, Clock, Flame, ShieldCheck, AlertTriangle, Youtube, ThumbsUp, MessageCircle } from "lucide-react";
+import { RecommendedTrend, TrendTiming, TrendCategory, TrendObservation, CompetitorCoverage } from "@/types/trends";
+import { TrendingUp, ArrowRight, RefreshCw, Zap, Clock, Flame, ShieldCheck, AlertTriangle, Youtube, ThumbsUp, MessageCircle, Users, Trophy } from "lucide-react";
 
 interface RecommendedTrendsProps {
   recommendations: RecommendedTrend[];
@@ -367,6 +367,83 @@ const TrendSparkline = ({ history }: { history?: TrendObservation[] }) => {
   );
 };
 
+// ── Competitor Coverage Badge (Tier 3 / Fix #2) ──────────────────────────────
+//
+// Surfaces whether the user's tracked competitors have already posted
+// YouTube videos on this trend. Three rendering states, each honest:
+//
+//   1. "couldn't check" → render nothing. publishers === null means
+//      we have no data; drawing any badge would imply we checked.
+//
+//   2. "first-mover window" → render a green Trophy badge when
+//      publishers !== null (we DID check) AND no tracked competitor
+//      matched. Tooltip explicitly says "on YouTube" so the user knows
+//      to verify other platforms themselves. Suppresses entirely when
+//      the user has no competitors configured (nothing to compare to).
+//
+//   3. "X of N covering" → render a red Users badge when matches.length
+//      > 0. Tooltip lists the matched competitors with links to their
+//      videos so the user can see the actual coverage.
+//
+// We deliberately do NOT show a confident first-mover claim if the
+// user hasn't configured any competitors — there's nothing to be
+// "first" relative to, and conjuring one would be a fabrication.
+const CompetitorCoverageBadge = ({ coverage }: { coverage?: CompetitorCoverage }) => {
+  if (!coverage) return null;
+  const { publishers, matches, unmatched_competitors, checked_platform } = coverage;
+
+  // Couldn't check → render nothing. Same rule as YouTubeEngagementBadge:
+  // showing a badge for null data would imply we did the work.
+  if (publishers === null) return null;
+
+  const competitorsConfigured = matches.length + unmatched_competitors.length;
+  if (competitorsConfigured === 0) return null;
+
+  // Coverage hit — surface as a "competitors covering" warning badge.
+  if (matches.length > 0) {
+    const tooltipLines = [
+      `${matches.length} of ${competitorsConfigured} tracked competitor${competitorsConfigured === 1 ? '' : 's'} already posted on ${checked_platform}:`,
+      ...matches.map(m => `  • ${m.competitor_name} → ${m.publisher.channel_title}`),
+      '',
+      `(Checked ${checked_platform} only. Verify other platforms yourself.)`,
+    ];
+    return (
+      <a
+        href={`https://www.youtube.com/watch?v=${matches[0].publisher.video_id}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={tooltipLines.join('\n')}
+        className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25 transition-colors"
+      >
+        <Users className="w-3 h-3" />
+        <span>{matches.length}/{competitorsConfigured} competitor{matches.length === 1 ? '' : 's'} covering</span>
+      </a>
+    );
+  }
+
+  // First-mover signal — none of the user's tracked competitors matched.
+  // This is true whether publishers is empty or simply contained no
+  // competitor channels.
+  const tooltipLines = [
+    `First-mover window on ${checked_platform}.`,
+    publishers.length === 0
+      ? `No recent YouTube videos found on this trend.`
+      : `${publishers.length} channel${publishers.length === 1 ? '' : 's'} posted, but none of your tracked competitors:`,
+    ...(publishers.length > 0 ? unmatched_competitors.slice(0, 5).map(c => `  • ${c} — not seen yet`) : []),
+    '',
+    `(Checked ${checked_platform} only. Verify other platforms yourself.)`,
+  ];
+  return (
+    <span
+      title={tooltipLines.join('\n')}
+      className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30"
+    >
+      <Trophy className="w-3 h-3" />
+      <span>First-mover on {checked_platform}</span>
+    </span>
+  );
+};
+
 const ViralityBar = ({ score }: { score?: number }) => {
   if (!score) return null;
   const width = `${score}%`;
@@ -560,6 +637,7 @@ export const RecommendedTrends = ({
                     commentCount={trend.yt_comment_count}
                     fetchedAt={trend.yt_fetched_at}
                   />
+                  <CompetitorCoverageBadge coverage={trend.competitor_coverage} />
                   {trend.region && (
                     <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">
                       {trend.region}
