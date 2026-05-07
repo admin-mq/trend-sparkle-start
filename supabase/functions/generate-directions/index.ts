@@ -207,7 +207,7 @@ serve(async (req) => {
       const systemPrompt = `You are a veteran social-first creative director who has shipped thousands of viral posts.
 
 You receive:
-- a brand profile,
+- a brand profile (with industry, business_summary, audience, content_categories),
 - ONE trend with REAL-TIME CONTEXT explaining exactly why it's viral right now,
 - the brand's preferred content_format (e.g. video, carousel, short-form).
 
@@ -226,7 +226,15 @@ Tone handling:
 Your job:
 Create EXACTLY 5 distinct creative directions for how this brand can use this trend.
 
-⚠️ CRITICAL: The REAL-TIME CONTEXT tells you the specific story, controversy, ban, scandal, or event behind the trend. Every single idea MUST reference those specific details. If Wayne Player was banned — every idea is about the ban. If a show had a shocking finale — every idea references that moment. Generic ideas that just mention the trend name are WRONG.
+⚠️ CRITICAL #1 — REAL-TIME RELEVANCE:
+The REAL-TIME CONTEXT tells you the specific story, controversy, ban, scandal, or event behind the trend. Every single idea MUST reference those specific details. If Wayne Player was banned — every idea is about the ban. If a show had a shocking finale — every idea references that moment. Generic ideas that just mention the trend name are WRONG.
+
+⚠️ CRITICAL #2 — BRAND ANCHORING (audience-first):
+The brand's audience followed them for a reason. AT LEAST 3 of the 5 ideas MUST explicitly bridge the trend back to the brand's industry, product domain, or what the audience actually cares about — drawn from user_profile.industry, business_summary, content_categories, and audience.
+- These 3+ "anchored" ideas should connect the trend to the brand's world (e.g. for a SaaS/AI marketing platform: a creator-economy take, a marketing-team reaction, a tool/workflow analogy, a B2B operator's POV, a "what this trend teaches marketers" breakdown).
+- The angle MUST feel native to the audience — not "Brand X reacts to trend Y" framing. The brand's expertise, customer, or category should be visible in the hook and visual_idea.
+- The remaining 1-2 ideas can be broader cultural/emotional takes for variety, but still on-trend and on-brand-tone.
+- If the trend is genuinely incompatible with the brand industry, prefer skipping the trend in your reasoning rather than forcing a stretch — but still produce 5 ideas, with the 3+ anchored ones leaning on the closest legitimate angle (e.g. a "what marketers can learn from this moment" lens).
 
 Each idea MUST:
 - Directly reference the specific real-time event/story driving the trend.
@@ -250,15 +258,37 @@ Output JSON shape:
       "summary": "2–3 sentences in the brand's tone.",
       "hook": "One strong hook line, max ~140 characters.",
       "visual_idea": "1–3 sentences describing what viewers SEE.",
-      "suggested_cta": "One CTA matching the primary_goal."
+      "suggested_cta": "One CTA matching the primary_goal.",
+      "brand_anchor": "industry" | "audience" | "general",
+      "anchor_rationale": "1 short sentence — for 'industry'/'audience' anchors, name the specific link to user_profile.industry / business_summary / audience. For 'general', say why a broader cultural take is worth shipping."
     }
   ]
 }
 
+At least 3 of the 5 entries MUST have brand_anchor set to "industry" or "audience". The "general" anchor is allowed for at most 2 entries.
+
 Respond ONLY with JSON.`;
 
+      // Build a focused "brand anchoring digest" so the model can't ignore it.
+      // This pulls the fields that matter for audience-relevance into a short
+      // block at the top of the user message, in addition to the full profile JSON.
+      const anchoringLines: string[] = [];
+      if (user_profile.brand_name) anchoringLines.push(`Brand: ${user_profile.brand_name}`);
+      if (user_profile.industry) anchoringLines.push(`Industry: ${user_profile.industry}`);
+      if (user_profile.niche) anchoringLines.push(`Niche: ${user_profile.niche}`);
+      if (user_profile.business_summary) anchoringLines.push(`What the brand does: ${user_profile.business_summary}`);
+      if (user_profile.audience) anchoringLines.push(`Audience: ${user_profile.audience}`);
+      if (Array.isArray(user_profile.content_categories) && user_profile.content_categories.length > 0) {
+        anchoringLines.push(`Content categories: ${user_profile.content_categories.join(', ')}`);
+      }
+      if (user_profile.geography) anchoringLines.push(`Geography: ${user_profile.geography}`);
+      const anchoringDigest = anchoringLines.length > 0
+        ? `🎯 BRAND ANCHORING DIGEST (use this to make at least 3 of 5 ideas industry/audience-relevant):\n${anchoringLines.join('\n')}\n`
+        : '';
+
       const userMessage = `
-Here is the brand profile:
+${anchoringDigest}
+Here is the full brand profile:
 ${JSON.stringify(user_profile, null, 2)}
 
 Here is the brand memory (style guide):
@@ -267,47 +297,74 @@ ${JSON.stringify(brandMemory, null, 2)}
 ⚡ TREND CONTEXT:
 ${trendContext}
 
-Create exactly 5 distinct creative directions. Every idea must directly reference the specific real-time story/event/controversy (not just the trend name). Make each idea feel different in format and emotional angle. No generic marketing language.
+Create exactly 5 distinct creative directions. Every idea must directly reference the specific real-time story/event/controversy (not just the trend name). At least 3 of the 5 ideas must explicitly bridge the trend back to this brand's industry, what the brand does, or what the audience actually cares about (set brand_anchor to "industry" or "audience" on those, with a one-sentence anchor_rationale). Make each idea feel different in format and emotional angle. No generic marketing language.
 `;
 
+      // Helper: count how many ideas anchor to industry/audience (vs general).
+      const countAnchored = (dirs: any[]): number =>
+        Array.isArray(dirs)
+          ? dirs.filter((d) => {
+              const a = (d?.brand_anchor ?? '').toString().toLowerCase();
+              return a === 'industry' || a === 'audience';
+            }).length
+          : 0;
+
+      const callOpenAI = async (extraNudge: string | null): Promise<any[]> => {
+        const messages: any[] = [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ];
+        if (extraNudge) {
+          messages.push({ role: 'user', content: extraNudge });
+        }
+        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openaiApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages,
+            response_format: { type: 'json_object' },
+            temperature: 0.7,
+          }),
+        });
+        if (!resp.ok) {
+          const errorText = await resp.text();
+          console.error('Marketers Quest API error:', resp.status, errorText);
+          throw new Error(`Marketers Quest API call failed: ${resp.status}`);
+        }
+        const data = await resp.json();
+        const text = data.choices?.[0]?.message?.content;
+        if (!text) throw new Error('No content in Marketers Quest response');
+        const parsed = JSON.parse(text);
+        return parsed.creative_directions || [];
+      };
+
       console.log('Calling Marketers Quest API for creative directions...');
-      const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openaiApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userMessage }
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.7,
-        }),
-      });
+      let creative_directions = await callOpenAI(null);
+      let anchoredCount = countAnchored(creative_directions);
+      console.log(`Initial anchoring count: ${anchoredCount}/${creative_directions.length}`);
 
-      if (!openaiResponse.ok) {
-        const errorText = await openaiResponse.text();
-        console.error('Marketers Quest API error:', openaiResponse.status, errorText);
-        throw new Error(`Marketers Quest API call failed: ${openaiResponse.status}`);
+      // Single retry if the model under-anchored. Bail to whatever we have if
+      // the second pass also under-anchors — we don't want to block the UI.
+      if (anchoredCount < 3 && creative_directions.length > 0) {
+        const nudge = `Your previous response had only ${anchoredCount} of ${creative_directions.length} ideas anchored to the brand's industry or audience. Regenerate the full set of EXACTLY 5 creative_directions so that AT LEAST 3 of them have brand_anchor set to "industry" or "audience" with a clear anchor_rationale tying the trend to user_profile.industry / business_summary / audience. Keep the same trend_id and respond ONLY with JSON in the same shape.`;
+        try {
+          const retried = await callOpenAI(nudge);
+          const retriedCount = countAnchored(retried);
+          console.log(`Retry anchoring count: ${retriedCount}/${retried.length}`);
+          if (retriedCount > anchoredCount && retried.length >= creative_directions.length) {
+            creative_directions = retried;
+            anchoredCount = retriedCount;
+          }
+        } catch (retryErr) {
+          console.warn('Anchoring retry failed (non-fatal):', retryErr);
+        }
       }
 
-      const openaiData = await openaiResponse.json();
-      const content = openaiData.choices?.[0]?.message?.content;
-
-      if (!content) {
-        throw new Error('No content in Marketers Quest response');
-      }
-
-      console.log('Marketers Quest response received, parsing...');
-      const parsedResponse = JSON.parse(content);
-
-      // Ensure we have the correct structure
-      const creative_directions = parsedResponse.creative_directions || [];
-      
-      console.log(`Returning ${creative_directions.length} AI-powered creative directions`);
+      console.log(`Returning ${creative_directions.length} AI-powered creative directions (${anchoredCount} brand-anchored)`);
       return new Response(
         JSON.stringify({ 
           trend_id: trend.trend_id,

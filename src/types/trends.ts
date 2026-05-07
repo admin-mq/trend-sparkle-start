@@ -436,6 +436,15 @@ export interface CreativeDirection {
   hook: string;
   visual_idea: string;
   suggested_cta: string;
+  /**
+   * How this idea ties back to the brand. "industry" / "audience" mean the
+   * idea explicitly bridges the trend to the brand's domain or audience;
+   * "general" means a broader cultural/emotional take. The generator aims
+   * for ≥3 of 5 ideas anchored to industry/audience.
+   */
+  brand_anchor?: 'industry' | 'audience' | 'general';
+  /** One short sentence explaining the anchor_rationale (or why a general take is worth shipping). */
+  anchor_rationale?: string;
 }
 
 export interface DetailedDirection {

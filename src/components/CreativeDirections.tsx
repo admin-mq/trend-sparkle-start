@@ -1,6 +1,27 @@
 import { Button } from "@/components/ui/button";
 import { CreativeDirection } from "@/types/trends";
-import { Lightbulb, ArrowLeft, ArrowRight, Video, Heart, Meh, ThumbsDown } from "lucide-react";
+import { Lightbulb, ArrowLeft, ArrowRight, Video, Heart, Meh, ThumbsDown, Briefcase, Users, Sparkles } from "lucide-react";
+
+const ANCHOR_META: Record<
+  NonNullable<CreativeDirection["brand_anchor"]>,
+  { label: string; Icon: typeof Briefcase; classes: string }
+> = {
+  industry: {
+    label: "On-industry",
+    Icon: Briefcase,
+    classes: "bg-primary/15 text-primary border-primary/30",
+  },
+  audience: {
+    label: "Audience-relevant",
+    Icon: Users,
+    classes: "bg-accent/15 text-accent border-accent/30",
+  },
+  general: {
+    label: "Cultural take",
+    Icon: Sparkles,
+    classes: "bg-secondary/40 text-secondary-foreground border-border",
+  },
+};
 
 interface CreativeDirectionsProps {
   trendName: string;
@@ -54,8 +75,27 @@ export const CreativeDirections = ({ trendName, directions, onViewBlueprint, onB
                 <span className="text-sm font-bold text-primary">{index + 1}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <h4 className="font-semibold text-foreground">{direction.title}</h4>
+                <div className="flex items-start justify-between gap-2 flex-wrap">
+                  <h4 className="font-semibold text-foreground">{direction.title}</h4>
+                  {direction.brand_anchor && ANCHOR_META[direction.brand_anchor] && (() => {
+                    const meta = ANCHOR_META[direction.brand_anchor];
+                    return (
+                      <span
+                        className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border ${meta.classes}`}
+                        title={direction.anchor_rationale || meta.label}
+                      >
+                        <meta.Icon className="w-3 h-3" />
+                        {meta.label}
+                      </span>
+                    );
+                  })()}
+                </div>
                 <p className="text-sm text-secondary-foreground mt-2">{direction.summary}</p>
+                {direction.anchor_rationale && direction.brand_anchor && direction.brand_anchor !== "general" && (
+                  <p className="text-xs text-muted-foreground mt-1 italic">
+                    Why it fits: {direction.anchor_rationale}
+                  </p>
+                )}
               </div>
             </div>
             
