@@ -61,6 +61,70 @@ const TREND_CATEGORIES = [
   'Entertainment', 'News', 'Tech', 'Entrepreneurship',
   'Sports', 'Fashion', 'Finance', 'Music', 'Gaming', 'Lifestyle',
 ] as const;
+export type TrendCategory = typeof TREND_CATEGORIES[number];
+
+// Map a brand-profile industry (or creator-profile industry) string to a
+// short, opinionated set of trend categories. This drives the default
+// values of the "Trend categories" multi-select so a user with industry
+// "Technology & Software (SaaS/AI)" lands on Trend Quest with Tech +
+// Entrepreneurship pre-selected — they don't have to re-pick on every
+// session.
+//
+// Rules:
+// - Match against the BrandProfileForm's INDUSTRIES dropdown values
+//   first (exact case-insensitive substrings of the canonical labels).
+// - Then fall through to looser keyword matches so creator industries
+//   (free-form / "Other") still get a sensible default.
+// - Returns an empty array on no-match — caller decides whether to leave
+//   the chips empty or pick a default. We intentionally don't default to
+//   ['News'] or similar because that would silently bias every "Other"
+//   user toward news trends.
+export function industryToCategories(
+  industry: string | null | undefined,
+): TrendCategory[] {
+  if (!industry) return [];
+  const i = industry.toLowerCase().trim();
+  if (!i) return [];
+
+  // Exact / canonical brand-profile mappings.
+  if (/(technology|software|saas|ai|developer|cloud|crypto|web3|cyber|data)/.test(i)) {
+    return ['Tech', 'Entrepreneurship'];
+  }
+  if (/(media|entertainment|gaming|streaming|film|tv|music|celebrity)/.test(i)) {
+    return ['Entertainment', 'Gaming', 'Music'];
+  }
+  if (/(finance|insurance|invest|banking|fintech)/.test(i)) {
+    return ['Finance', 'News'];
+  }
+  if (/(retail|e-?commerce|d2c|shop)/.test(i)) {
+    return ['Lifestyle', 'Fashion'];
+  }
+  if (/(fmcg|consumer goods|cpg)/.test(i)) {
+    return ['Lifestyle'];
+  }
+  if (/(food|restaurant|cloud kitchen|hospitality|tourism|travel|hotel)/.test(i)) {
+    return ['Lifestyle'];
+  }
+  if (/(healthcare|pharma|medical|wellness|fitness)/.test(i)) {
+    return ['Lifestyle', 'News'];
+  }
+  if (/(professional services|consulting|legal|hr|recruit)/.test(i)) {
+    return ['Entrepreneurship', 'News'];
+  }
+  if (/(education|training|edtech|upskill|teach|learn)/.test(i)) {
+    return ['News', 'Lifestyle'];
+  }
+  if (/(fashion|beauty|apparel|cosmetic)/.test(i)) {
+    return ['Fashion', 'Lifestyle'];
+  }
+  if (/(sport|football|basketball|cricket|fitness)/.test(i)) {
+    return ['Sports'];
+  }
+
+  // No confident match — return empty so the UI doesn't silently force
+  // a category the user didn't ask for.
+  return [];
+}
 
 const TWITTER_FORMAT_OPTIONS = [
   'Single tweet',

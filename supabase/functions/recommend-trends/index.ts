@@ -876,39 +876,71 @@ serve(async (req) => {
       : [];
     let categoryFallback = false;
 
+    // ── Freshness contract: only show trends that broke in the last 24h.
+    // Without this, the daily-cron-populated trends table accumulates a
+    // long tail of multi-day-old "still active" rows. The user sees a
+    // "Broke 2d ago" badge and asks "why are you showing me old news?"
+    // We measure freshness off `first_seen_at` (the moment the trend
+    // was first detected by fetch-trends), not `last_seen_at` — the
+    // latter ticks on every re-detection and would keep stale trends
+    // alive indefinitely.
+    const FRESH_HOURS = 24;
+    const freshCutoffMs = Date.now() - FRESH_HOURS * 3_600_000;
+    const isFresh = (t: any) => {
+      if (!t?.first_seen_at) return false; // no timestamp = treat as stale
+      const ts = new Date(t.first_seen_at).getTime();
+      return Number.isFinite(ts) && ts >= freshCutoffMs;
+    };
+
     let trends: any[];
     let trendsError: any = null;
 
     if (pooledTrends && pooledTrends.length > 0) {
       // Cooldown path — read from the snapshotted pool, no DB hit.
-      // Apply category filter inline; fall back to popular cats if empty.
+      // Apply freshness FIRST (cheap), then category filter, fall back
+      // to popular cats if empty.
+      const freshPool = pooledTrends.filter(isFresh);
       if (categories.length > 0) {
-        const filtered = pooledTrends.filter((t: any) => categories.includes(t.category));
+        const filtered = freshPool.filter((t: any) => categories.includes(t.category));
         if (filtered.length > 0) {
           trends = filtered;
         } else {
-          // Filter excluded everything in the pool — fall back to the
-          // popular set within the same pool, no re-fetch needed.
-          trends = pooledTrends.filter((t: any) => POPULAR_CATS.includes(t.category));
-          if (trends.length === 0) trends = pooledTrends; // ultra-fallback: anything
+          // Filter excluded everything fresh — fall back to popular cats
+          // within the fresh pool, no re-fetch needed.
+          trends = freshPool.filter((t: any) => POPULAR_CATS.includes(t.category));
+          if (trends.length === 0) trends = freshPool; // ultra-fallback: anything fresh
           categoryFallback = true;
         }
       } else {
-        trends = pooledTrends;
+        trends = freshPool;
       }
-    } else {
+      // If freshness pruned the pool to nothing, the cooldown contract
+      // doesn't make sense any more — fall through to a fresh DB fetch.
+      if (trends.length === 0) {
+        console.log('[recommend-trends] Cooldown pool had no fresh (≤24h) rows — overriding to fresh DB fetch');
+        cooldownActive = false;
+        pooledTrends = null;
+      }
+    }
+
+    if (!pooledTrends || pooledTrends.length === 0 || !trends! || trends!.length === 0) {
       // Fresh-fetch path — DB query, location filter when provided.
       // We deliberately do NOT select views_last_60h_millions — it's
       // always NULL (no real view-count source) and asking the LLM to
       // optimize for it is meaningless. Rank by virality_score.
       const baseSelect = 'trend_id, trend_name, description, hashtags, region, premium_only, active, timing, ig_confirmed, ig_validated, virality_score, source_signals, corroboration_score, corroboration_max, first_seen_at, last_seen_at, peaked_at, peak_virality_score, category, yt_video_id, yt_video_title, yt_channel_title, yt_view_count, yt_like_count, yt_comment_count, yt_video_published_at, yt_fetched_at, yt_top_publishers';
 
+      const freshCutoffIso = new Date(freshCutoffMs).toISOString();
       const buildQuery = (catFilter: string[] | null) => {
         let q = externalSupabase
           .from('trends')
           .select(baseSelect)
           .eq('premium_only', false)
           .eq('active', true)
+          // Freshness filter: only return trends whose first_seen_at is
+          // within the last 24h. The DB-level filter is the cheap path
+          // (vs. fetching everything and filtering in JS).
+          .gte('first_seen_at', freshCutoffIso)
           .order('virality_score', { ascending: false })
           .limit(30);
         if (location) q = q.eq('region', location);
@@ -922,11 +954,32 @@ serve(async (req) => {
 
       // Fallback: filter produced zero rows — retry with popular cats only.
       if (!trendsError && trends.length === 0 && categories.length > 0) {
-        console.log(`[recommend-trends] No trends in selected categories ${JSON.stringify(categories)} for ${location} — falling back to popular cats`);
+        console.log(`[recommend-trends] No fresh (≤24h) trends in selected categories ${JSON.stringify(categories)} for ${location} — falling back to popular cats`);
         const fallback = await buildQuery(POPULAR_CATS);
         trends = fallback.data || [];
         trendsError = fallback.error;
         categoryFallback = true;
+      }
+
+      // Last-resort fallback: if even popular cats produced 0 fresh rows,
+      // drop the freshness filter and surface whatever recent trends we
+      // have. Without this, a region whose cron just hasn't run in 25h
+      // would render an empty Trends list — worse UX than "slightly old"
+      // trends with a clear timestamp on each card.
+      if (!trendsError && trends.length === 0) {
+        console.log(`[recommend-trends] No fresh trends ANYWHERE for ${location} — dropping freshness filter as last resort`);
+        let q = externalSupabase
+          .from('trends')
+          .select(baseSelect)
+          .eq('premium_only', false)
+          .eq('active', true)
+          .order('virality_score', { ascending: false })
+          .limit(30);
+        if (location) q = q.eq('region', location);
+        const stale = await q;
+        trends = stale.data || [];
+        trendsError = stale.error;
+        if (trends.length > 0) categoryFallback = true; // signal "we had to relax"
       }
     }
 

@@ -18,6 +18,7 @@ import {
   getPrimaryTone,
   getToneMeterLabel,
   mapGeographyToLocation,
+  industryToCategories,
 } from "@/components/TrendQuestInputs";
 import { RecommendedTrend, CreativeDirection, UserProfile, DetailedDirection, TwitterTrendsResponse, TwitterTrend, GeneratedTweet } from "@/types/trends";
 import { useAuth } from "@/hooks/useAuth";
@@ -170,6 +171,37 @@ const TrendQuest = () => {
     });
     setAutoLocationDerived(mapped);
   }, [isCreator, creatorProfile, selectedBrandId, brands]);  // autoLocationDerived intentionally omitted to avoid feedback loop
+
+  // ── Auto-derive trend categories from brand industry ───────────────────
+  // Mirrors the location auto-derive above. Brand industry "Technology &
+  // Software (SaaS/AI)" → Tech + Entrepreneurship pre-filled. The user
+  // can still toggle chips to override; once they do, we never overwrite
+  // their choice on a brand switch (we compare against the last value WE
+  // auto-set to detect override). We persist the derived value in
+  // autoCategoriesDerived as a JSON string so the same-value check works.
+  const [autoCategoriesDerived, setAutoCategoriesDerived] = useState<string | null>(null);
+  useEffect(() => {
+    let industry: string | null | undefined;
+    if (isCreator) {
+      industry = creatorProfile?.industry === 'Other' && creatorProfile?.industry_other
+        ? creatorProfile.industry_other
+        : creatorProfile?.industry;
+    } else if (selectedBrandId) {
+      const b = brands.find(b => b.id === selectedBrandId);
+      industry = b?.industry === 'Other' && b?.industry_other ? b.industry_other : b?.industry;
+    }
+    const mapped = industryToCategories(industry);
+    if (mapped.length === 0) return; // unknown industry — leave chips alone
+    const mappedKey = JSON.stringify(mapped);
+    setInputValues(prev => {
+      const prevKey = JSON.stringify(prev.content_categories);
+      const userTouched = autoCategoriesDerived !== null && prevKey !== autoCategoriesDerived;
+      if (userTouched) return prev;
+      if (prevKey === mappedKey) return prev;
+      return { ...prev, content_categories: mapped };
+    });
+    setAutoCategoriesDerived(mappedKey);
+  }, [isCreator, creatorProfile, selectedBrandId, brands]);  // autoCategoriesDerived intentionally omitted to avoid feedback loop
 
   // Build UserProfile by merging brand data + trend quest inputs
   const buildUserProfile = (brand: BrandProfile, inputs: TrendQuestInputValues): UserProfile => {
