@@ -229,12 +229,21 @@ Create EXACTLY 5 distinct creative directions for how this brand can use this tr
 ⚠️ CRITICAL #1 — REAL-TIME RELEVANCE:
 The REAL-TIME CONTEXT tells you the specific story, controversy, ban, scandal, or event behind the trend. Every single idea MUST reference those specific details. If Wayne Player was banned — every idea is about the ban. If a show had a shocking finale — every idea references that moment. Generic ideas that just mention the trend name are WRONG.
 
-⚠️ CRITICAL #2 — BRAND ANCHORING (audience-first):
-The brand's audience followed them for a reason. AT LEAST 3 of the 5 ideas MUST explicitly bridge the trend back to the brand's industry, product domain, or what the audience actually cares about — drawn from user_profile.industry, business_summary, content_categories, and audience.
-- These 3+ "anchored" ideas should connect the trend to the brand's world (e.g. for a SaaS/AI marketing platform: a creator-economy take, a marketing-team reaction, a tool/workflow analogy, a B2B operator's POV, a "what this trend teaches marketers" breakdown).
-- The angle MUST feel native to the audience — not "Brand X reacts to trend Y" framing. The brand's expertise, customer, or category should be visible in the hook and visual_idea.
+⚠️ CRITICAL #2 — BRAND ANCHORING (audience-first, applies to EVERY brand/creator regardless of industry):
+The audience followed this brand for a reason. AT LEAST 3 of the 5 ideas MUST explicitly bridge the trend back to whatever the audience actually cares about — drawn from user_profile.industry, niche, business_summary, content_categories, and audience. This rule is universal; it applies whether the brand is in SaaS, fashion, fitness, finance, food, gaming, real estate, education, healthcare, automotive, beauty, sports, hospitality, or any other category.
+
+How to anchor (use whichever fits the brand's actual world):
+- Industry POV: how someone in this industry sees the trend (e.g. an investor's take on a meme-stock moment, a chef's reaction to a viral dish, a teacher's read on a Gen Z slang).
+- Practitioner reaction: what the brand's day-to-day operator/customer/team would say (e.g. "marketers see this", "trainers see this", "florists see this").
+- Workflow / tool analogy: map the trend onto something native to the brand's category (e.g. a fashion brand maps a sports controversy to wardrobe staples; a fintech maps a celebrity scandal to financial-decision lessons).
+- Audience experience: tie the trend to a moment in the audience's actual life (e.g. parents-of-toddlers, gym-goers, freelancers, brides, gamers, students) — show it on-screen.
+- Lesson / breakdown: "what your industry can learn from this moment" — only use this if the others don't fit naturally.
+
+Rules:
+- The angle must feel native to the audience — not "Brand X reacts to trend Y" framing. The brand's expertise, customer, or category should be visible in the hook and the visual_idea, not pasted on at the end.
+- Read user_profile.industry, niche, and business_summary FIRST — let those dictate the angles you pick. Do NOT use a marketing/SaaS framing for a non-marketing brand. Do NOT use a fitness framing for a non-fitness brand.
 - The remaining 1-2 ideas can be broader cultural/emotional takes for variety, but still on-trend and on-brand-tone.
-- If the trend is genuinely incompatible with the brand industry, prefer skipping the trend in your reasoning rather than forcing a stretch — but still produce 5 ideas, with the 3+ anchored ones leaning on the closest legitimate angle (e.g. a "what marketers can learn from this moment" lens).
+- If the trend is genuinely incompatible with the brand's domain, anchor on the closest legitimate audience link (a values/lifestyle bridge) rather than forcing the brand's product into every idea.
 
 Each idea MUST:
 - Directly reference the specific real-time event/story driving the trend.

@@ -1138,17 +1138,27 @@ Always respond with a single valid JSON object.`;
         region: t.region || null,
       }));
 
+      // When categoryFallback is true, the user's preferred categories had
+      // zero fresh matches. The LLM must NOT refuse to pick — explain the
+      // situation and tell it to pick the closest-fit alternates regardless
+      // of literal category match.
+      const fallbackNotice = categoryFallback
+        ? `\n⚠️ CATEGORY FALLBACK ACTIVE: The user's preferred content_categories had no fresh matches in this region. The candidates below come from broader popular categories. Pick the closest-fit alternates anyway — DO NOT return an empty array. The user's why_good_fit should honestly acknowledge it's a category-adjacent pick (e.g. "Not in your usual category, but this trend's audience overlap with [user's industry] makes it worth a take") rather than pretending it's a perfect category match.\n`
+        : '';
+
       const userMessage = `
 Here is the brand profile:
 ${JSON.stringify(user_profile, null, 2)}
 
 Here is the brand memory (style guide):
 ${JSON.stringify(brandMemory, null, 2)}
-
+${fallbackNotice}
 Here is the list of candidate trends (ranked by virality_score, with descriptions of why they are currently viral):
 ${JSON.stringify(trendsForPrompt, null, 2)}
 
 The 2 trends with the highest virality_score are: ${top2TrendIds.join(', ')} — you MUST include these.
+
+🚨 NON-NEGOTIABLE: You MUST return at least 6 picks (7 when possible). Returning an empty recommended_trends array is NEVER acceptable — if no trend feels like a perfect fit, pick the 6 strongest by virality_score and write an honest why_good_fit explaining the fit. Every trend_id you return MUST come from the candidate list above; do not invent IDs.
 
 Please select exactly 6 OR 7 trends (prefer 7 when 7 strong fits exist) and return a JSON object like:
 
@@ -1204,9 +1214,26 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
       const trendMap = new Map();
       trends.forEach(t => trendMap.set(t.trend_id, t));
 
+      // Defensive guard — if the LLM returned no usable picks (empty array,
+      // hallucinated trend_ids that aren't in our pool, or a malformed
+      // response), throw to trigger the deterministic signal-only fallback
+      // below. Without this guard, the user sees an empty "Get Trend
+      // Recommendations" result with no error message and no trends rendered
+      // — which is exactly what they'd report as "not working".
+      const aiPicks: any[] = Array.isArray(parsedResponse.recommended_trends)
+        ? parsedResponse.recommended_trends
+        : [];
+      const matchedAiPicks = aiPicks.filter((r: any) => r && trendMap.has(r.trend_id));
+      if (matchedAiPicks.length === 0 && trends.length > 0) {
+        console.warn(
+          `[recommend-trends] AI returned ${aiPicks.length} picks, ${matchedAiPicks.length} matched the candidate pool of ${trends.length}. Falling through to deterministic fallback.`,
+        );
+        throw new Error('AI returned no usable picks — using deterministic fallback');
+      }
+
       // Tier 3 / Fix #1 — fetch observation history ONLY for the trends
       // the LLM picked, not all 30 candidates. Single round trip.
-      const pickedTrendIds: string[] = (parsedResponse.recommended_trends || [])
+      const pickedTrendIds: string[] = matchedAiPicks
         .map((r: any) => r.trend_id)
         .filter((id: any): id is string => typeof id === 'string');
       const observationHistoryMap = await fetchObservationHistory(externalSupabase, pickedTrendIds);
@@ -1217,8 +1244,12 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
         ? user_profile.competitors
         : [];
 
-      // Map Marketers Quest recommendations to full trend objects
-      const recommended_trends = parsedResponse.recommended_trends
+      // Map Marketers Quest recommendations to full trend objects.
+      // We iterate matchedAiPicks (not parsedResponse.recommended_trends) so
+      // any hallucinated trend_ids that survived JSON parsing are dropped
+      // before they hit the response — and we already verified the list is
+      // non-empty above, so the post-filter array is guaranteed to be > 0.
+      const recommended_trends = matchedAiPicks
         .map((rec: any) => {
           const fullTrend = trendMap.get(rec.trend_id);
           if (!fullTrend) {
