@@ -15,7 +15,6 @@ import {
   LineChart,
   Target,
   Settings,
-  Shield,
   LogOut,
   Menu,
   User,
@@ -228,8 +227,6 @@ export const DashboardLayout = () => {
         <div className="px-3 pb-3 pt-2 border-t border-border space-y-0.5 shrink-0">
           <NavItem path="/profile" label="Profile" icon={User} />
           <NavItem path="/settings" label="Settings" icon={Settings} />
-          {!isCreator && <NavItem path="/admin" label="Admin" icon={Shield} />}
-
           <button
             onClick={handleLogout}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-all mt-1"
