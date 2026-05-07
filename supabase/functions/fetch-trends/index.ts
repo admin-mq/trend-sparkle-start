@@ -10,15 +10,38 @@ const corsHeaders = {
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-type SignalSource = 'google_trends_uk' | 'google_trends_us' | 'reddit' | 'youtube_uk' | 'youtube_us';
+//
+// 2026-05-06 rewrite — single-location pipeline:
+//   • Location is supplied per-request (UK/US/CA/AU/NZ/IN). All sources
+//     fetch for that ONE geo. No more GB+US dual-fetch — a UK user fetching
+//     trends from a US-only Reddit feed was always a smell.
+//   • Reddit is removed (Builder Policy gate); X via trends24 takes its slot.
+//   • Google Trends is now CATEGORY-AWARE: 10 from the user's primary
+//     category + 3 each from 5 popular categories = 25 baseline candidates.
+type Location = 'UK' | 'US' | 'CA' | 'AU' | 'NZ' | 'IN';
+
+// SignalSource is now flat — region is a separate field on RawSignal so we
+// don't have to add 5 new SignalSource variants for 6 locations × 3 sources.
+type SignalSource = 'google_trends' | 'youtube' | 'x';
 type Timing = 'early' | 'peaking' | 'saturated';
 
 interface RawSignal {
   topic: string;
   source: SignalSource;
-  region: 'UK' | 'USA' | 'Global';
+  /**
+   * Location code this signal came from. Always equal to the request's
+   * Location for now (single-geo pipeline), but kept on the row so we can
+   * re-introduce multi-geo runs later without refactoring.
+   */
+  region: Location;
   weight: number;       // 1–10
   detail?: string;
+  /**
+   * Google Trends category id (1–6) that produced this signal, when
+   * applicable. NULL for non-GT sources. Kept so we can show users which
+   * category each trend came from in the recommendations.
+   */
+  gt_category_id?: number;
 }
 
 interface ScoredCandidate {
@@ -93,15 +116,14 @@ export interface YouTubePublisher {
 }
 
 /**
- * Map a SignalSource ID to its parent platform. Used to compute the
- * corroboration score: a trend hit by google_trends_uk + google_trends_us
- * counts as 1 platform (Google Trends), not 2 — that's geographic spread,
- * not multi-platform corroboration.
+ * Map a SignalSource ID to its parent platform. With the post-rewrite flat
+ * SignalSource, this is now the identity function — kept as a named
+ * indirection so the corroboration math (and audit logs) stay readable, and
+ * so we can re-introduce per-region SignalSource variants later if we ever
+ * resume multi-geo runs.
  */
-function platformOf(s: SignalSource): 'google_trends' | 'reddit' | 'youtube' {
-  if (s.startsWith('google_trends')) return 'google_trends';
-  if (s.startsWith('youtube'))       return 'youtube';
-  return 'reddit';
+function platformOf(s: SignalSource): 'google_trends' | 'x' | 'youtube' {
+  return s; // SignalSource and platform set are now identical post-rewrite.
 }
 
 function computeCorroborationScore(sources: SignalSource[]): number {
@@ -109,6 +131,108 @@ function computeCorroborationScore(sources: SignalSource[]): number {
   // Clamp to [1, 3]. 0 shouldn't happen since we already filter signal-less
   // candidates upstream, but defensive default = 1 (worst case).
   return Math.max(1, Math.min(3, platforms.size));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOCATION + CATEGORY HELPERS (2026-05-06 rewrite)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Map a Location code to (Google Trends geo, YouTube regionCode, trends24 slug).
+ * All three currently agree on ISO-2 except trends24 which uses lowercase
+ * slugs ("united-kingdom" etc).
+ */
+function locationToGeo(loc: Location): {
+  gtGeo: string;       // Google Trends `geo=` param
+  ytRegion: string;    // YouTube Data API `regionCode=`
+  trends24Slug: string; // trends24.in URL slug
+} {
+  const map: Record<Location, { gtGeo: string; ytRegion: string; trends24Slug: string }> = {
+    UK: { gtGeo: 'GB', ytRegion: 'GB', trends24Slug: 'united-kingdom' },
+    US: { gtGeo: 'US', ytRegion: 'US', trends24Slug: 'united-states' },
+    CA: { gtGeo: 'CA', ytRegion: 'CA', trends24Slug: 'canada' },
+    AU: { gtGeo: 'AU', ytRegion: 'AU', trends24Slug: 'australia' },
+    NZ: { gtGeo: 'NZ', ytRegion: 'NZ', trends24Slug: 'new-zealand' },
+    IN: { gtGeo: 'IN', ytRegion: 'IN', trends24Slug: 'india' },
+  };
+  return map[loc];
+}
+
+/**
+ * Google Trends "trending now" categories. The category= URL param accepts
+ * these integer ids. List sourced from the trends.google.com/trending UI's
+ * own URL state — empirically verified, not officially documented.
+ *
+ * Why 6 not more? These are the buckets the public UI exposes. Anything
+ * beyond this is a sub-classification we'd be inventing.
+ */
+const GT_CATEGORIES = {
+  business:        1,
+  entertainment:   2,
+  health:          3,
+  sci_tech:        4,
+  sports:          5,
+  top_stories:     6,
+} as const;
+type GtCategoryId = typeof GT_CATEGORIES[keyof typeof GT_CATEGORIES];
+
+/**
+ * Map a free-text niche (from `user_profiles.niche` or `brand_profiles.industry`)
+ * to a Google Trends category id (1–6). Best-effort with a fallback:
+ *   - tries direct keyword match first (cheap, deterministic)
+ *   - falls back to top_stories=6 when nothing matches (the most generic
+ *     bucket, but still scoped to "newsworthy" rather than e.g. health)
+ *
+ * We do NOT use an LLM for this. Niches are a finite vocabulary in our
+ * dropdowns; if a user types something exotic, top_stories is a safe default.
+ */
+function nicheToGtCategory(niche: string | null | undefined): GtCategoryId {
+  if (!niche) return GT_CATEGORIES.top_stories;
+  const n = niche.toLowerCase();
+
+  // Order matters — more specific keywords first.
+  const rules: Array<[RegExp, GtCategoryId]> = [
+    [/(saas|software|tech|developer|cloud|ai|crypto|nft|web3|data|cyber)/, GT_CATEGORIES.sci_tech],
+    [/(fitness|wellness|health|medical|nutrition|yoga|mental)/,            GT_CATEGORIES.health],
+    [/(sport|fitness|football|soccer|basketball|cricket|rugby|tennis)/,    GT_CATEGORIES.sports],
+    [/(entertainment|music|film|tv|television|movie|celebrity|gaming|game|streaming|fashion|beauty|art)/, GT_CATEGORIES.entertainment],
+    [/(business|marketing|finance|invest|retail|ecommerce|saas|b2b|sales|hr|enterprise|startup|industr|consult|legal)/, GT_CATEGORIES.business],
+    [/(news|politic|govern|policy|world|current)/,                         GT_CATEGORIES.top_stories],
+  ];
+  for (const [re, cat] of rules) {
+    if (re.test(n)) return cat;
+  }
+  return GT_CATEGORIES.top_stories;
+}
+
+/**
+ * The 5 "popular categories" we always pull supplementary trends from, on
+ * top of the user's primary category. Per spec: entertainment, sports,
+ * business, politics-equiv (top_stories), sci-tech.
+ *
+ * If the user's primary category overlaps with one of these, the function
+ * caller is responsible for de-duping (we'll just fetch fewer secondary
+ * categories — better than fetching the same trends twice).
+ */
+const POPULAR_GT_CATEGORIES: GtCategoryId[] = [
+  GT_CATEGORIES.entertainment,
+  GT_CATEGORIES.sports,
+  GT_CATEGORIES.business,
+  GT_CATEGORIES.top_stories,  // stand-in for "politics + general news"
+  GT_CATEGORIES.sci_tech,
+];
+
+/** Human-readable label for a GT category id — used in logs and signal details. */
+function gtCategoryLabel(id: GtCategoryId): string {
+  const labels: Record<GtCategoryId, string> = {
+    1: 'Business',
+    2: 'Entertainment',
+    3: 'Health',
+    4: 'Sci/Tech',
+    5: 'Sports',
+    6: 'Top Stories',
+  };
+  return labels[id];
 }
 
 /**
@@ -139,33 +263,43 @@ interface IGValidation {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LAYER 1a: Google Trends RSS
-// Endpoint: https://trends.google.com/trending/rss?geo=GB|US
-// Free, no auth, updates ~hourly. Returns top 20 breakout searches per region.
+// LAYER 1a: Google Trends RSS — CATEGORY-AWARE (2026-05-06 rewrite)
+// Endpoint: https://trends.google.com/trending/rss?geo=<GB|US|...>&category=<1-6>
+// Free, no auth, updates ~hourly. The `category=` param IS supported by the
+// public RSS endpoint despite being undocumented — verified empirically.
+//
+// Per spec: 10 from the user's primary category + 3 each from 5 popular
+// categories = 25 baseline candidates. A single category run can yield
+// fewer than its quota (e.g. tail categories on smaller geos), and that's
+// honest — we just take what's there. The dedup step downstream collapses
+// duplicates that appear in both the primary AND a popular category.
 // ─────────────────────────────────────────────────────────────────────────────
-async function fetchGoogleTrends(geo: string, region: 'UK' | 'USA'): Promise<FetchResult> {
+async function fetchGoogleTrendsForCategory(
+  gtGeo: string,
+  region: Location,
+  categoryId: GtCategoryId,
+  limit: number,
+): Promise<RawSignal[]> {
   try {
-    const res = await fetch(`https://trends.google.com/trending/rss?geo=${geo}`, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
+    const res = await fetch(
+      `https://trends.google.com/trending/rss?geo=${gtGeo}&category=${categoryId}`,
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
       },
-    });
+    );
     if (!res.ok) {
-      console.warn(`[fetch-trends] Google Trends ${geo}: HTTP ${res.status}`);
-      // available=false: we tried, the server refused. corroboration_max
-      // should not credit this platform on this run.
-      return { signals: [], available: false };
+      console.warn(`[fetch-trends] GT ${gtGeo}/cat=${categoryId}: HTTP ${res.status}`);
+      return [];
     }
 
     const xml = await res.text();
-    const source: SignalSource = geo === 'GB' ? 'google_trends_uk' : 'google_trends_us';
     const signals: RawSignal[] = [];
-
-    // Parse each <item> block
     const itemBlocks = xml.match(/<item>[\s\S]*?<\/item>/g) || [];
-    for (const block of itemBlocks.slice(0, 20)) {
+    for (const block of itemBlocks.slice(0, limit)) {
       const titleMatch =
         block.match(/<title><!\[CDATA\[([^\]]+)\]\]><\/title>/) ||
         block.match(/<title>([^<]+)<\/title>/);
@@ -176,172 +310,190 @@ async function fetchGoogleTrends(geo: string, region: 'UK' | 'USA'): Promise<Fet
       const trafficMatch = block.match(/<ht:approx_traffic>([^<]+)<\/ht:approx_traffic>/);
       const trafficRaw = (trafficMatch?.[1] || '1000').replace(/[,+\s]/g, '');
       const traffic = parseInt(trafficRaw) || 1000;
-      // Log scale weight: 1K→3, 10K→5, 100K→7, 1M→9
       const weight = Math.min(10, Math.max(1, Math.ceil(Math.log10(traffic + 1))));
 
-      signals.push({ topic, source, region, weight });
+      signals.push({
+        topic,
+        source: 'google_trends',
+        region,
+        weight,
+        gt_category_id: categoryId,
+        detail: `Google Trends · ${gtCategoryLabel(categoryId)}`,
+      });
+    }
+    return signals;
+  } catch (e) {
+    console.warn(`[fetch-trends] GT ${gtGeo}/cat=${categoryId} error:`, e);
+    return [];
+  }
+}
+
+/**
+ * Run the GT category split for a single Location:
+ *   • `limit` topics from `primaryCategoryId` (default 10)
+ *   • 3 topics each from the 5 popular categories (skipping primary if it
+ *     overlaps — we'd rather have 22 distinct trends than 25 with collisions)
+ *
+ * Returns a single FetchResult with `available=true` iff the primary call
+ * returned 2xx (the gating signal — popular-category failures are tolerable
+ * fallbacks, the primary is the user-facing one).
+ */
+async function fetchGoogleTrends(
+  loc: Location,
+  primaryCategoryId: GtCategoryId,
+): Promise<FetchResult> {
+  const { gtGeo } = locationToGeo(loc);
+
+  // Primary category: 10 trends. We send this one first (sequentially) so
+  // we have a concrete signal of GT availability before fanning out to the
+  // 5 popular categories in parallel.
+  const primarySignals = await fetchGoogleTrendsForCategory(gtGeo, loc, primaryCategoryId, 10);
+  const primaryAvailable = primarySignals.length > 0;
+
+  // Popular categories: 3 each, in parallel. Skip whichever one matches
+  // the primary so we don't double-fetch.
+  const secondaryCategories = POPULAR_GT_CATEGORIES.filter(c => c !== primaryCategoryId);
+  const secondaryResults = await Promise.all(
+    secondaryCategories.map(c => fetchGoogleTrendsForCategory(gtGeo, loc, c, 3)),
+  );
+  const secondarySignals = secondaryResults.flat();
+
+  const all = [...primarySignals, ...secondarySignals];
+  console.log(
+    `[fetch-trends] GT ${gtGeo}: ${primarySignals.length} from primary cat=${primaryCategoryId} (${gtCategoryLabel(primaryCategoryId)}) + ${secondarySignals.length} from ${secondaryCategories.length} popular cats = ${all.length} total`,
+  );
+
+  // available iff the PRIMARY responded — secondary fallbacks failing is
+  // not enough to flip the platform off.
+  return { signals: all, available: primaryAvailable };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LAYER 1b: Twitter/X via trends24.in (replaces Reddit, 2026-05-06)
+// ─────────────────────────────────────────────────────────────────────────────
+// Why trends24, not the X API: the X dev account paywalls Basic tier at
+// $100/mo for 10K reads, and we'd burn through that on a single busy day.
+// trends24.in is a free aggregator that mirrors X's per-region trending
+// list. We scrape the same `<ol class="trend-card__list">` block that the
+// fetch-twitter-trends function already uses (verified working as of May
+// 2026). No API key, no OAuth, no quota — just a polite User-Agent.
+//
+// Honesty: trends24 only surfaces X's *native* trending list, which skews
+// toward sports/entertainment/politics. Niche-category trends (SaaS, AI,
+// etc.) rarely crack the public list — the IG validation + LLM filter
+// downstream handle that. We don't try to category-filter X here.
+async function fetchXSignalsViaTrends24(loc: Location): Promise<FetchResult> {
+  const { trends24Slug } = locationToGeo(loc);
+  const url = `https://trends24.in/${trends24Slug}/`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+    if (!res.ok) {
+      console.warn(`[fetch-trends] trends24 ${trends24Slug}: HTTP ${res.status}`);
+      return { signals: [], available: false };
     }
 
-    console.log(`[fetch-trends] Google Trends ${geo}: ${signals.length} topics`);
-    // available=true: HTTP fetch succeeded and we parsed the XML. Zero
-    // items here would still count as "Google Trends checked, no hits"
-    // — distinct from "couldn't check" above.
-    return { signals, available: true };
+    const html = await res.text();
+    const olMatch = html.match(/<ol[^>]*class=["']?trend-card__list["']?[^>]*>([\s\S]*?)<\/ol>/);
+    if (!olMatch) {
+      // Page reachable but structure changed — that's a "couldn't parse"
+      // not a "platform offline." Still report unavailable so corroboration
+      // doesn't credit a malformed scrape.
+      console.warn('[fetch-trends] trends24 structure changed — no trend-card__list found');
+      return { signals: [], available: false };
+    }
+
+    const linkRegex = /class=["']?trend-link["']?[^>]*>([^<]+)<\/a>/g;
+    const seen = new Set<string>();
+    const signals: RawSignal[] = [];
+    let m: RegExpExecArray | null;
+    let rank = 1;
+    // X trends24 list is already ranked. We weight by inverse rank so the
+    // top of the list scores highest:  rank 1 → 8, rank 5 → 6, rank 10 → 4.
+    // Capped to reasonable range so a #15 X trend doesn't dominate a 50K-
+    // traffic Google Trends row.
+    while ((m = linkRegex.exec(olMatch[1])) !== null && rank <= 20) {
+      const name = decodeXmlEntities(m[1].trim());
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const weight = Math.max(2, 9 - Math.floor(rank / 2));
+      signals.push({
+        topic: name,
+        source: 'x',
+        region: loc,
+        weight,
+        detail: `X trending #${rank} (${trends24Slug})`,
+      });
+      rank++;
+    }
+
+    console.log(`[fetch-trends] trends24 ${trends24Slug}: ${signals.length} X trends`);
+    return { signals, available: signals.length > 0 };
   } catch (e) {
-    console.warn(`[fetch-trends] Google Trends ${geo} error:`, e);
+    console.warn(`[fetch-trends] trends24 ${trends24Slug} error:`, e);
     return { signals: [], available: false };
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LAYER 1b: Reddit Hot Posts
-// Public .json endpoints — no OAuth needed for GET. Good cultural/news pulse.
-// ─────────────────────────────────────────────────────────────────────────────
-const REDDIT_FEEDS: { sub: string; region: 'UK' | 'USA' | 'Global' }[] = [
-  { sub: 'unitedkingdom', region: 'UK' },
-  { sub: 'AskUK',         region: 'UK' },
-  { sub: 'ukpolitics',    region: 'UK' },
-  { sub: 'news',          region: 'USA' },
-  { sub: 'television',    region: 'Global' },
-  { sub: 'movies',        region: 'Global' },
-  { sub: 'sports',        region: 'Global' },
-  { sub: 'entertainment', region: 'Global' },
-  { sub: 'Music',         region: 'Global' },
-  { sub: 'popheads',      region: 'Global' },
-];
+// Decode common XML/HTML entities in scraped trend names (e.g. "Movie&#39;s
+// Premiere" → "Movie's Premiere"). Trends24 emits HTML5 numeric entities;
+// the same handler is used by the legacy fetch-twitter-trends function.
+function decodeXmlEntities(str: string): string {
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)));
+}
 
-// Get Reddit OAuth2 bearer token (client credentials flow — no user needed)
-async function getRedditToken(clientId: string, clientSecret: string): Promise<string | null> {
+// ─────────────────────────────────────────────────────────────────────────────
+// LAYER 1c: YouTube Trending — single-geo (2026-05-06 rewrite)
+// Was hardcoded GB+US. Now takes the user-selected Location and pulls just
+// that region's mostPopular chart. 1 quota unit per call.
+// ─────────────────────────────────────────────────────────────────────────────
+async function fetchYouTubeTrending(apiKey: string, loc: Location): Promise<FetchResult> {
+  const { ytRegion } = locationToGeo(loc);
   try {
-    const creds = btoa(`${clientId}:${clientSecret}`);
-    const res = await fetch('https://www.reddit.com/api/v1/access_token', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${creds}`,
-        'User-Agent': 'TrendBot/2.0 (trend analysis; contact: hello@marketers.quest)',
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: 'grant_type=client_credentials',
-    });
-    if (!res.ok) { console.warn('[fetch-trends] Reddit OAuth failed:', res.status); return null; }
+    const url =
+      `https://www.googleapis.com/youtube/v3/videos` +
+      `?part=snippet,statistics&chart=mostPopular` +
+      `&regionCode=${ytRegion}&maxResults=10&key=${apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn(`[fetch-trends] YouTube ${ytRegion}: HTTP ${res.status}`);
+      return { signals: [], available: false };
+    }
     const data = await res.json();
-    return data.access_token || null;
+    const signals: RawSignal[] = [];
+
+    for (const item of (data.items || [])) {
+      const views = parseInt(item.statistics?.viewCount || '0');
+      // Normalize down: YouTube videos have 10M+ views normally
+      const weight = Math.min(8, Math.max(1, Math.ceil(Math.log10(views + 1)) - 2));
+      signals.push({
+        topic: item.snippet.title,
+        source: 'youtube',
+        region: loc,
+        weight,
+        detail: `YouTube trending · ${item.snippet.channelTitle}`,
+      });
+    }
+
+    console.log(`[fetch-trends] YouTube ${ytRegion}: ${signals.length} signals`);
+    return { signals, available: true };
   } catch (e) {
-    console.warn('[fetch-trends] Reddit token error:', e);
-    return null;
+    console.warn(`[fetch-trends] YouTube ${ytRegion} error:`, e);
+    return { signals: [], available: false };
   }
-}
-
-async function fetchRedditSignals(clientId?: string, clientSecret?: string): Promise<FetchResult> {
-  const signals: RawSignal[] = [];
-
-  // Try OAuth2 first (avoids IP rate-limits on Edge Functions)
-  // Falls back to anonymous if credentials not set
-  const token = clientId && clientSecret ? await getRedditToken(clientId, clientSecret) : null;
-  const baseUrl = token ? 'https://oauth.reddit.com' : 'https://www.reddit.com';
-  const authHeader = token
-    ? { 'Authorization': `Bearer ${token}`, 'User-Agent': 'TrendBot/2.0 (trend analysis; contact: hello@marketers.quest)' }
-    : { 'User-Agent': 'TrendBot/2.0 (social trend analysis; contact: hello@marketers.quest)' };
-
-  console.log(`[fetch-trends] Reddit: using ${token ? 'OAuth2' : 'anonymous'} access`);
-
-  // Tier 3 / Fix #3 — track availability per fetch run.
-  // Reddit is "available" iff at least one feed call returned 2xx with
-  // parseable data. All non-ok responses (403 from policy gate, 429
-  // rate-limit, etc.) keep us in unavailable territory.
-  let okFeedCount = 0;
-
-  for (const feed of REDDIT_FEEDS) {
-    try {
-      const res = await fetch(
-        `${baseUrl}/r/${feed.sub}/hot.json?limit=8&raw_json=1`,
-        { headers: authHeader }
-      );
-      if (!res.ok) {
-        console.warn(`[fetch-trends] Reddit r/${feed.sub}: HTTP ${res.status}`);
-        await delay(300);
-        continue;
-      }
-
-      const data = await res.json();
-      okFeedCount++;
-      const posts = data?.data?.children || [];
-
-      for (const post of posts.slice(0, 5)) {
-        const p = post.data;
-        if (p.stickied || p.over_18 || !p.title) continue;
-        const score = p.score || 1;
-        const weight = Math.min(10, Math.max(1, Math.ceil(Math.log10(score + 1))));
-        signals.push({
-          topic: p.title,
-          source: 'reddit',
-          region: feed.region,
-          weight,
-          detail: `r/${feed.sub} · ${score.toLocaleString()} upvotes`,
-        });
-      }
-    } catch (e) {
-      console.warn(`[fetch-trends] Reddit r/${feed.sub} error:`, e);
-    }
-    await delay(150);
-  }
-
-  console.log(`[fetch-trends] Reddit: ${signals.length} signals across ${okFeedCount}/${REDDIT_FEEDS.length} reachable feeds`);
-  // Available iff at least one feed returned a 2xx. Empty signals from
-  // a reachable feed (e.g. all posts filtered out) still counts as
-  // "Reddit checked" — that's the honest distinction we need.
-  return { signals, available: okFeedCount > 0 };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// LAYER 1c: YouTube Trending (optional — only runs if YOUTUBE_API_KEY is set)
-// Uses YouTube Data API v3 mostPopular chart, regionCode=GB/US
-// Free tier: 10,000 units/day. This call costs 1 unit per region.
-// ─────────────────────────────────────────────────────────────────────────────
-async function fetchYouTubeTrending(apiKey: string): Promise<FetchResult> {
-  const signals: RawSignal[] = [];
-  const regions: [string, 'UK' | 'USA'][] = [['GB', 'UK'], ['US', 'USA']];
-
-  // Tier 3 / Fix #3 — track whether at least one regional fetch
-  // succeeded. Quota-blocked / 403 / network errors leave us in
-  // unavailable state. Empty trending chart from a 200 response IS
-  // available (just an honest "nothing trending" verdict).
-  let okRegionCount = 0;
-
-  for (const [regionCode, region] of regions) {
-    try {
-      const url =
-        `https://www.googleapis.com/youtube/v3/videos` +
-        `?part=snippet,statistics&chart=mostPopular` +
-        `&regionCode=${regionCode}&maxResults=10&key=${apiKey}`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        console.warn(`[fetch-trends] YouTube ${regionCode}: HTTP ${res.status}`);
-        continue;
-      }
-      okRegionCount++;
-      const data = await res.json();
-
-      for (const item of (data.items || [])) {
-        const views = parseInt(item.statistics?.viewCount || '0');
-        // Normalize down: YouTube videos have 10M+ views normally
-        const weight = Math.min(8, Math.max(1, Math.ceil(Math.log10(views + 1)) - 2));
-        const source: SignalSource = regionCode === 'GB' ? 'youtube_uk' : 'youtube_us';
-        signals.push({
-          topic: item.snippet.title,
-          source,
-          region,
-          weight,
-          detail: `YouTube trending · ${item.snippet.channelTitle}`,
-        });
-      }
-    } catch (e) {
-      console.warn(`[fetch-trends] YouTube ${regionCode} error:`, e);
-    }
-  }
-
-  console.log(`[fetch-trends] YouTube: ${signals.length} signals across ${okRegionCount}/${regions.length} reachable regions`);
-  return { signals, available: okRegionCount > 0 };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -769,59 +921,73 @@ serve(async (req) => {
   try {
     const OPENAI_API_KEY      = Deno.env.get('OPENAI_API_KEY')!;
     const YOUTUBE_API_KEY     = Deno.env.get('YOUTUBE_API_KEY') || '';
-    const REDDIT_CLIENT_ID    = Deno.env.get('REDDIT_CLIENT_ID') || '';
-    const REDDIT_CLIENT_SECRET = Deno.env.get('REDDIT_CLIENT_SECRET') || '';
     const SUPABASE_URL        = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_ANON_KEY   = Deno.env.get('SUPABASE_ANON_KEY')!;
 
     if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not configured');
 
+    // ── Parse request params (2026-05-06 rewrite) ──────────────────────────
+    // Body shape:
+    //   { location: 'UK'|'US'|'CA'|'AU'|'NZ'|'IN', niche?: string }
+    // Both optional — defaults to UK + top_stories so the function still
+    // works as a cron/system call without a specific user.
+    let location: Location = 'UK';
+    let niche: string | null = null;
+    try {
+      if (req.headers.get('content-length') !== '0' && req.method === 'POST') {
+        const body = await req.json().catch(() => ({}));
+        if (body && typeof body.location === 'string') {
+          const allowed: Location[] = ['UK', 'US', 'CA', 'AU', 'NZ', 'IN'];
+          if (allowed.includes(body.location as Location)) location = body.location as Location;
+        }
+        if (body && typeof body.niche === 'string') niche = body.niche;
+      }
+    } catch (_e) {
+      // Body parse failure is non-fatal — fall through with defaults.
+    }
+    const primaryCategoryId = nicheToGtCategory(niche);
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const today = new Date().toISOString().split('T')[0];
 
-    console.log(`[fetch-trends] ── Starting 3-layer pipeline for ${today} ──`);
+    console.log(`[fetch-trends] ── Starting pipeline for ${today} loc=${location} cat=${primaryCategoryId} (${gtCategoryLabel(primaryCategoryId)}) niche="${niche ?? '(none)'}" ──`);
     if (!YOUTUBE_API_KEY) console.log('[fetch-trends] YOUTUBE_API_KEY not set — skipping YouTube layer');
-    if (!REDDIT_CLIENT_ID) console.log('[fetch-trends] REDDIT_CLIENT_ID not set — using anonymous Reddit access');
 
     // ── LAYER 1: Multi-source discovery (all in parallel) ─────────────────
-    console.log('[fetch-trends] Layer 1: Fetching signals from all sources...');
-    const [gtUK, gtUS, redditR, ytR] = await Promise.all([
-      fetchGoogleTrends('GB', 'UK'),
-      fetchGoogleTrends('US', 'USA'),
-      fetchRedditSignals(REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET),
-      // YouTube depends on the API key. No key → not even attempted →
-      // not counted toward platforms_checked. Same honesty contract as
-      // a quota-blocked Reddit run.
+    // Sources: Google Trends (category-aware, single geo) + YouTube trending
+    // (single geo) + X via trends24 (single geo). All for the user's
+    // selected Location. No more dual-region GT fetch — single user, single
+    // location.
+    console.log('[fetch-trends] Layer 1: Fetching signals from all sources for', location, '...');
+    const [gtR, xR, ytR] = await Promise.all([
+      fetchGoogleTrends(location, primaryCategoryId),
+      fetchXSignalsViaTrends24(location),
       YOUTUBE_API_KEY
-        ? fetchYouTubeTrending(YOUTUBE_API_KEY)
+        ? fetchYouTubeTrending(YOUTUBE_API_KEY, location)
         : Promise.resolve<FetchResult>({ signals: [], available: false }),
     ]);
 
     const allSignals: RawSignal[] = [
-      ...gtUK.signals, ...gtUS.signals, ...redditR.signals, ...ytR.signals,
+      ...gtR.signals, ...xR.signals, ...ytR.signals,
     ];
     const sourceBreakdown = {
-      google_trends_uk: gtUK.signals.length,
-      google_trends_us: gtUS.signals.length,
-      reddit: redditR.signals.length,
-      youtube: ytR.signals.length,
-      total: allSignals.length,
+      google_trends: gtR.signals.length,
+      x:             xR.signals.length,
+      youtube:       ytR.signals.length,
+      total:         allSignals.length,
     };
     console.log('[fetch-trends] Layer 1 complete:', sourceBreakdown);
 
-    // Tier 3 / Fix #3 — track which platforms we actually reached this
-    // run. corroboration_max gets set to this size on every upserted
-    // trend so the UI can render `score / max-checked` honestly. Reddit
-    // gated → max=2; Reddit comes back online → max=3; nothing else
-    // changes. Either Google Trends region counts as one platform check.
-    const platformsChecked = new Set<'google_trends' | 'reddit' | 'youtube'>();
-    if (gtUK.available || gtUS.available) platformsChecked.add('google_trends');
-    if (redditR.available)                platformsChecked.add('reddit');
-    if (ytR.available)                    platformsChecked.add('youtube');
+    // Tier 3 / Fix #3 (preserved) — track which platforms we actually
+    // reached this run. corroboration_max becomes max(1, size) so a
+    // 2/2 perfect-corroboration trend doesn't render as 2/3 partial.
+    const platformsChecked = new Set<SignalSource>();
+    if (gtR.available) platformsChecked.add('google_trends');
+    if (xR.available)  platformsChecked.add('x');
+    if (ytR.available) platformsChecked.add('youtube');
     const corroboration_max = Math.max(1, platformsChecked.size);
     console.log(
-      `[fetch-trends] Platforms checked this run: [${[...platformsChecked].join(', ')}] ` +
-      `→ corroboration_max=${corroboration_max}`,
+      `[fetch-trends] Platforms checked: [${[...platformsChecked].join(', ')}] → corroboration_max=${corroboration_max}`,
     );
 
     if (allSignals.length < 5) {
@@ -834,13 +1000,18 @@ serve(async (req) => {
     console.log('[fetch-trends] Top 10:', candidates.slice(0, 10).map(c => `"${c.topic}" (${c.sources.join('+')})`).join(', '));
 
     // ── LAYER 2b: Instagram aggregator validation ──────────────────────────
-    console.log('[fetch-trends] Layer 2b: Running IG aggregator validation...');
-    const topTopics = candidates.slice(0, 15).map(c => c.topic);
+    // Was 15 candidates; bumped to 25 (2026-05-06) so the user's 25-trend
+    // pool can be fully populated with IG-validated rows. The recommend-
+    // trends step picks 6–7 from this pool and stashes the rest in
+    // user_trend_sessions for the 2h-cooldown reshuffle.
+    console.log('[fetch-trends] Layer 2b: Running IG aggregator validation on top 25...');
+    const POOL_SIZE = 25;
+    const topTopics = candidates.slice(0, POOL_SIZE).map(c => c.topic);
     const igValidations = await validateOnInstagram(topTopics, OPENAI_API_KEY);
 
     // Build enriched candidates with timing + virality score
     const maxScore = candidates[0]?.totalScore || 1;
-    const enriched: EnrichedCandidate[] = candidates.slice(0, 15).map(c => {
+    const enriched: EnrichedCandidate[] = candidates.slice(0, POOL_SIZE).map(c => {
       // If validateOnInstagram returned nothing for this topic, treat it
       // as 'unknown' — never as a confirmed-not-on-IG signal.
       const igData = igValidations.get(c.topic.toLowerCase()) || {
@@ -957,14 +1128,14 @@ serve(async (req) => {
     console.log('[fetch-trends] Layer 3: Structuring with GPT-4o-mini...');
 
     const signalCount = enriched.length;
-    const structurePrompt = `You are a UK/USA social media trend analyst. Below is live multi-source trend signal data captured right now (${today}).
+    const structurePrompt = `You are a social media trend analyst for ${location}. Below is live multi-source trend signal data captured right now (${today}) for that location.
 
 ⚠️ CRITICAL RULES:
 1. ONLY create entries for topics in the LIVE SIGNALS below — never invent from training data
-2. SKIP any topic that is purely a sports score/result/stats lookup with no social media angle (e.g. "racing results", "cricket scores", "league table"). Only keep sports topics if they involve a personality, drama, controversy, or cultural moment that people would actually create content about.
-3. SKIP generic search terms with no clear viral angle (e.g. "fast results", "dynamic pricing")
-4. For remaining topics, assess: would people actually make Instagram/TikTok content about this? If yes, include it. If it's just an information search, skip it.
-5. Quality over quantity — it's better to return 8 strong trends than 15 weak ones.
+2. KEEP almost everything. The pool is intentionally broad — the recommend-trends step downstream picks 6–7 from your output and uses the rest as a 2-hour reshuffle pool. A pool of 5 is useless; aim to keep 20–25.
+3. ONLY drop a topic if it's PURELY a stats/score lookup with zero social-media angle (e.g. "league table", "lottery numbers", "exchange rate"). Sports topics involving people, drama, results, or cultural moments STAY.
+4. ONLY drop a topic if it's a generic info-search keyword with no possible viral interpretation (e.g. "online calculator", "weather radar"). When in doubt, keep it — the LLM downstream can decide it's not relevant for THIS user.
+5. Otherwise, KEEP IT and write a great description — assume any kept signal is at least somebody's content angle.
 
 TIMING SIGNAL KEY:
 🟢 EARLY     = Trending in search/news but almost no Instagram posts yet. Brand posts NOW gets 6-12h head start.
@@ -975,10 +1146,10 @@ LIVE SIGNALS (${signalCount} topics — your ONLY source material):
 ${researchSummary}
 
 Your task: Filter to only the social-media-viable topics, then create one trend entry per kept topic.
-- Use your knowledge to add cultural context and explain WHY this is trending RIGHT NOW
+- Use your knowledge to add cultural context and explain WHY this is trending RIGHT NOW in ${location}
 - Write 3-5 sentence descriptions: what triggered it, what people are posting, the emotional hook
 - For EARLY trends, note the timing advantage in the description
-- source_signals must exactly match the sources listed in each signal
+- source_signals must exactly match the sources listed in each signal (post-rewrite vocabulary: google_trends, youtube, x)
 
 Return ONLY valid JSON. Note: timing, virality_score, ig_validated and
 source_signals are MEASURED values shown above — you do NOT need to invent
@@ -991,9 +1162,8 @@ descriptive fields:
       "hashtag": "primaryhashtag",
       "extra_hashtags": "#tag1 #tag2 #tag3 #tag4",
       "description": "3-5 sentences explaining what it is, why it's trending now, what people are posting, and the emotional hook.",
-      "region": "UK",
       "premium_only": false,
-      "source_signals": ["google_trends_uk", "reddit"],
+      "source_signals": ["google_trends", "x"],
       "category": "Entertainment"
     }
   ]
@@ -1001,9 +1171,9 @@ descriptive fields:
 
 Rules:
 - hashtag = lowercase, no # symbol, no spaces
-- region = UK | USA | Global
 - category = exactly one of: Entertainment | Sports | Music | Tech | News | Fashion | Food | Gaming | Finance | Lifestyle
-- source_signals must exactly match the Sources line for that signal above (so we can verify you didn't invent a topic)
+- source_signals must EXACTLY match the Sources line for that signal above (allowed values: google_trends, youtube, x)
+- DO NOT include a "region" field — the upsert step stamps location automatically
 - NEVER add a trend not in the signal list above`;
 
     const structureRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -1124,7 +1294,12 @@ Rules:
         // The UI hides this field entirely; virality_score / timing /
         // ig_validated / source_signals are the real signals we surface.
         views_last_60h_millions: null,
-        region:                  trend.region || 'Global',
+        // Location is now stamped from the REQUEST, not the LLM. Old rows
+        // had values like 'UK' / 'USA' / 'Global'; new rows use the new
+        // Location codes ('UK', 'US', 'CA', 'AU', 'NZ', 'IN'). Heterogeneity
+        // is fine — query side filters by exact match against the request's
+        // location.
+        region:                  location,
         premium_only:            trend.premium_only ?? false,
         active:                  true,
         date_added:              today,
@@ -1229,17 +1404,34 @@ Rules:
     const result = {
       success: true,
       date: today,
-      pipeline: '4-layer: google-trends + reddit + youtube + ig-validation + yt-engagement',
+      // Pipeline summary updated for the post-rewrite path (no Reddit).
+      pipeline: '4-layer: google-trends-categorized + x-trends24 + youtube + ig-validation + yt-engagement',
+      // Echo what the caller asked for so recommend-trends can confirm the
+      // pool is for the right (location, category) before reading it.
+      location,
+      primary_category_id: primaryCategoryId,
+      primary_category_label: gtCategoryLabel(primaryCategoryId),
+      niche: niche ?? null,
       source_breakdown: sourceBreakdown,
       // Tier 3 / Fix #3 — surface the platforms we actually reached this
       // run, plus the corroboration_max derived from them. Lets ops/users
-      // diagnose at a glance whether Reddit is back online vs still gated.
+      // diagnose at a glance whether trends24/X is reachable etc.
       platforms_checked: [...platformsChecked],
       corroboration_max,
       candidates_after_dedup: candidates.length,
+      pool_size: enriched.length,
       early_signals: earlyCount,
       youtube_engagement_matches: YOUTUBE_API_KEY ? `${ytMatchCount}/${enriched.length}` : 'skipped (no API key)',
       trends_upserted: upserted,
+      // The trend_ids that were upserted this run, in virality-desc order
+      // already (since `enriched` is sorted that way before the upsert
+      // loop). recommend-trends uses this to populate the candidate_pool
+      // on user_trend_sessions for the 2h cooldown window.
+      pool_trend_ids: trends.map((t: any) => {
+        const slug = (t.trend_name || '').toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').substring(0, 28);
+        return `TQ-${today}-${slug}`;
+      }),
       errors,
     };
     console.log('[fetch-trends] ── Done ──', result);

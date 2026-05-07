@@ -1,19 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { BrandSelector } from "@/components/BrandSelector";
 import { CreatorSelector } from "@/components/CreatorSelector";
 import { RecommendedTrends } from "@/components/RecommendedTrends";
 import { CreativeDirections } from "@/components/CreativeDirections";
 import { ExecutionBlueprint } from "@/components/ExecutionBlueprint";
+import { SavedTrends } from "@/components/SavedTrends";
 import { TwitterTrends } from "@/components/TwitterTrends";
 import { TwitterContent } from "@/components/TwitterContent";
 import { WorkspaceStepper, WorkspaceStep } from "@/components/WorkspaceStepper";
 import { WorkspaceLoading } from "@/components/WorkspaceLoading";
+import { useSavedTrends } from "@/hooks/useSavedTrends";
+import { useSavedBlueprints } from "@/hooks/useSavedBlueprints";
 import {
   TrendQuestInputValues,
   deriveToneString,
   getPrimaryTone,
-  getToneMeterLabel
+  getToneMeterLabel,
+  mapGeographyToLocation,
 } from "@/components/TrendQuestInputs";
 import { RecommendedTrend, CreativeDirection, UserProfile, DetailedDirection, TwitterTrendsResponse, TwitterTrend, GeneratedTweet } from "@/types/trends";
 import { useAuth } from "@/hooks/useAuth";
@@ -34,6 +38,10 @@ const DEFAULT_INPUT_VALUES: TrendQuestInputValues = {
   platform: "Twitter",
   topic_angle: "",
   content_categories: [],
+  // Defaults to UK; overridden in the brand-load effect below from
+  // brand_profiles.geography (or creator profile location). User can
+  // change in the dropdown once on screen.
+  target_location: "UK",
   twitter_geography: "UK",
   twitter_user_type: "standard",
 };
@@ -70,10 +78,32 @@ const TrendQuest = () => {
 
   // Brand profile & recommendations
   const [recommendations, setRecommendations] = useState<RecommendedTrend[]>([]);
+  const [categoryFallback, setCategoryFallback] = useState<boolean>(false);
   const [brandName, setBrandName] = useState<string>('');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [trendsLoading, setTrendsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // ── Saved Trends (My Trends) — 48h-TTL bookmarks ────────────────────────
+  // Scope to active brand for brand accounts, null for creator profiles.
+  // The hook returns un-expired bookmarks only (read-time filter).
+  const savedTrendsBrandScope = isCreator ? null : (selectedBrandId || null);
+  const {
+    savedTrends,
+    loading: savedTrendsLoading,
+    saveTrend,
+    removeTrend,
+    count: savedTrendsCount,
+  } = useSavedTrends(savedTrendsBrandScope);
+  const savedTrendIds = useMemo(
+    () => new Set(savedTrends.map(s => s.trend_id)),
+    [savedTrends]
+  );
+
+  // ── Saved Blueprints (My Drafts) — auto-save on blueprint reach ─────────
+  // No TTL. Re-running generate-blueprint for the same direction overwrites
+  // (unique key includes direction_title). Surfaced on /tweet-drafts.
+  const { saveBlueprint } = useSavedBlueprints(savedTrendsBrandScope);
 
   // Creative directions
   const [creativeDirections, setCreativeDirections] = useState<CreativeDirection[]>([]);
@@ -111,6 +141,35 @@ const TrendQuest = () => {
       setSelectedBrandId(brands[0].id);
     }
   }, [brands, selectedBrandId]);
+
+  // Default target_location from the active brand / creator profile's
+  // geography. Only fires when the user hasn't manually picked one yet
+  // (we track that by comparing against the DEFAULT_INPUT_VALUES default
+  // 'UK' value AND the previously-derived default — once the user
+  // changes the dropdown, we never overwrite their choice on a brand
+  // switch). The `mapGeographyToLocation` helper falls back to null on
+  // unknown strings; we keep the existing value in that case.
+  const [autoLocationDerived, setAutoLocationDerived] = useState<string | null>(null);
+  useEffect(() => {
+    let geography: string | null | undefined;
+    if (isCreator) {
+      geography = creatorProfile?.location;
+    } else if (selectedBrandId) {
+      geography = brands.find(b => b.id === selectedBrandId)?.geography;
+    }
+    const mapped = mapGeographyToLocation(geography);
+    if (!mapped) return;
+    // Only auto-apply when the user hasn't overridden — i.e. the current
+    // value still matches the last value WE auto-set, OR it's the
+    // hardcoded initial default and we've never auto-set anything.
+    setInputValues(prev => {
+      const userTouched = autoLocationDerived !== null && prev.target_location !== autoLocationDerived;
+      if (userTouched) return prev;
+      if (prev.target_location === mapped) return prev;
+      return { ...prev, target_location: mapped };
+    });
+    setAutoLocationDerived(mapped);
+  }, [isCreator, creatorProfile, selectedBrandId, brands]);  // autoLocationDerived intentionally omitted to avoid feedback loop
 
   // Build UserProfile by merging brand data + trend quest inputs
   const buildUserProfile = (brand: BrandProfile, inputs: TrendQuestInputValues): UserProfile => {
@@ -233,22 +292,53 @@ const TrendQuest = () => {
   const handleRefreshTrends = async () => {
     setIsRefreshing(true);
     try {
-      await supabase.functions.invoke('fetch-trends', { body: {} });
+      // Note: recommend-trends now owns the cooldown decision. Within 2h
+      // it'll reshuffle from the cached candidate pool (no fetch-trends
+      // re-run needed) and return cooldown_active=true. After 2h, it
+      // falls through to a fresh DB query and we run fetch-trends in the
+      // background to refill the pool. We deliberately DON'T await
+      // fetch-trends in the cooldown path — that would defeat the cache.
       if (userProfile) {
         const { data } = await supabase.functions.invoke('recommend-trends', {
-          body: { user_profile: userProfile, user_id: user?.id || null }
+          body: {
+            user_profile: userProfile,
+            user_id: user?.id || null,
+            location: inputValues.target_location,
+            brand_id: !isCreator ? (selectedBrandId || undefined) : undefined,
+            selected_categories: inputValues.content_categories.length > 0 ? inputValues.content_categories : undefined,
+            refresh: true,
+          }
         });
-        if (data?.recommended_trends) setRecommendations(data.recommended_trends);
+        if (data?.recommended_trends) {
+          setRecommendations(data.recommended_trends);
+          setCategoryFallback(!!data.category_fallback);
+          if (data.cooldown_active) {
+            // Honest copy: tell the user we're recycling because we just
+            // ran a fetch <2h ago. The "less relevant trends" framing is
+            // accurate — un-served picks are exhausted, we're scraping
+            // the bottom of the same pool.
+            toast.message("Too soon to refresh", {
+              description:
+                "Showing less-relevant trends from your last batch. We refresh the source data every 2 hours to avoid spamming our upstream APIs.",
+              duration: 6000,
+            });
+          }
+        }
       }
     } catch (err) {
       console.error('Refresh failed:', err);
+      toast.error('Refresh failed. Try again.');
     } finally {
       setIsRefreshing(false);
     }
   };
 
-  const handleRecommendationsReceived = (newRecommendations: RecommendedTrend[]) => {
+  const handleRecommendationsReceived = (
+    newRecommendations: RecommendedTrend[],
+    opts?: { categoryFallback?: boolean },
+  ) => {
     setRecommendations(newRecommendations);
+    setCategoryFallback(!!opts?.categoryFallback);
     setActiveStep("trends");
     // Clear downstream state
     setCreativeDirections([]);
@@ -306,6 +396,11 @@ const TrendQuest = () => {
           user_profile: userProfile,
           user_id: user?.id || null,
           selected_categories: inputValues.content_categories.length > 0 ? inputValues.content_categories : undefined,
+          // 2026-05-06: drives both the trends-table region filter AND the
+          // user_trend_sessions cooldown scoping. Send the explicit dropdown
+          // value, not the brand profile geography — user override wins.
+          location: inputValues.target_location,
+          brand_id: !isCreator ? (selectedBrandId || undefined) : undefined,
         }
       });
 
@@ -318,7 +413,9 @@ const TrendQuest = () => {
         throw new Error('Invalid response from recommendation service');
       }
 
-      handleRecommendationsReceived(data.recommended_trends);
+      handleRecommendationsReceived(data.recommended_trends, {
+        categoryFallback: !!data.category_fallback,
+      });
     } catch (err) {
       console.error('Error fetching recommendations:', err);
       toast.error('Failed to load recommendations');
@@ -406,6 +503,39 @@ const TrendQuest = () => {
     }
   };
 
+  // Click-to-save handler for the Trends tab. Always optimistic-toast on
+  // success; we don't want the save action to feel laggy. The hook does
+  // a refetch under the hood so savedTrendIds updates within ~1 RTT.
+  const handleSaveTrend = async (trend: RecommendedTrend) => {
+    if (savedTrendIds.has(trend.trend_id)) {
+      toast.message("Already in My Trends");
+      return;
+    }
+    const result = await saveTrend({
+      brand_id: savedTrendsBrandScope,
+      trend,
+    });
+    if (result.ok) {
+      toast.success("Saved to My Trends", {
+        description: "Lives there for 48 hours.",
+      });
+    } else {
+      toast.error(result.error || "Could not save trend");
+    }
+  };
+
+  const handleRemoveSavedTrend = async (id: string) => {
+    const result = await removeTrend(id);
+    if (!result.ok) toast.error("Could not remove");
+  };
+
+  // Used by the SavedTrends panel "Use this trend" button. Re-uses the
+  // existing handleViewDirections path so the trend flows back into the
+  // normal Ideas → Blueprint funnel.
+  const handleUseSavedTrend = async (trend: RecommendedTrend) => {
+    await handleViewDirections(trend);
+  };
+
   const handleViewDirections = async (trend: RecommendedTrend) => {
     if (!userProfile) {
       setDirectionsError('User profile is required');
@@ -458,6 +588,39 @@ const TrendQuest = () => {
       if (error) throw new Error('Failed to generate execution blueprint');
       setTrendHashtags(data.trend_hashtags || '');
       setDetailedDirection(data.detailed_direction || null);
+
+      // ── Auto-save to My Drafts ────────────────────────────────────────
+      // The user reached the Blueprint stage — that's our "this is real
+      // intent" signal. Persist it so they can come back to it later.
+      // Upsert key = (user, brand, trend, direction_title), so re-running
+      // generate-blueprint for the same idea overwrites instead of piling
+      // up revisions. Save failures are silent (we already gave the user
+      // the visible blueprint; a missed background save shouldn't block
+      // the UI). We DO log them.
+      if (data.detailed_direction) {
+        const brandRow = !isCreator && selectedBrandId
+          ? brands.find(b => b.id === selectedBrandId)
+          : null;
+        try {
+          const result = await saveBlueprint({
+            brand_id: savedTrendsBrandScope,
+            brand_name: brandRow?.brand_name ?? userProfile.brand_name ?? null,
+            trend_id: selectedTrendId,
+            trend_name: selectedTrendName,
+            trend_category: null,
+            region: inputValues.target_location,
+            trend_hashtags: data.trend_hashtags || null,
+            direction_title: direction.title,
+            direction_summary: direction.summary ?? null,
+            blueprint: data.detailed_direction,
+          });
+          if (!result.ok) {
+            console.warn('[TrendQuest] blueprint auto-save failed:', result.error);
+          }
+        } catch (saveErr) {
+          console.warn('[TrendQuest] blueprint auto-save threw:', saveErr);
+        }
+      }
     } catch (err) {
       setBlueprintError(err instanceof Error ? err.message : 'Failed to load execution blueprint');
     } finally {
@@ -493,6 +656,19 @@ const TrendQuest = () => {
   };
 
   const renderWorkspaceContent = () => {
+    // My Trends is platform-agnostic — render it regardless of which
+    // upstream flow (recommend-trends vs twitter) the user came from.
+    if (activeStep === "saved_trends") {
+      return (
+        <SavedTrends
+          savedTrends={savedTrends}
+          loading={savedTrendsLoading}
+          onUseTrend={handleUseSavedTrend}
+          onRemoveTrend={handleRemoveSavedTrend}
+        />
+      );
+    }
+
     // ── Twitter / Social Pulse flow ──
     if (twitterData) {
       switch (activeStep) {
@@ -548,7 +724,27 @@ const TrendQuest = () => {
     // ── Default flow ──
     switch (activeStep) {
       case "trends":
-        return <RecommendedTrends recommendations={recommendations} brandName={brandName} onViewDirections={handleViewDirections} onRefreshTrends={handleRefreshTrends} isRefreshing={isRefreshing} />;
+        return (
+          <RecommendedTrends
+            recommendations={recommendations}
+            brandName={brandName}
+            onViewDirections={handleViewDirections}
+            onRefreshTrends={handleRefreshTrends}
+            isRefreshing={isRefreshing}
+            onSaveTrend={handleSaveTrend}
+            savedTrendIds={savedTrendIds}
+            categoryFallback={categoryFallback}
+          />
+        );
+      case "saved_trends":
+        return (
+          <SavedTrends
+            savedTrends={savedTrends}
+            loading={savedTrendsLoading}
+            onUseTrend={handleUseSavedTrend}
+            onRemoveTrend={handleRemoveSavedTrend}
+          />
+        );
       case "directions":
         if (directionsError) {
           return (
@@ -607,6 +803,7 @@ const TrendQuest = () => {
                 hasTrends={recommendations.length > 0 || twitterData !== null}
                 hasDirections={creativeDirections.length > 0 || generatedTweets.length > 0}
                 hasBlueprint={detailedDirection !== null}
+                hasSavedTrends={savedTrendsCount > 0}
                 onStepClick={setActiveStep}
               />
             </div>

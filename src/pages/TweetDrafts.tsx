@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTweetDrafts } from '@/hooks/useTweetDrafts';
+import { useSavedBlueprints } from '@/hooks/useSavedBlueprints';
+import { SavedBlueprintsList } from '@/components/SavedBlueprintsList';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -10,6 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs';
 import {
   Twitter,
   Copy,
@@ -24,6 +32,7 @@ import {
   Send,
   AlertTriangle,
   Filter,
+  FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SavedTweetDraft, DraftGeneration } from '@/types/trends';
@@ -305,8 +314,10 @@ const GenerationCard = ({
   );
 };
 
-// ── Main page ────────────────────────────────────────────────────────────────
-export default function TweetDrafts() {
+// ── Tweet drafts inner panel ─────────────────────────────────────────────
+// Pulled out of the previous default export so the page can host both the
+// Blueprints tab (primary) and the original tweet drafts grid (secondary).
+const TweetDraftsPanel = () => {
   const navigate = useNavigate();
   const {
     generations,
@@ -405,29 +416,7 @@ export default function TweetDrafts() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Page header */}
-      <div className="flex items-start justify-between gap-3 mb-6 flex-wrap">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-primary" />
-            My Drafts
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Every tweet draft you've generated, grouped by trend. Drafts persist across sessions.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate('/trend-quest')}
-          className="gap-2"
-        >
-          <ExternalLink className="w-3.5 h-3.5" />
-          New drafts in Trend Quest
-        </Button>
-      </div>
-
+    <div>
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-3 mb-6">
         <div className="rounded-lg border border-border/40 bg-card/30 p-3">
@@ -532,6 +521,83 @@ export default function TweetDrafts() {
           ))}
         </div>
       )}
+    </div>
+  );
+};
+
+// ── Main page ────────────────────────────────────────────────────────────
+//
+// The "My Drafts" surface in the sidebar. Two tabs:
+//   • Blueprints (primary) — auto-saved Execution Blueprints from
+//     Trend Quest. The user reaches Blueprint stage → it lands here.
+//     This is the headline thing — real, structured drafts of full
+//     posts, with caption + script + hashtags.
+//   • Tweet drafts (secondary) — the 3-up tweet variants generated
+//     from Twitter / Social Pulse trends. Same data we always had,
+//     just no longer the only thing on this page.
+export default function TweetDrafts() {
+  const navigate = useNavigate();
+  // We use these counters in the tab labels — the user should be able
+  // to see "Blueprints (3)" / "Tweet drafts (12)" without clicking through.
+  const { blueprints } = useSavedBlueprints();
+  const { drafts: tweetDraftsList } = useTweetDrafts();
+  const blueprintsCount = blueprints.length;
+  const tweetDraftsCount = tweetDraftsList.length;
+
+  return (
+    <div className="p-6 max-w-7xl mx-auto">
+      {/* Page header */}
+      <div className="flex items-start justify-between gap-3 mb-6 flex-wrap">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-primary" />
+            My Drafts
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Your auto-saved Execution Blueprints and tweet drafts. Persist across sessions.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate('/trend-quest')}
+          className="gap-2"
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+          Open Trend Quest
+        </Button>
+      </div>
+
+      <Tabs defaultValue="blueprints" className="w-full">
+        <TabsList className="mb-6">
+          <TabsTrigger value="blueprints" className="gap-2">
+            <FileText className="w-3.5 h-3.5" />
+            Blueprints
+            {blueprintsCount > 0 && (
+              <span className="ml-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">
+                {blueprintsCount}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="tweet-drafts" className="gap-2">
+            <Twitter className="w-3.5 h-3.5" />
+            Tweet drafts
+            {tweetDraftsCount > 0 && (
+              <span className="ml-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">
+                {tweetDraftsCount}
+              </span>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="blueprints" className="m-0">
+          <SavedBlueprintsList />
+        </TabsContent>
+
+        <TabsContent value="tweet-drafts" className="m-0">
+          <TweetDraftsPanel />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

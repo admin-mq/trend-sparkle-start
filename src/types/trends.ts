@@ -271,8 +271,12 @@ export interface TrendArc {
  * "no longer worth posting" threshold. See computeDecayForecast in
  * recommend-trends/index.ts for the abstention rules. Every field is the
  * literal output of a transparent linear regression — UI MUST surface
- * `r_squared`, `observation_count`, and `history_span_days` in the tooltip
+ * `r_squared`, `observation_count`, and `history_span_hours` in the tooltip
  * so users can verify the math themselves.
+ *
+ * 24h calibration (2026-05-06): we only fetch trends from the last 24 hours,
+ * so the regression operates on hours, not days. Forecast horizon caps at
+ * 12h; min span is 3h; min slope is -0.3 score/hour for a "declining" badge.
  */
 export interface DecayForecast {
   /** ISO timestamp when virality_score is projected to cross threshold. */
@@ -281,10 +285,10 @@ export interface DecayForecast {
   decay_threshold: number;
   /** Most recent observed virality_score. */
   current_score: number;
-  /** Linear slope in score/day. ALWAYS negative (we abstain when flat or rising). */
-  slope_per_day: number;
-  /** Span between earliest and latest observation, in days. */
-  history_span_days: number;
+  /** Linear slope in score/HOUR. ALWAYS negative (we abstain when flat or rising). */
+  slope_per_hour: number;
+  /** Span between earliest and latest observation, in HOURS. */
+  history_span_hours: number;
   /** How many observations we fit on (after filtering nulls). */
   observation_count: number;
   /** Quality of fit, 0..1. We abstain below 0.3. */

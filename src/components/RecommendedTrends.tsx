@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { RecommendedTrend, TrendTiming, TrendCategory, TrendObservation, CompetitorCoverage, YouTubeVelocity, DecayForecast, TrendArc } from "@/types/trends";
-import { TrendingUp, ArrowRight, RefreshCw, Zap, Clock, Flame, ShieldCheck, AlertTriangle, Youtube, ThumbsUp, MessageCircle, Users, Trophy, Rocket, Gauge, Hourglass, Layers } from "lucide-react";
+import { TrendingUp, ArrowRight, RefreshCw, Zap, Clock, Flame, ShieldCheck, AlertTriangle, Youtube, ThumbsUp, MessageCircle, Users, Trophy, Rocket, Gauge, Hourglass, Layers, Bookmark, BookmarkCheck, Info } from "lucide-react";
 
 interface RecommendedTrendsProps {
   recommendations: RecommendedTrend[];
@@ -9,6 +9,26 @@ interface RecommendedTrendsProps {
   onViewDirections: (trend: RecommendedTrend) => void;
   onRefreshTrends?: () => void;
   isRefreshing?: boolean;
+  /**
+   * Save a trend to the user's My Trends list (48h TTL). When provided,
+   * each card shows a bookmark button that calls this. Clicking the card
+   * body itself ALSO triggers save — matches the "click to save" UX
+   * from the spec. View-directions button stops propagation so it
+   * doesn't double-fire.
+   */
+  onSaveTrend?: (trend: RecommendedTrend) => void;
+  /**
+   * trend_ids the user has already saved (so we render the bookmark
+   * filled-in instead of empty). Stays in sync with the saved-trends
+   * hook in the parent.
+   */
+  savedTrendIds?: Set<string>;
+  /**
+   * True when recommend-trends couldn't find anything matching the
+   * user's category filter and fell back to popular categories.
+   * Renders an explanatory banner at the top of the list.
+   */
+  categoryFallback?: boolean;
 }
 
 // ── Category config ────────────────────────────────────────────────────────────
@@ -374,15 +394,15 @@ const DecayForecastBadge = ({ forecast }: { forecast?: DecayForecast | null }) =
   if (msUntil <= 0) return null; // already crossed by the time client sees it
 
   const hoursUntil = msUntil / 3_600_000;
-  const daysUntil = hoursUntil / 24;
 
-  // Approximate label. < 1 day → hours; ≥ 1 day → days, no decimals
-  // (decimals on a forecast imply false precision).
-  const visibleLabel = hoursUntil < 24
-    ? `~${Math.max(1, Math.round(hoursUntil))}h left`
-    : `~${Math.max(1, Math.round(daysUntil))}d left`;
+  // 24h-window calibration: forecasts cap at 12h, so we always render in
+  // hours. No decimals — implies false precision on a forecast.
+  const visibleLabel = `~${Math.max(1, Math.round(hoursUntil))}h left`;
 
-  const isUrgent = daysUntil <= 2;
+  // Urgent if < 4h: that's the band where the user should consider
+  // posting NOW or skipping. Beyond that it's still actionable but not
+  // a fire alarm.
+  const isUrgent = hoursUntil <= 4;
   const colorClasses = isUrgent
     ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30'
     : 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/30';
@@ -391,8 +411,8 @@ const DecayForecastBadge = ({ forecast }: { forecast?: DecayForecast | null }) =
   const fitPct = Math.round(forecast.r_squared * 100);
   const title = [
     `Projected to drop below virality ${forecast.decay_threshold}.`,
-    `Method: linear regression on ${forecast.observation_count} observations over ${forecast.history_span_days}d (fit quality R²=${fitPct}%).`,
-    `Slope: ${forecast.slope_per_day} score/day from current ${forecast.current_score}.`,
+    `Method: linear regression on ${forecast.observation_count} observations over ${forecast.history_span_hours}h (fit quality R²=${fitPct}%).`,
+    `Slope: ${forecast.slope_per_hour} score/hour from current ${forecast.current_score}.`,
     `Estimate, not a prediction — re-evaluated each fetch run.`,
   ].join(' ');
 
@@ -680,6 +700,9 @@ export const RecommendedTrends = ({
   onViewDirections,
   onRefreshTrends,
   isRefreshing = false,
+  onSaveTrend,
+  savedTrendIds,
+  categoryFallback = false,
 }: RecommendedTrendsProps) => {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
@@ -815,17 +838,68 @@ export const RecommendedTrends = ({
         </div>
       )}
 
+      {/* Category-fallback notice. Surfaced when recommend-trends had to
+          drop the user's selected categories filter because no trends
+          matched. Honest copy — we tell them the filter was overridden
+          and point them at "My Trends" / refresh as next steps. */}
+      {categoryFallback && (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+          <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          <p className="leading-relaxed">
+            <strong>Nothing is trending in your specific category at the moment.</strong>{' '}
+            Showing top trends from popular categories in your region instead. Try Refresh in 2 hours, or pick a different region.
+          </p>
+        </div>
+      )}
+
       {/* Trend cards */}
       <div className="flex-1 space-y-3 overflow-y-auto pr-2">
-        {displayedTrends.map((trend) => (
+        {displayedTrends.map((trend) => {
+          const isSaved = savedTrendIds?.has(trend.trend_id) ?? false;
+          // The whole card is clickable to save. Inner buttons must
+          // stopPropagation so they don't double-fire the save.
+          const handleCardClick = () => {
+            if (onSaveTrend) onSaveTrend(trend);
+          };
+          return (
           <div
             key={trend.trend_id}
-            className={`post-card p-4 hover:shadow-glow transition-shadow ${
+            onClick={onSaveTrend ? handleCardClick : undefined}
+            role={onSaveTrend ? "button" : undefined}
+            tabIndex={onSaveTrend ? 0 : undefined}
+            onKeyDown={onSaveTrend ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleCardClick();
+              }
+            } : undefined}
+            className={`post-card relative p-4 pr-12 hover:shadow-glow transition-shadow ${
+              onSaveTrend ? 'cursor-pointer' : ''
+            } ${
               trend.timing === 'early' ? 'border-emerald-500/30 bg-emerald-500/5' : ''
-            }`}
+            } ${isSaved ? 'ring-1 ring-amber-500/40' : ''}`}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
+                {/* Bookmark / Save button. Top-right of every card. Stops
+                    propagation so it doesn't double-fire with the
+                    card-body click handler (both end up at the same
+                    onSaveTrend, but one round-trip is cleaner). */}
+                {onSaveTrend && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onSaveTrend(trend); }}
+                    title={isSaved ? 'Saved to My Trends (re-saving extends the 48h window)' : 'Save to My Trends — keeps for 48 hours'}
+                    aria-label={isSaved ? 'Re-save trend' : 'Save trend to My Trends'}
+                    className={`absolute top-3 right-3 p-1.5 rounded-md transition-colors ${
+                      isSaved
+                        ? 'text-amber-500 hover:bg-amber-500/10'
+                        : 'text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10'
+                    }`}
+                  >
+                    {isSaved ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
+                  </button>
+                )}
                 {/* Name + badges row */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <h4 className="font-semibold text-foreground text-base">
@@ -918,7 +992,7 @@ export const RecommendedTrends = ({
             )}
 
             <Button
-              onClick={() => onViewDirections(trend)}
+              onClick={(e) => { e.stopPropagation(); onViewDirections(trend); }}
               variant="ghost"
               size="sm"
               className="mt-3 text-primary hover:text-primary hover:bg-primary/10 gap-1"
@@ -927,7 +1001,8 @@ export const RecommendedTrends = ({
               <ArrowRight className="w-3 h-3" />
             </Button>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -23,6 +23,40 @@ const TWITTER_REGIONS = [
   'Nigeria', 'South Africa', 'Pakistan', 'Brazil',
 ] as const;
 
+// Target Location for the trend-fetch pipeline. These are the exact codes
+// that fetch-trends + recommend-trends accept (Google Trends geo + trends24
+// slug + YouTube region all map off these). Keep this list in sync with
+// fetch-trends/index.ts -> Location type. Adding a new country requires
+// matching entries in locationToGeo() on the edge-function side.
+export const TARGET_LOCATIONS = [
+  { code: 'UK', label: 'United Kingdom' },
+  { code: 'US', label: 'United States' },
+  { code: 'CA', label: 'Canada' },
+  { code: 'AU', label: 'Australia' },
+  { code: 'NZ', label: 'New Zealand' },
+  { code: 'IN', label: 'India' },
+] as const;
+export type TargetLocationCode = typeof TARGET_LOCATIONS[number]['code'];
+
+// Map a brand-profile / creator-profile geography string (free-form, e.g.
+// "USA", "United States", "Global", "GB") to one of our 6 supported codes.
+// Default UK because it's our most-tested region. We match on substrings
+// and aliases — covers the BrandProfileForm's geography dropdown values
+// AND any stray user input we've seen in the wild. Returns null when the
+// input is empty so callers can decide whether to use UK or leave blank.
+export function mapGeographyToLocation(geography: string | null | undefined): TargetLocationCode | null {
+  if (!geography) return null;
+  const g = geography.toLowerCase().trim();
+  if (!g) return null;
+  if (/(^|\W)(uk|gb|britain|england|scotland|wales|united kingdom)(\W|$)/.test(g)) return 'UK';
+  if (/(^|\W)(us|usa|united states|america|u\.s\.)(\W|$)/.test(g)) return 'US';
+  if (/canada|canadian/.test(g)) return 'CA';
+  if (/australia|aussie/.test(g)) return 'AU';
+  if (/new zealand|kiwi|nz/.test(g)) return 'NZ';
+  if (/india|indian/.test(g)) return 'IN';
+  return null;
+}
+
 const TREND_CATEGORIES = [
   'Entertainment', 'News', 'Tech', 'Entrepreneurship',
   'Sports', 'Fashion', 'Finance', 'Music', 'Gaming', 'Lifestyle',
@@ -144,6 +178,10 @@ export interface TrendQuestInputValues {
   platform: string;
   topic_angle: string;
   content_categories: string[];
+  // Target Location for the trend-fetch pipeline (applies to ALL platforms,
+  // not just Twitter). Defaults from brand/creator profile geography but
+  // user can override here for the current run.
+  target_location: TargetLocationCode;
   twitter_geography: string;
   twitter_user_type: 'standard' | 'premium';
 }
@@ -215,6 +253,37 @@ export const TrendQuestInputs = ({ values, onChange }: TrendQuestInputsProps) =>
         </div>
         <p className="text-[10px] text-muted-foreground/70">
           Twitter / X & Instagram are live. TikTok, LinkedIn & YouTube coming soon.
+        </p>
+      </div>
+
+      {/* ── Target Location ──
+          Drives which country's trends get fetched (Google Trends geo +
+          YouTube region + trends24 slug). Default comes from the brand /
+          creator profile's geography; user can override per-run. We
+          deliberately separate this from the Twitter-only "Trend region"
+          dropdown below — that one is twitter-API-specific and lives
+          inside the X settings card. */}
+      <div className="space-y-1.5">
+        <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          Target Location
+        </Label>
+        <Select
+          value={values.target_location}
+          onValueChange={(v) => handleChange("target_location", v as TargetLocationCode)}
+        >
+          <SelectTrigger className="h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TARGET_LOCATIONS.map((loc) => (
+              <SelectItem key={loc.code} value={loc.code}>
+                {loc.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-[10px] text-muted-foreground/70">
+          Trends are pulled from this country. Defaults from your profile — change to test other regions.
         </p>
       </div>
 

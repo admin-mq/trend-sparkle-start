@@ -19,6 +19,14 @@ const EXTERNAL_SUPABASE_URL =
   Deno.env.get("EXTERNAL_SUPABASE_URL") || Deno.env.get("SUPABASE_URL") || "";
 const EXTERNAL_SUPABASE_ANON_KEY =
   Deno.env.get("EXTERNAL_SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_ANON_KEY") || "";
+// Service role key used ONLY for user_trend_sessions persistence — that
+// table's RLS requires auth.uid() = user_id, but the anon client we use
+// for read paths has no JWT context, so the upsert would silently fail
+// under RLS. We trust the user_id passed in the body (it's set by the
+// authenticated frontend before the call), and fall back to skipping
+// session persistence entirely when this key isn't present.
+const EXTERNAL_SUPABASE_SERVICE_ROLE_KEY =
+  Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
 if (!EXTERNAL_SUPABASE_URL || !EXTERNAL_SUPABASE_ANON_KEY) {
   console.error("[recommend-trends] Missing Supabase credentials. Set EXTERNAL_SUPABASE_URL/EXTERNAL_SUPABASE_ANON_KEY or rely on auto-injected SUPABASE_URL/SUPABASE_ANON_KEY.");
@@ -325,25 +333,29 @@ function computeYouTubeVelocity(
 // snapshot or a past observation.
 //
 // Method: simple linear regression of virality_score vs. observed_at
-// (treated as days from the earliest observation). Picked because:
+// (treated as HOURS from the earliest observation). Picked because:
 //   - it's transparent — users can verify the math from the tooltip,
 //   - it doesn't pretend to capture nuance we can't actually see in
 //     the data (no kalman filters, no exponential decay assumptions),
 //   - low R² is grounds for honest abstention (return null).
 //
+// 24h calibration (recalibrated 2026-05-06): we now only fetch trends
+// from the last 24 hours, so a "5-day decay forecast" was nonsensical.
+// Everything is in HOURS. Span minimum dropped to 3h, forecast horizon
+// capped at 12h. The slope threshold is tightened to -0.3 score/hour
+// (≈ -7/day) so we don't badge trends that are barely drifting.
+//
 // Honesty rules — every one of these triggers null (no badge):
-//   1. < 5 days span between earliest and latest observation. The user
-//      explicitly calibrated this threshold: long enough to be more
-//      than noise, short enough to be useful before the trend dies.
+//   1. < 3 hours span between earliest and latest observation. Two
+//      observations 30 minutes apart are noise, not a trajectory.
 //   2. < 3 observations after filtering nulls. A two-point line gives
 //      perfect R² mechanically — that's not signal, it's geometry.
-//   3. slope >= -0.5 score/day. A flat or rising trend has no decay
+//   3. slope >= -0.3 score/hour. A flat or rising trend has no decay
 //      to forecast. We will not invent one.
 //   4. R² < 0.3. The fit is too noisy to project — saying "decays in
-//      4d" when the data wobbles ±20 points/day would be a fabrication.
-//   5. Forecast horizon > 7 days from now. A nearly-flat slope can
-//      mathematically predict "decays in 47 days" — that's noise, not
-//      a forecast.
+//      4h" when the data wobbles ±20 points/hour would be a fabrication.
+//   5. Forecast horizon > 12 hours from now. Beyond that we're outside
+//      the 24h fetch window's relevance.
 //   6. current_score already at or below threshold. Already decayed —
 //      nothing to project.
 //
@@ -354,8 +366,8 @@ type DecayForecast = {
   est_decays_below_at: string;
   decay_threshold: number;
   current_score: number;
-  slope_per_day: number;
-  history_span_days: number;
+  slope_per_hour: number;       // recalibrated: per-hour, not per-day
+  history_span_hours: number;   // recalibrated: hours, not days
   observation_count: number;
   r_squared: number;
 };
@@ -365,11 +377,12 @@ function computeDecayForecast(
   now: Date = new Date(),
 ): DecayForecast | null {
   const DECAY_THRESHOLD = 30;
-  const MIN_SPAN_DAYS = 5;
+  const MIN_SPAN_HOURS = 3;
   const MIN_POINTS = 3;
-  const MIN_DECAY_SLOPE = -0.5; // score/day; less negative than this = "not declining"
+  const MIN_DECAY_SLOPE = -0.3; // score/hour; less negative than this = "not declining fast enough to badge"
   const MIN_R_SQUARED = 0.3;
-  const MAX_FORECAST_DAYS = 7;
+  const MAX_FORECAST_HOURS = 12;
+  const MS_PER_HOUR = 3_600_000;
 
   if (!history || history.length < MIN_POINTS) return null;
 
@@ -385,11 +398,11 @@ function computeDecayForecast(
 
   const tMin = points[0].t;
   const tMax = points[points.length - 1].t;
-  const spanDays = (tMax - tMin) / 86_400_000;
-  if (spanDays < MIN_SPAN_DAYS) return null;
+  const spanHours = (tMax - tMin) / MS_PER_HOUR;
+  if (spanHours < MIN_SPAN_HOURS) return null;
 
-  // Linear regression: x = days from earliest obs, y = virality_score.
-  const xs = points.map(p => (p.t - tMin) / 86_400_000);
+  // Linear regression: x = hours from earliest obs, y = virality_score.
+  const xs = points.map(p => (p.t - tMin) / MS_PER_HOUR);
   const ys = points.map(p => p.v);
   const n = xs.length;
   const meanX = xs.reduce((a, b) => a + b, 0) / n;
@@ -423,18 +436,18 @@ function computeDecayForecast(
 
   // Solve for x where y = threshold: x = (threshold - intercept) / slope.
   const xAtThreshold = (DECAY_THRESHOLD - intercept) / slope;
-  const nowX = (now.getTime() - tMin) / 86_400_000;
-  const daysFromNow = xAtThreshold - nowX;
-  if (daysFromNow <= 0) return null;            // line says we should have already crossed
-  if (daysFromNow > MAX_FORECAST_DAYS) return null; // too far out — slope too flat to trust
+  const nowX = (now.getTime() - tMin) / MS_PER_HOUR;
+  const hoursFromNow = xAtThreshold - nowX;
+  if (hoursFromNow <= 0) return null;                  // line says we should have already crossed
+  if (hoursFromNow > MAX_FORECAST_HOURS) return null;  // too far out for the 24h window
 
-  const estTime = new Date(now.getTime() + daysFromNow * 86_400_000);
+  const estTime = new Date(now.getTime() + hoursFromNow * MS_PER_HOUR);
   return {
     est_decays_below_at: estTime.toISOString(),
     decay_threshold: DECAY_THRESHOLD,
     current_score: currentScore,
-    slope_per_day: Math.round(slope * 10) / 10,
-    history_span_days: Math.round(spanDays * 10) / 10,
+    slope_per_hour: Math.round(slope * 100) / 100,        // 2dp because hourly slopes are smaller
+    history_span_hours: Math.round(spanHours * 10) / 10,
     observation_count: n,
     r_squared: Math.round(rSquared * 100) / 100,
   };
@@ -662,14 +675,111 @@ async function getBrandMemory(
   return data;
 }
 
+// ── user_trend_sessions persistence (2026-05-06 rewrite) ─────────────
+//
+// Single helper used by BOTH the AI path and the fallback path so the
+// cooldown contract behaves identically regardless of LLM availability.
+//
+// Semantics:
+//   • candidatePool === null → cooldown reshuffle. Keep the existing
+//     pool snapshot, just append newly_served_ids and bump
+//     last_refresh_at + refresh_count. fetched_at is NOT touched —
+//     that's the cooldown anchor.
+//   • candidatePool === array → fresh fetch. Replace pool entirely,
+//     reset served_trend_ids to just this run's picks, stamp
+//     fetched_at = now() so the next 2h window starts here.
+//
+// Errors are logged and swallowed — recommendation flow is the user-
+// visible contract, session persistence is bookkeeping. A failed
+// upsert means a user might get a fresh fetch sooner than 2h, which
+// is a graceful degradation, not a broken UX.
+async function persistSession(args: {
+  supabase: any;
+  userId: string;
+  brandId: string | null;
+  location: string;
+  primaryCategoryId: number;
+  niche: string | null;
+  candidatePool: any[] | null;
+  newlyServedIds: string[];
+  prevServedIds: string[];
+  existingSessionRow: any | null;
+  lastRecommendations: any[];
+  cooldownActive: boolean;
+}): Promise<void> {
+  try {
+    const {
+      supabase, userId, brandId, location, primaryCategoryId, niche,
+      candidatePool, newlyServedIds, prevServedIds, existingSessionRow,
+      lastRecommendations, cooldownActive,
+    } = args;
+
+    // Merge served IDs without dupes. Order doesn't matter (stored as
+    // unordered TEXT[]); we union to preserve history across reshuffles.
+    const mergedServed = Array.from(new Set([...prevServedIds, ...newlyServedIds]));
+
+    if (cooldownActive && existingSessionRow) {
+      // Reshuffle path — UPDATE only the served-list, refresh counter,
+      // last_refresh_at, last_recommendations. Pool + fetched_at stay.
+      const { error } = await supabase
+        .from('user_trend_sessions')
+        .update({
+          served_trend_ids: mergedServed,
+          last_recommendations: lastRecommendations,
+          last_refresh_at: new Date().toISOString(),
+          refresh_count: (existingSessionRow.refresh_count ?? 0) + 1,
+        })
+        .eq('id', existingSessionRow.id);
+      if (error) console.warn('[recommend-trends] session reshuffle update failed:', error);
+      return;
+    }
+
+    // Fresh-fetch path — UPSERT. New pool, new served list (just this
+    // run's picks), reset refresh_count, stamp fetched_at.
+    const nowIso = new Date().toISOString();
+    const row: any = {
+      user_id: userId,
+      brand_id: brandId,
+      location,
+      primary_category_id: primaryCategoryId,
+      niche,
+      candidate_pool: candidatePool ?? [],
+      served_trend_ids: newlyServedIds,
+      last_recommendations: lastRecommendations,
+      fetched_at: nowIso,
+      last_refresh_at: nowIso,
+      refresh_count: 0,
+    };
+
+    // (user_id, brand_id) is unique — onConflict tells PostgREST to
+    // UPDATE the existing row instead of erroring on the unique
+    // constraint. brand_id NULL collides with NULL via the partial
+    // unique index in the migration.
+    const { error } = await supabase
+      .from('user_trend_sessions')
+      .upsert(row, { onConflict: 'user_id,brand_id' });
+    if (error) console.warn('[recommend-trends] session upsert failed:', error);
+  } catch (e) {
+    console.warn('[recommend-trends] persistSession threw:', e);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { user_profile, user_id, selected_categories } = await req.json();
-    console.log('Received user_profile:', user_profile, 'user_id:', user_id || 'anonymous', 'categories:', selected_categories || 'all');
+    const {
+      user_profile,
+      user_id,
+      selected_categories,
+      // 2026-05-06 rewrite — new params:
+      location,         // 'UK'|'US'|'CA'|'AU'|'NZ'|'IN' — feeds into trends.region filter
+      brand_id,         // Optional. Scopes user_trend_sessions to a specific brand.
+      refresh,          // boolean. true = "Refresh Trends" button click.
+    } = await req.json();
+    console.log('[recommend-trends] body:', { user_id, location, brand_id, refresh, categories: selected_categories || 'all' });
 
     if (!user_profile || !user_profile.brand_name) {
       return new Response(
@@ -678,8 +788,21 @@ serve(async (req) => {
       );
     }
 
-    // Initialize EXTERNAL Supabase client (user's project with trends data)
+    // Initialize EXTERNAL Supabase client (user's project with trends data).
+    // Anon client for read paths (RLS-friendly).
     const externalSupabase = createClient(EXTERNAL_SUPABASE_URL, EXTERNAL_SUPABASE_ANON_KEY);
+    // Service-role client used ONLY for user_trend_sessions read/write
+    // (RLS scopes that table to auth.uid() = user_id; anon client has no
+    // JWT context, so writes would silently fail). We trust user_id from
+    // the request body — the frontend sets it from the authenticated
+    // session. NULL when the key isn't configured: session persistence
+    // becomes a no-op and every request is a fresh fetch (degraded but
+    // not broken).
+    const sessionsClient = EXTERNAL_SUPABASE_SERVICE_ROLE_KEY
+      ? createClient(EXTERNAL_SUPABASE_URL, EXTERNAL_SUPABASE_SERVICE_ROLE_KEY, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        })
+      : null;
 
     // Fetch brand memory
     const userId = user_id || null;
@@ -687,29 +810,125 @@ serve(async (req) => {
     const brandMemory = await getBrandMemory(externalSupabase, userId, brandName);
     console.log('Brand memory:', brandMemory ? 'found' : 'not found');
 
-    // Fetch candidate trends from external Supabase (optionally filtered by category)
+    // ── 2-hour cooldown / pool reshuffle (2026-05-06 rewrite) ─────────────
+    //
+    // Lookup user_trend_sessions for (user_id, brand_id). If a recent
+    // session exists (< 2h old), reuse its candidate_pool and pick a fresh
+    // 6–7 from it (preferring un-served trends). After 2h, fall through to
+    // the fresh-fetch path which queries the trends table directly.
+    //
+    // Anonymous users skip session storage entirely (no user_id = no row
+    // we could RLS-scope to). They always get the fresh-fetch path.
+    const COOLDOWN_HOURS = 2;
+    let sessionRow: any = null;
+    let cooldownActive = false;
+    let pooledTrends: any[] | null = null;  // populated when reading from session
+    let prevServedIds: string[] = [];
+
+    if (userId && sessionsClient) {
+      const sessionQuery = sessionsClient
+        .from('user_trend_sessions')
+        .select('*')
+        .eq('user_id', userId);
+      // brand_id may be null for creator-only profiles. PostgreSQL treats
+      // NULL as not-equal in `.eq()`, so use `.is()` for the null case.
+      const { data: existing } = brand_id
+        ? await sessionQuery.eq('brand_id', brand_id).maybeSingle()
+        : await sessionQuery.is('brand_id', null).maybeSingle();
+      sessionRow = existing;
+    }
+
+    if (sessionRow) {
+      const fetchedAtMs = new Date(sessionRow.fetched_at).getTime();
+      const ageHours = (Date.now() - fetchedAtMs) / 3_600_000;
+      // Cooldown applies iff the session is fresh AND (the session matches
+      // the requested location). A location mismatch means the user
+      // changed their target — bypass cooldown, do a fresh fetch.
+      if (ageHours < COOLDOWN_HOURS && (!location || sessionRow.location === location)) {
+        cooldownActive = true;
+        prevServedIds = Array.isArray(sessionRow.served_trend_ids) ? sessionRow.served_trend_ids : [];
+        pooledTrends = Array.isArray(sessionRow.candidate_pool) ? sessionRow.candidate_pool : [];
+        console.log(`[recommend-trends] Cooldown active: session ${ageHours.toFixed(2)}h old, ${pooledTrends.length} pool, ${prevServedIds.length} already served`);
+      } else {
+        console.log(`[recommend-trends] Session stale (${ageHours.toFixed(2)}h ≥ ${COOLDOWN_HOURS}h or location changed) — fresh fetch`);
+      }
+    }
+
+    // ── Trend candidates: pool (cooldown path) OR fresh DB query ──────────
+    //
+    // Category filter has TWO sources:
+    //   1. selected_categories from the wizard checkboxes (user's explicit
+    //      "show me only these" choice).
+    //   2. Implicit user category derived from the user_profile niche /
+    //      industry — currently UNUSED here (mapping happens client-side
+    //      via the wizard). Reserved for a future server-side default.
+    //
+    // Fallback contract: if the requested filter produces ZERO trends in
+    // the pool / DB, drop the filter and retry against the POPULAR_CATS
+    // set (Entertainment / Sports / Music / News / Gaming / Fashion /
+    // Finance / Food — the labels actually populated by fetch-trends).
+    // We surface `category_fallback: true` in the response so the UI can
+    // tell the user "Nothing is trending in your specific category at
+    // the moment — here's what's hot in your region."
+    const POPULAR_CATS = ['Entertainment', 'Sports', 'Music', 'News', 'Gaming', 'Fashion', 'Finance', 'Food'];
     const categories: string[] = Array.isArray(selected_categories) && selected_categories.length > 0
       ? selected_categories
       : [];
+    let categoryFallback = false;
 
-    // We deliberately do NOT select views_last_60h_millions here — we don't
-    // currently have a real view-count signal source, so that field is always
-    // NULL. Asking the LLM to optimise for it is meaningless. We rank by
-    // virality_score (computed from cross-source corroboration + timing)
-    // and let brand-fit be the LLM's job.
-    let query = externalSupabase
-      .from('trends')
-      .select('trend_id, trend_name, description, hashtags, region, premium_only, active, timing, ig_confirmed, ig_validated, virality_score, source_signals, corroboration_score, corroboration_max, first_seen_at, last_seen_at, peaked_at, peak_virality_score, category, yt_video_id, yt_video_title, yt_channel_title, yt_view_count, yt_like_count, yt_comment_count, yt_video_published_at, yt_fetched_at, yt_top_publishers')
-      .eq('premium_only', false)
-      .eq('active', true)
-      .order('virality_score', { ascending: false })
-      .limit(30);
+    let trends: any[];
+    let trendsError: any = null;
 
-    if (categories.length > 0) {
-      query = query.in('category', categories);
+    if (pooledTrends && pooledTrends.length > 0) {
+      // Cooldown path — read from the snapshotted pool, no DB hit.
+      // Apply category filter inline; fall back to popular cats if empty.
+      if (categories.length > 0) {
+        const filtered = pooledTrends.filter((t: any) => categories.includes(t.category));
+        if (filtered.length > 0) {
+          trends = filtered;
+        } else {
+          // Filter excluded everything in the pool — fall back to the
+          // popular set within the same pool, no re-fetch needed.
+          trends = pooledTrends.filter((t: any) => POPULAR_CATS.includes(t.category));
+          if (trends.length === 0) trends = pooledTrends; // ultra-fallback: anything
+          categoryFallback = true;
+        }
+      } else {
+        trends = pooledTrends;
+      }
+    } else {
+      // Fresh-fetch path — DB query, location filter when provided.
+      // We deliberately do NOT select views_last_60h_millions — it's
+      // always NULL (no real view-count source) and asking the LLM to
+      // optimize for it is meaningless. Rank by virality_score.
+      const baseSelect = 'trend_id, trend_name, description, hashtags, region, premium_only, active, timing, ig_confirmed, ig_validated, virality_score, source_signals, corroboration_score, corroboration_max, first_seen_at, last_seen_at, peaked_at, peak_virality_score, category, yt_video_id, yt_video_title, yt_channel_title, yt_view_count, yt_like_count, yt_comment_count, yt_video_published_at, yt_fetched_at, yt_top_publishers';
+
+      const buildQuery = (catFilter: string[] | null) => {
+        let q = externalSupabase
+          .from('trends')
+          .select(baseSelect)
+          .eq('premium_only', false)
+          .eq('active', true)
+          .order('virality_score', { ascending: false })
+          .limit(30);
+        if (location) q = q.eq('region', location);
+        if (catFilter && catFilter.length > 0) q = q.in('category', catFilter);
+        return q;
+      };
+
+      const result = await buildQuery(categories.length > 0 ? categories : null);
+      trends = result.data || [];
+      trendsError = result.error;
+
+      // Fallback: filter produced zero rows — retry with popular cats only.
+      if (!trendsError && trends.length === 0 && categories.length > 0) {
+        console.log(`[recommend-trends] No trends in selected categories ${JSON.stringify(categories)} for ${location} — falling back to popular cats`);
+        const fallback = await buildQuery(POPULAR_CATS);
+        trends = fallback.data || [];
+        trendsError = fallback.error;
+        categoryFallback = true;
+      }
     }
-
-    const { data: trends, error: trendsError } = await query;
 
     if (trendsError) {
       console.error('External Supabase error:', trendsError);
@@ -719,12 +938,29 @@ serve(async (req) => {
     if (!trends || trends.length === 0) {
       console.log('No trends found');
       return new Response(
-        JSON.stringify({ recommended_trends: [] }),
+        JSON.stringify({ recommended_trends: [], cooldown_active: cooldownActive, category_fallback: categoryFallback }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`Fetched ${trends.length} candidate trends from external Supabase`);
+    // Un-served preference (cooldown reshuffle): when we're recycling the
+    // pool within the 2h window, sort un-served trends to the front so the
+    // LLM (and the fallback) see them first. Trends already served this
+    // session fall to the back — they CAN still be picked if there aren't
+    // enough fresh ones left, but the user gets the "less relevant trends"
+    // popup since we're scraping the bottom of the pool.
+    if (cooldownActive && prevServedIds.length > 0) {
+      const servedSet = new Set(prevServedIds);
+      trends = [...trends].sort((a: any, b: any) => {
+        const aServed = servedSet.has(a.trend_id) ? 1 : 0;
+        const bServed = servedSet.has(b.trend_id) ? 1 : 0;
+        if (aServed !== bServed) return aServed - bServed; // un-served first
+        // Within each tier, preserve virality_score order.
+        return (b.virality_score ?? 0) - (a.virality_score ?? 0);
+      });
+    }
+
+    console.log(`Fetched ${trends.length} candidate trends from external Supabase (cooldown=${cooldownActive})`);
 
     // Try to get Marketers Quest recommendations
     try {
@@ -767,13 +1003,13 @@ Your job:
   - a description of WHY it is trending right now,
   - a virality_score (10–99) reflecting cross-source corroboration + timing,
   - a timing label (early / peaking / saturated),
-  - source_signals (which raw signals confirmed it: google_trends_uk, reddit, youtube_us, etc.),
-  - a corroboration_score and corroboration_max — score = how many DISTINCT platforms confirmed this trend; max = how many platforms we successfully reached this run (out of Google Trends / Reddit / YouTube). When score == max the trend has full coverage of the platforms we could check; when max < 3, that's because one of the platforms (currently Reddit) was unreachable this run. NEVER tell the user a trend is "missing a platform" if score == max — that's full coverage of available sources.
+  - source_signals (which raw signals confirmed it: google_trends, youtube, x, etc.),
+  - a corroboration_score and corroboration_max — score = how many DISTINCT platforms confirmed this trend; max = how many platforms we successfully reached this run (out of Google Trends / YouTube / X). When score == max the trend has full coverage of the platforms we could check; when max < 3, one of the platforms was unreachable this run. NEVER tell the user a trend is "missing a platform" if score == max — that's full coverage of available sources.
   - optional yt_view_count / yt_like_count — REAL YouTube engagement on the best-matching recent video for this trend. When present, this is externally-verifiable proof that audiences are actually engaging (not just searching). When null, it just means we couldn't find a qualifying recent video — treat it as "no extra evidence", NOT as "this trend has no reach".
   - optional yt_velocity — derived from yt_view_count divided by hours since the matched video was uploaded. Tiers: 'racing' (≥20K views/hr), 'strong' (≥5K/hr), 'steady' (≥1K/hr), 'slow' (<1K/hr). When tier is 'racing' or 'strong', cite it as evidence the trend is actively accelerating. When null, treat it as "we couldn't compute a rate yet" (video too new, or no matched video) — never as "the trend is dead". The tier is a snapshot of the recent past, NOT a forecast — phrase any reference past-tense ("pulled X views in Yh since upload"), never "will hit N views".
-  - optional arc_id and arc_cluster_size — trends with the same arc_id are different angles on the same news cycle (e.g., three "Olivia Rodrigo" entries: presale, tour dates, SNL). They share ≥2 significant words in their names/descriptions. Pick AT MOST ONE per arc_id — the user has 5 slots and three flavors of one story is one story, not three. When you skip a trend because of arc deduplication, choose the one with the strongest brand fit, not just the highest virality_score within the arc. Trends WITHOUT an arc_id are unique news cycles and don't conflict with anything.
+  - optional arc_id and arc_cluster_size — trends with the same arc_id are different angles on the same news cycle (e.g., three "Olivia Rodrigo" entries: presale, tour dates, SNL). They share ≥2 significant words in their names/descriptions. Pick AT MOST ONE per arc_id — the user has 6–7 slots and three flavors of one story is one story, not three. When you skip a trend because of arc deduplication, choose the one with the strongest brand fit, not just the highest virality_score within the arc. Trends WITHOUT an arc_id are unique news cycles and don't conflict with anything.
   - a category and region.
-- Pick exactly 5 trends that will perform best for this brand.
+- Pick exactly 6 OR 7 trends that will perform best for this brand. Default to 7 when there are 7 strong fits; drop to 6 only if the 7th would be a noticeably weaker pick.
 
 Brand memory is provided as a style guide. Use it as the highest priority for voice and tone:
 - Match the rhythm and attitude described in voice_profile_text.
@@ -789,7 +1025,7 @@ Tone handling:
 Rules:
 - ALWAYS include the 2 anchor trends from the top of the list (these are the strongest distinct signals available right now — already arc-deduplicated, so they're guaranteed to be different news cycles).
 - HARD RULE: Pick at most ONE trend per arc_id. If you find yourself wanting to pick two trends with the same arc_id, drop the weaker fit and use the slot for a different arc.
-- For the other 3:
+- For the other 4 or 5:
   - Optimise for brand fit (industry, niche, audience, tone, content_format, primary_goal).
   - Prefer trends with timing="early" when brand can move fast — first-mover advantage.
   - Prefer trends with corroboration_score ≥ 2. A single-platform trend (corroboration_score=1) can be a real trend or just one platform's noise — only pick it if the brand fit is unusually strong AND the description's WHY is concrete and verifiable.
@@ -861,7 +1097,7 @@ ${JSON.stringify(trendsForPrompt, null, 2)}
 
 The 2 trends with the highest virality_score are: ${top2TrendIds.join(', ')} — you MUST include these.
 
-Please select exactly 5 trends and return a JSON object like:
+Please select exactly 6 OR 7 trends (prefer 7 when 7 strong fits exist) and return a JSON object like:
 
 {
   "recommended_trends": [
@@ -992,9 +1228,9 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
             observation_history: observationHistoryMap.get(fullTrend.trend_id) || [],
             // Tier 3 / Fix #6 — decay forecast. Linear projection of when
             // virality_score crosses the "no longer worth posting" line.
-            // NULL when history is too thin (< 5 days span / < 3 obs),
-            // when the trend is flat or rising, when fit is too noisy
-            // (R² < 0.3), or when projected horizon > 7 days. UI MUST
+            // NULL when history is too thin (< 3h span / < 3 obs), when
+            // the trend is flat or rising, when fit is too noisy
+            // (R² < 0.3), or when projected horizon > 12h. UI MUST
             // render NULL as "no forecast available", never as "won't decay".
             decay_forecast: computeDecayForecast(observationHistoryMap.get(fullTrend.trend_id)),
             // Tier 3 / Fix #4 — story-arc context. NULL when this trend is
@@ -1015,8 +1251,37 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
         .filter(Boolean);
 
       console.log(`Returning ${recommended_trends.length} AI-powered recommendations`);
+
+      // ── Persist session state for the 2h cooldown / Refresh button ───
+      // Snapshot the FULL candidate pool (so reshuffles within 2h don't
+      // re-query trends), append the picked IDs to served_trend_ids, and
+      // stamp fetched_at / last_refresh_at appropriately. Anonymous users
+      // skip this entirely — no row to RLS-scope to.
+      if (userId && sessionsClient) {
+        await persistSession({
+          supabase: sessionsClient,
+          userId,
+          brandId: brand_id ?? null,
+          location: location || sessionRow?.location || 'UK',
+          primaryCategoryId: sessionRow?.primary_category_id ?? 6,
+          niche: user_profile?.niche || user_profile?.industry || null,
+          // Cooldown path keeps the existing pool; fresh path snapshots the
+          // current `trends` array as the new pool.
+          candidatePool: cooldownActive ? null : trends,
+          newlyServedIds: recommended_trends.map((r: any) => r.trend_id),
+          prevServedIds,
+          existingSessionRow: sessionRow,
+          lastRecommendations: recommended_trends,
+          cooldownActive,
+        });
+      }
+
       return new Response(
-        JSON.stringify({ recommended_trends }),
+        JSON.stringify({
+          recommended_trends,
+          cooldown_active: cooldownActive,
+          category_fallback: categoryFallback,
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
 
@@ -1057,8 +1322,11 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
       const fallbackArcMap = buildArcs(trends);
       const fallbackPicked: typeof trends = [];
       const fallbackArcsUsed = new Set<string>();
+      // Aim for 7 picks (matching the AI path target). `trends` is already
+      // virality-sorted (and un-served-first when cooldownActive) so we just
+      // walk top-to-bottom skipping duplicate arcs.
       for (const t of trends) {
-        if (fallbackPicked.length >= 5) break;
+        if (fallbackPicked.length >= 7) break;
         const arc = fallbackArcMap.get(t.trend_id);
         const arcKey = arc ? arc.arc_id : `solo:${t.trend_id}`;
         if (fallbackArcsUsed.has(arcKey)) continue;
@@ -1171,11 +1439,32 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
         };
       });
 
+      // Same session persistence as the AI path — keep the cooldown
+      // contract intact even in degraded mode.
+      if (userId && sessionsClient) {
+        await persistSession({
+          supabase: sessionsClient,
+          userId,
+          brandId: brand_id ?? null,
+          location: location || sessionRow?.location || 'UK',
+          primaryCategoryId: sessionRow?.primary_category_id ?? 6,
+          niche: user_profile?.niche || user_profile?.industry || null,
+          candidatePool: cooldownActive ? null : trends,
+          newlyServedIds: fallbackTrends.map((r: any) => r.trend_id),
+          prevServedIds,
+          existingSessionRow: sessionRow,
+          lastRecommendations: fallbackTrends,
+          cooldownActive,
+        });
+      }
+
       return new Response(
         JSON.stringify({
           recommended_trends: fallbackTrends,
           degraded: true,
           degraded_reason: 'ai_ranking_unavailable',
+          cooldown_active: cooldownActive,
+          category_fallback: categoryFallback,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
