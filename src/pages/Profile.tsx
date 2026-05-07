@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,8 +9,8 @@ import { useBrandProfiles, BrandProfileInput } from "@/hooks/useBrandProfiles";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import {
-  Building2, Globe, Upload, Save, Loader2, Plus, Pencil, Trash2, X,
-  Briefcase, Sparkles, Users, Star, MapPin, Instagram, Info, AtSign, CheckCircle2, Link2
+  Building2, Globe, Upload, Save, Loader2, Plus, X,
+  Sparkles, Users, Star, MapPin, Instagram, Info, AtSign, CheckCircle2, Link2
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import {
@@ -441,7 +441,7 @@ const Profile = () => {
 };
 
 function BrandProfile() {
-  const { brands, loading, createBrand, updateBrand, deleteBrand, uploadLogo } = useBrandProfiles();
+  const { brands, loading, createBrand, updateBrand, uploadLogo } = useBrandProfiles();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -456,14 +456,6 @@ function BrandProfile() {
   const [competitorsError, setCompetitorsError] = useState<string | null>(null);
   const [manualInput, setManualInput] = useState('');
   const [competitorsDiscovered, setCompetitorsDiscovered] = useState(false);
-
-  const COMPETITOR_TYPE_CONFIG: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
-    local:    { label: 'Local',    className: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', icon: <MapPin className="w-3 h-3" /> },
-    national: { label: 'National', className: 'bg-amber-500/15 text-amber-400 border-amber-500/30',   icon: <Building2 className="w-3 h-3" /> },
-    global:   { label: 'Global',   className: 'bg-violet-500/15 text-violet-400 border-violet-500/30', icon: <Globe className="w-3 h-3" /> },
-    manual:   { label: 'Custom',   className: 'bg-blue-500/15 text-blue-400 border-blue-500/30',       icon: <Plus className="w-3 h-3" /> },
-  };
-
   const [formData, setFormData] = useState<BrandProfileInput>({
     brand_name: "",
     industry: "",
@@ -472,6 +464,35 @@ function BrandProfile() {
     business_summary: "",
     logo_url: ""
   });
+
+  // Auto-populate form from the user's single saved brand on first load.
+  const initialized = useRef(false);
+  useEffect(() => {
+    if (loading || initialized.current) return;
+    initialized.current = true;
+    if (brands.length > 0) {
+      const brand = brands[0];
+      setFormData({
+        brand_name: brand.brand_name,
+        industry: brand.industry || "",
+        industry_other: brand.industry_other || "",
+        geography: brand.geography || "",
+        business_summary: brand.business_summary || "",
+        logo_url: brand.logo_url || ""
+      });
+      setEditingId(brand.id);
+      const saved = (brand as any).competitors ?? [];
+      setCompetitors(saved);
+      setCompetitorsDiscovered(saved.length > 0);
+    }
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const COMPETITOR_TYPE_CONFIG: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
+    local:    { label: 'Local',    className: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', icon: <MapPin className="w-3 h-3" /> },
+    national: { label: 'National', className: 'bg-amber-500/15 text-amber-400 border-amber-500/30',   icon: <Building2 className="w-3 h-3" /> },
+    global:   { label: 'Global',   className: 'bg-violet-500/15 text-violet-400 border-violet-500/30', icon: <Globe className="w-3 h-3" /> },
+    manual:   { label: 'Custom',   className: 'bg-blue-500/15 text-blue-400 border-blue-500/30',       icon: <Plus className="w-3 h-3" /> },
+  };
 
   const INDUSTRIES_PROFILE = [
     "Retail & E-commerce", "FMCG/Consumer Goods", "Technology & Software (SaaS/AI)",
@@ -551,35 +572,34 @@ function BrandProfile() {
   };
 
   const resetForm = () => {
-    setFormData({ brand_name: "", industry: "", industry_other: "", geography: "", business_summary: "", logo_url: "" });
-    setEditingId(null);
-    setIsCreating(false);
-    setWebsiteUrl('');
-    setCompetitors([]);
-    setCompetitorsDiscovered(false);
-    setCompetitorsError(null);
-    setManualInput('');
+    const brand = brands[0];
+    if (brand) {
+      setFormData({
+        brand_name: brand.brand_name,
+        industry: brand.industry || "",
+        industry_other: brand.industry_other || "",
+        geography: brand.geography || "",
+        business_summary: brand.business_summary || "",
+        logo_url: brand.logo_url || ""
+      });
+      setEditingId(brand.id);
+      setIsCreating(false);
+      const saved = (brand as any).competitors ?? [];
+      setCompetitors(saved);
+      setCompetitorsDiscovered(saved.length > 0);
+      setCompetitorsError(null);
+      setManualInput('');
+    } else {
+      setFormData({ brand_name: "", industry: "", industry_other: "", geography: "", business_summary: "", logo_url: "" });
+      setEditingId(null);
+      setIsCreating(true);
+      setWebsiteUrl('');
+      setCompetitors([]);
+      setCompetitorsDiscovered(false);
+      setCompetitorsError(null);
+      setManualInput('');
+    }
   };
-
-  const startEditing = (brand: typeof brands[0]) => {
-    setFormData({
-      brand_name: brand.brand_name,
-      industry: brand.industry || "",
-      industry_other: brand.industry_other || "",
-      geography: brand.geography || "",
-      business_summary: brand.business_summary || "",
-      logo_url: brand.logo_url || ""
-    });
-    setEditingId(brand.id);
-    setIsCreating(false);
-    const saved = (brand as any).competitors ?? [];
-    setCompetitors(saved);
-    setCompetitorsDiscovered(saved.length > 0);
-    setCompetitorsError(null);
-    setManualInput('');
-  };
-
-  const startCreating = () => { resetForm(); setIsCreating(true); };
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -600,22 +620,19 @@ function BrandProfile() {
       ...formData,
       competitors: competitors.map(({ name, domain, type, why_relevant, is_aspirational }) => ({ name, domain, type, why_relevant, is_aspirational })),
     };
-    if (editingId) {
-      const { success, error } = await updateBrand(editingId, payload);
-      if (success) { toast.success("Brand profile updated"); resetForm(); }
+    const brandId = brands[0]?.id ?? editingId;
+    if (brandId) {
+      const { success, error } = await updateBrand(brandId, payload);
+      if (success) toast.success("Brand profile updated");
       else toast.error(error || "Failed to update");
     } else {
-      const { success, error } = await createBrand(payload);
-      if (success) { toast.success("Brand profile created"); resetForm(); }
-      else toast.error(error || "Failed to create");
+      const { success, error, brand: newBrand } = await createBrand(payload);
+      if (success) {
+        toast.success("Brand profile created");
+        if (newBrand) { setEditingId(newBrand.id); setIsCreating(false); }
+      } else toast.error(error || "Failed to create");
     }
     setSaving(false);
-  };
-
-  const handleDelete = async (id: string) => {
-    const { success, error } = await deleteBrand(id);
-    if (success) { toast.success("Brand profile deleted"); if (editingId === id) resetForm(); }
-    else toast.error(error || "Failed to delete");
   };
 
   if (loading) {
@@ -626,35 +643,17 @@ function BrandProfile() {
     );
   }
 
-  const isFormOpen = isCreating || editingId !== null;
-
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Brand Profiles</h1>
-          <p className="text-muted-foreground">Manage your brand profiles for use across all tools</p>
-        </div>
-        {!isFormOpen && (
-          <Button onClick={startCreating} className="gap-2">
-            <Plus className="w-4 h-4" />
-            Add New Brand
-          </Button>
-        )}
+      <div>
+        <h1 className="text-2xl font-bold">Brand Profile</h1>
+        <p className="text-muted-foreground">Your brand profile is used across all tools</p>
       </div>
 
-      {isFormOpen && (
-        <Card>
+      <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>{editingId ? "Edit Brand" : "Create New Brand"}</CardTitle>
-                <CardDescription>{editingId ? "Update your brand profile details" : "Add a new brand profile"}</CardDescription>
-              </div>
-              <Button variant="ghost" size="icon" onClick={resetForm}>
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
+            <CardTitle>{editingId ? "Edit Brand" : "Create Brand"}</CardTitle>
+            <CardDescription>{editingId ? "Update your brand profile details" : "Set up your brand profile to get started"}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Website URL Auto-fill */}
@@ -825,78 +824,6 @@ function BrandProfile() {
             </div>
           </CardContent>
         </Card>
-      )}
-
-      {brands.length === 0 && !isFormOpen ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Building2 className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No brand profiles yet</h3>
-            <p className="text-muted-foreground mb-4">Create your first brand profile to get started with Trend Quest and other tools.</p>
-            <Button onClick={startCreating} className="gap-2">
-              <Plus className="w-4 h-4" />
-              Create Your First Brand
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4">
-          {brands.map((brand) => (
-            <Card key={brand.id} className={editingId === brand.id ? "ring-2 ring-primary" : ""}>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-4">
-                  {brand.logo_url ? (
-                    <img src={brand.logo_url} alt={brand.brand_name} className="w-12 h-12 rounded-lg object-cover border" />
-                  ) : (
-                    <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center">
-                      <Building2 className="w-5 h-5 text-muted-foreground" />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold truncate">{brand.brand_name}</h3>
-                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                      {brand.industry && (
-                        <span className="flex items-center gap-1">
-                          <Briefcase className="w-3 h-3" />
-                          {brand.industry === "Other" ? brand.industry_other : brand.industry}
-                        </span>
-                      )}
-                      {brand.geography && (
-                        <span className="flex items-center gap-1">
-                          <Globe className="w-3 h-3" />
-                          {brand.geography}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="icon" onClick={() => startEditing(brand)}>
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Brand Profile?</AlertDialogTitle>
-                          <AlertDialogDescription>This will permanently delete "{brand.brand_name}". This action cannot be undone.</AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(brand.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
