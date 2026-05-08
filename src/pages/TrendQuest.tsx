@@ -393,6 +393,7 @@ const TrendQuest = () => {
             region: inputValues.twitter_geography || 'UK',
             categories: inputValues.content_categories || [],
             count: 20,
+            user_niche: userProfile?.industry || undefined,
           },
         });
         if (fnError) throw new Error(fnError.message || 'Failed to fetch Twitter trends');
@@ -515,6 +516,7 @@ const TrendQuest = () => {
           region: inputValues.twitter_geography || 'UK',
           categories: inputValues.content_categories || [],
           count: 20,
+          user_niche: userProfile?.industry || undefined,
         },
       });
       if (fnError) throw new Error(fnError.message);
@@ -766,6 +768,7 @@ const TrendQuest = () => {
             onSaveTrend={handleSaveTrend}
             savedTrendIds={savedTrendIds}
             categoryFallback={categoryFallback}
+            isCreator={isCreator}
           />
         );
       case "saved_trends":

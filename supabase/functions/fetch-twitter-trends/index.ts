@@ -270,11 +270,64 @@ Return ALL ${batch.length} trends. JSON only (no markdown fences):
   }
 }
 
+// ── Fetch niche-specific trends for a creator (when no categories selected) ──
+async function fetchNicheTrends(
+  apiKey: string,
+  niche: string,
+  region: string,
+  today: string
+): Promise<string[]> {
+  const prompt = `Find the MOST discussed topics on X/Twitter in ${region} today (${today}) that are relevant to a ${niche} content creator.
+
+Rules:
+1. Search X/Twitter and recent news from the last 6 hours
+2. Topics must be SPECIFIC — events, hashtags, destinations, people, trends in the ${niche} space
+3. Do NOT return generic terms — be specific to what ${niche} audiences are talking about RIGHT NOW
+4. Include both niche-specific trends AND broader trending topics a ${niche} creator could engage with
+
+Good examples for Travel: "#VisaOnArrival", "Bali digital nomad visa", "Emirates A380 new route", "solo travel safety tips trending"
+Good examples for Fitness: "#75Hard", "new creatine study", "Hyrox London", "running shoe drop"
+
+Return 8-12 topics. JSON array of strings only (no markdown):
+["topic1", "topic2", ...]`;
+
+  console.log(`[fetch-twitter-trends] Fetching niche trends for: ${niche} in ${region}`);
+
+  try {
+    const res = await callPerplexity(apiKey, {
+      model: PERPLEXITY_MODEL,
+      messages: [
+        { role: 'system', content: `You have live X/Twitter web search. You are helping a ${niche} content creator find relevant trending topics. Return only JSON arrays of specific topics currently active and buzzing today.` },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.3,
+    });
+
+    if (!res.ok) {
+      console.warn(`[fetch-twitter-trends] Niche trends HTTP ${res.status}`);
+      return [];
+    }
+
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content ?? '';
+    const json = extractJson(text);
+    const arr = Array.isArray(json) ? json : [];
+    const filtered = arr
+      .filter((x: any) => typeof x === 'string' && x.length > 0 && x.length < 80)
+      .slice(0, 12);
+    console.log(`[fetch-twitter-trends] Got ${filtered.length} niche trends for ${niche}:`, filtered.slice(0, 3).join(', '));
+    return filtered;
+  } catch (err) {
+    console.warn('[fetch-twitter-trends] Niche trends fetch failed:', err);
+    return [];
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const { region = 'UK', categories = [], count = 20 } = await req.json();
+    const { region = 'UK', categories = [], count = 20, user_niche } = await req.json();
     const PERPLEXITY_API_KEY = Deno.env.get('PERPLEXITY_API_KEY');
     if (!PERPLEXITY_API_KEY) throw new Error('PERPLEXITY_API_KEY not configured');
 
@@ -293,7 +346,8 @@ serve(async (req) => {
       throw new Error(`Failed to fetch trends from trends24.in: ${scrapeErr instanceof Error ? scrapeErr.message : 'unknown'}`);
     }
 
-    // ── PASS 1b: Supplementary category trends (if categories selected) ──────
+    // ── PASS 1b: Supplementary niche/category trends ─────────────────────────
+    // Priority: manually-selected categories > creator niche > raw trends only
     let combinedTrends = rawTrends;
     let supplementaryCount = 0;
     if (categories.length > 0) {
@@ -302,6 +356,14 @@ serve(async (req) => {
       const unique = catTrends.filter(t => !seen.has(t.toLowerCase()));
       supplementaryCount = unique.length;
       // Category-specific trends lead the list so they're visible; cap at 30 total
+      combinedTrends = [...unique, ...rawTrends].slice(0, Math.max(rawTrends.length, 30));
+    } else if (user_niche) {
+      // No categories manually chosen — use the creator's niche to surface
+      // relevant trends they'd actually want to engage with.
+      const nicheTrends = await fetchNicheTrends(PERPLEXITY_API_KEY, user_niche, region, today);
+      const seen = new Set(rawTrends.map(t => t.toLowerCase()));
+      const unique = nicheTrends.filter(t => !seen.has(t.toLowerCase()));
+      supplementaryCount = unique.length;
       combinedTrends = [...unique, ...rawTrends].slice(0, Math.max(rawTrends.length, 30));
     }
 

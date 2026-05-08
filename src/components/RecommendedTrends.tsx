@@ -29,6 +29,7 @@ interface RecommendedTrendsProps {
    * Renders an explanatory banner at the top of the list.
    */
   categoryFallback?: boolean;
+  isCreator?: boolean;
 }
 
 // ── Category config ────────────────────────────────────────────────────────────
@@ -703,6 +704,7 @@ export const RecommendedTrends = ({
   onSaveTrend,
   savedTrendIds,
   categoryFallback = false,
+  isCreator = false,
 }: RecommendedTrendsProps) => {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
@@ -735,7 +737,9 @@ export const RecommendedTrends = ({
         </div>
         <h3 className="text-lg font-medium text-foreground mb-2">No trends yet</h3>
         <p className="text-muted-foreground text-sm max-w-md">
-          Fill in your brand profile and click "Get AI trend suggestions" to discover what's trending for you.
+          {isCreator
+            ? 'Select your platform, audience, and content format — then click "Get Trend Recommendations" to discover what\'s trending in your niche.'
+            : 'Fill in your brand profile and click "Get AI trend suggestions" to discover what\'s trending for you.'}
         </p>
         {onRefreshTrends && (
           <Button
