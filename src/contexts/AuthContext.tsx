@@ -18,6 +18,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const sessionResolved = useRef(false);
   // Only honor SIGNED_OUT events when we explicitly trigger sign-out
   const intentionalSignOut = useRef(false);
+  // Set to true between auth.signUp() and profile row insert so the
+  // SIGNED_IN handler doesn't fire the profile-completion redirect
+  // before the insert has committed (signup race condition).
+  const profileInsertPending = useRef(false);
 
   const fetchProfile = useCallback(async (userId: string): Promise<{ data: UserProfile | null; failed: boolean }> => {
     try {
@@ -72,7 +76,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // missing — not when the fetch timed out or errored (which would cause
         // the modal to appear randomly for users who already have a profile).
         if (!failed) {
-          setNeedsProfileCompletion(!userProfile);
+          // Don't trigger the redirect if a profile insert is already
+          // in-flight from signUp() — it just hasn't committed yet.
+          setNeedsProfileCompletion(!userProfile && !profileInsertPending.current);
         }
         setLoading(false);
       }
@@ -178,6 +184,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = async (data: SignUpData) => {
     try {
+      // Flag must be set BEFORE auth.signUp() so the SIGNED_IN handler
+      // sees it if it fires before the profile insert below completes.
+      profileInsertPending.current = true;
+
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
@@ -187,8 +197,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       });
 
-      if (authError) return { error: new Error(authError.message) };
-      if (!authData.user) return { error: new Error('Failed to create user') };
+      if (authError) {
+        profileInsertPending.current = false;
+        return { error: new Error(authError.message) };
+      }
+      if (!authData.user) {
+        profileInsertPending.current = false;
+        return { error: new Error('Failed to create user') };
+      }
 
       const { error: profileError } = await supabase
         .from('user_profiles')
@@ -201,13 +217,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           location: data.location,
         });
 
+      profileInsertPending.current = false;
+
       if (profileError) {
         console.error('Profile creation error:', profileError);
+      } else {
+        // Profile committed — clear any redirect flag the SIGNED_IN
+        // handler may have set before the insert completed.
+        setNeedsProfileCompletion(false);
       }
 
       localStorage.setItem(SESSION_EXPIRY_KEY, new Date().toISOString());
       return { error: null };
     } catch (err) {
+      profileInsertPending.current = false;
       return { error: err as Error };
     }
   };
