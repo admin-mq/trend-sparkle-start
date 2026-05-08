@@ -385,7 +385,7 @@ function ScoreBar({ value }: { value: number }) {
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { profile } = useAuthContext();
+  const { profile, loading: authLoading, user: authUser } = useAuthContext();
   const [data, setData] = useState<DashData | null>(null);
   const [loading, setLoading] = useState(true);
   const [momentum, setMomentum] = useState<HashtagMomentum | null>(null);
@@ -471,12 +471,13 @@ const Dashboard = () => {
   const insights = data ? generateInsights(data) : [];
   const topAction = data ? getTopAction(data) : null;
 
-  const isCreator = profile?.account_type === "creator";
+  // Mirror DashboardLayout: fall back to auth metadata when profile hasn't
+  // loaded yet, so a creator never sees the brand empty state.
+  const accountType = profile?.account_type ?? authUser?.user_metadata?.account_type;
+  const isCreator = accountType === "creator";
 
-  // ── Wait for auth before deciding which view to render ────────────────────
-  // Without this guard, creators see the brand empty state for the ~200ms
-  // before profile loads (profile is null → isCreator false → wrong branch).
-  const { loading: authLoading } = useAuthContext();
+  // Wait for auth to settle before rendering — prevents the flash where
+  // profile is null, isCreator is false, and brand content renders briefly.
   if (authLoading) return null;
 
   // ── Creator dashboard ─────────────────────────────────────────────────────
