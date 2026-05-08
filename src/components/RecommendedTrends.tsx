@@ -981,9 +981,13 @@ export const RecommendedTrends = ({
             {/* Sources */}
             {trend.source_signals && trend.source_signals.length > 0 && (
               <div className="flex items-center gap-1 mt-2 flex-wrap">
-                {trend.source_signals.map(s => (
-                  <span key={s} className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-                    {s.replace('google_trends_', 'GT ').replace('_', ' ')}
+                {[...new Set(trend.source_signals.map(s => {
+                  const l = s.toLowerCase();
+                  if (l.includes('google') || l.includes('search')) return 'Internet';
+                  return 'Social Media';
+                }))].map(label => (
+                  <span key={label} className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                    {label}
                   </span>
                 ))}
               </div>
