@@ -271,12 +271,9 @@ const YouTubeEngagementBadge = ({
   ].filter(Boolean);
 
   return (
-    <a
-      href={`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`}
-      target="_blank"
-      rel="noopener noreferrer"
+    <span
       title={titleParts.join(' · ')}
-      className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/30 hover:bg-red-500/15 transition-colors"
+      className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/30"
     >
       <Youtube className="w-3 h-3" />
       <span className="tabular-nums">{formatCount(viewCount)} views</span>
@@ -294,7 +291,7 @@ const YouTubeEngagementBadge = ({
           <span className="tabular-nums">{formatCount(commentCount)}</span>
         </>
       )}
-    </a>
+    </span>
   );
 };
 
@@ -640,16 +637,13 @@ const CompetitorCoverageBadge = ({ coverage }: { coverage?: CompetitorCoverage }
       `(Checked ${checked_platform} only. Verify other platforms yourself.)`,
     ];
     return (
-      <a
-        href={`https://www.youtube.com/watch?v=${matches[0].publisher.video_id}`}
-        target="_blank"
-        rel="noopener noreferrer"
+      <span
         title={tooltipLines.join('\n')}
-        className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25 transition-colors"
+        className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30"
       >
         <Users className="w-3 h-3" />
         <span>{matches.length}/{competitorsConfigured} competitor{matches.length === 1 ? '' : 's'} covering</span>
-      </a>
+      </span>
     );
   }
 

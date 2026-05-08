@@ -299,7 +299,16 @@ function CreatorProfile() {
           </CardContent>
         </Card>
 
-        {/* Reference Accounts */}
+        {/* Reference Accounts — Coming Soon */}
+        <div className="relative">
+          {/* Overlay */}
+          <div className="absolute inset-0 z-10 rounded-xl bg-background/60 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2 pointer-events-none">
+            <span className="text-xs font-medium px-3 py-1 rounded-full bg-muted text-muted-foreground border border-border">
+              Coming Soon
+            </span>
+          </div>
+          {/* Blurred card content */}
+          <div className="pointer-events-none select-none opacity-50">
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
@@ -411,6 +420,8 @@ function CreatorProfile() {
             )}
           </CardContent>
         </Card>
+          </div>{/* end pointer-events-none blur wrapper */}
+        </div>{/* end relative Coming Soon container */}
       </div>
     </TooltipProvider>
   );
