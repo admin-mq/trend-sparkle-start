@@ -981,6 +981,24 @@ serve(async (req) => {
         trendsError = stale.error;
         if (trends.length > 0) categoryFallback = true; // signal "we had to relax"
       }
+
+      // Final fallback: region has NO data at all (cron hasn't run for this
+      // region yet). Drop the location filter entirely and serve the
+      // highest-virality global trends so the creator sees something useful
+      // rather than a blank page.
+      if (!trendsError && trends.length === 0 && location) {
+        console.log(`[recommend-trends] No trends at all for region=${location} — dropping location filter, serving global trends`);
+        const global = await externalSupabase
+          .from('trends')
+          .select(baseSelect)
+          .eq('premium_only', false)
+          .eq('active', true)
+          .order('virality_score', { ascending: false })
+          .limit(30);
+        trends = global.data || [];
+        trendsError = global.error;
+        if (trends.length > 0) categoryFallback = true;
+      }
     }
 
     if (trendsError) {
