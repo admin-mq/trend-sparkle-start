@@ -473,6 +473,12 @@ const Dashboard = () => {
 
   const isCreator = profile?.account_type === "creator";
 
+  // ── Wait for auth before deciding which view to render ────────────────────
+  // Without this guard, creators see the brand empty state for the ~200ms
+  // before profile loads (profile is null → isCreator false → wrong branch).
+  const { loading: authLoading } = useAuthContext();
+  if (authLoading) return null;
+
   // ── Creator dashboard ─────────────────────────────────────────────────────
   if (isCreator) return <CreatorDashboard />;
 

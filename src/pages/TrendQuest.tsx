@@ -34,10 +34,17 @@ import { supabase } from "@/lib/supabaseClient";
 
 const STORAGE_KEY = 'mq_trend_quest_v1';
 
-function loadSession() {
+function loadSession(currentUserId?: string) {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    // Discard session if it belongs to a different user
+    if (currentUserId && parsed.userId && parsed.userId !== currentUserId) {
+      sessionStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
+    return parsed;
   } catch { return null; }
 }
 
@@ -81,8 +88,8 @@ const TrendQuest = () => {
     authProfile?.account_type === "creator" ||
     authUser?.user_metadata?.account_type === "creator";
 
-  // Load previously persisted session once at mount
-  const session = useMemo(() => loadSession(), []);
+  // Load previously persisted session once at mount, scoped to current user
+  const session = useMemo(() => loadSession(user?.id), [user?.id]);
 
   const [creatorProfile, setCreatorProfile] = useState<CreatorProfileData | null>(null);
 
@@ -158,6 +165,7 @@ const TrendQuest = () => {
   useEffect(() => {
     try {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+        userId: user?.id,
         selectedBrandId,
         inputValues,
         activeStep,
@@ -181,6 +189,7 @@ const TrendQuest = () => {
       }));
     } catch { /* quota exceeded — silent */ }
   }, [
+    user?.id,
     selectedBrandId, inputValues, activeStep,
     recommendations, categoryFallback, brandName,
     creativeDirections, selectedTrendName, selectedTrendId,
