@@ -19,6 +19,7 @@ interface HotTrend {
   category?: string;
   virality_score?: number;
   timing?: string;
+  region?: string;
 }
 
 interface CreatorStats {
@@ -160,23 +161,15 @@ export const CreatorDashboard = () => {
           .eq("user_id", user.id)
           .gt("expires_at", now),
 
-        // Hot trends for creator's region
-        region
-          ? supabase
-              .from("trends")
-              .select("trend_id, trend_name, category, virality_score, timing")
-              .eq("region", region)
-              .eq("active", true)
-              .eq("premium_only", false)
-              .order("virality_score", { ascending: false })
-              .limit(3)
-          : supabase
-              .from("trends")
-              .select("trend_id, trend_name, category, virality_score, timing")
-              .eq("active", true)
-              .eq("premium_only", false)
-              .order("virality_score", { ascending: false })
-              .limit(3),
+        // Top 3 hottest trends globally — last 24 hours only, any region/category
+        supabase
+          .from("trends")
+          .select("trend_id, trend_name, category, virality_score, timing, region")
+          .eq("active", true)
+          .eq("premium_only", false)
+          .gte("last_seen_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+          .order("virality_score", { ascending: false })
+          .limit(3),
       ]);
 
     // Drafts count — tweet_drafts groups 3 drafts per generation_id,
@@ -328,7 +321,7 @@ export const CreatorDashboard = () => {
                 <Flame className="w-3.5 h-3.5 text-amber-500" />
               </div>
               <span className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                What's hot {regionLabel ? `in ${regionLabel}` : "right now"}
+                What's trending on the internet right now
               </span>
             </div>
             <button
@@ -347,7 +340,7 @@ export const CreatorDashboard = () => {
             <div className="text-center py-4 space-y-2">
               <Globe className="w-8 h-8 text-muted-foreground/40 mx-auto" />
               <p className="text-sm text-muted-foreground">
-                Trend data is being fetched for your region. Check back in a few minutes.
+                Trend data is being fetched. Check back in a few minutes.
               </p>
               <Button
                 size="sm"
@@ -379,9 +372,19 @@ export const CreatorDashboard = () => {
                       <p className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
                         {trend.trend_name}
                       </p>
-                      {trend.category && (
-                        <p className="text-[11px] text-muted-foreground mt-0.5">{trend.category}</p>
-                      )}
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {trend.category && (
+                          <span className="text-[11px] text-muted-foreground">{trend.category}</span>
+                        )}
+                        {trend.region && trend.category && (
+                          <span className="text-[11px] text-muted-foreground/40">·</span>
+                        )}
+                        {trend.region && (
+                          <span className="text-[10px] font-medium px-1 py-0 rounded bg-secondary text-muted-foreground">
+                            {REGION_LABELS[trend.region] ?? trend.region}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     {timingCfg && (
                       <span className={cn(
