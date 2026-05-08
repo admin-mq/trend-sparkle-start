@@ -28,6 +28,21 @@ import { BrandMemory, updateBrandMemory } from "@/lib/brandMemory";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabaseClient";
 
+// ── Session persistence ────────────────────────────────────────────────────────
+// Results survive navigation away and back. They're only replaced when the
+// user clicks "Get Trend Recommendations" and a new fetch completes.
+
+const STORAGE_KEY = 'mq_trend_quest_v1';
+
+function loadSession() {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const DEFAULT_INPUT_VALUES: TrendQuestInputValues = {
   audience: "",
   audience_other: "",
@@ -66,21 +81,24 @@ const TrendQuest = () => {
     authProfile?.account_type === "creator" ||
     authUser?.user_metadata?.account_type === "creator";
 
+  // Load previously persisted session once at mount
+  const session = useMemo(() => loadSession(), []);
+
   const [creatorProfile, setCreatorProfile] = useState<CreatorProfileData | null>(null);
-  
+
   // Selected brand
-  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
-  
+  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(session?.selectedBrandId ?? null);
+
   // Trend Quest inputs (non-brand fields)
-  const [inputValues, setInputValues] = useState<TrendQuestInputValues>(DEFAULT_INPUT_VALUES);
-  
+  const [inputValues, setInputValues] = useState<TrendQuestInputValues>(session?.inputValues ?? DEFAULT_INPUT_VALUES);
+
   // Step navigation
-  const [activeStep, setActiveStep] = useState<WorkspaceStep>("trends");
+  const [activeStep, setActiveStep] = useState<WorkspaceStep>(session?.activeStep ?? "trends");
 
   // Brand profile & recommendations
-  const [recommendations, setRecommendations] = useState<RecommendedTrend[]>([]);
-  const [categoryFallback, setCategoryFallback] = useState<boolean>(false);
-  const [brandName, setBrandName] = useState<string>('');
+  const [recommendations, setRecommendations] = useState<RecommendedTrend[]>(session?.recommendations ?? []);
+  const [categoryFallback, setCategoryFallback] = useState<boolean>(session?.categoryFallback ?? false);
+  const [brandName, setBrandName] = useState<string>(session?.brandName ?? '');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [trendsLoading, setTrendsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -107,34 +125,69 @@ const TrendQuest = () => {
   const { saveBlueprint } = useSavedBlueprints(savedTrendsBrandScope);
 
   // Creative directions
-  const [creativeDirections, setCreativeDirections] = useState<CreativeDirection[]>([]);
-  const [selectedTrendName, setSelectedTrendName] = useState<string>('');
-  const [selectedTrendId, setSelectedTrendId] = useState<string>('');
+  const [creativeDirections, setCreativeDirections] = useState<CreativeDirection[]>(session?.creativeDirections ?? []);
+  const [selectedTrendName, setSelectedTrendName] = useState<string>(session?.selectedTrendName ?? '');
+  const [selectedTrendId, setSelectedTrendId] = useState<string>(session?.selectedTrendId ?? '');
   const [directionsLoading, setDirectionsLoading] = useState(false);
   const [directionsError, setDirectionsError] = useState<string | null>(null);
 
   // Blueprint
-  const [detailedDirection, setDetailedDirection] = useState<DetailedDirection | null>(null);
-  const [selectedIdeaTitle, setSelectedIdeaTitle] = useState<string>('');
-  const [selectedDirection, setSelectedDirection] = useState<CreativeDirection | null>(null);
+  const [detailedDirection, setDetailedDirection] = useState<DetailedDirection | null>(session?.detailedDirection ?? null);
+  const [selectedIdeaTitle, setSelectedIdeaTitle] = useState<string>(session?.selectedIdeaTitle ?? '');
+  const [selectedDirection, setSelectedDirection] = useState<CreativeDirection | null>(session?.selectedDirection ?? null);
   const [blueprintLoading, setBlueprintLoading] = useState(false);
   const [blueprintError, setBlueprintError] = useState<string | null>(null);
-  const [trendHashtags, setTrendHashtags] = useState<string>('');
-  
+  const [trendHashtags, setTrendHashtags] = useState<string>(session?.trendHashtags ?? '');
+
   // Twitter / Social Pulse state
-  const [twitterData, setTwitterData] = useState<TwitterTrendsResponse | null>(null);
-  const [generatedTweets, setGeneratedTweets] = useState<GeneratedTweet[]>([]);
-  const [tweetsSaved, setTweetsSaved] = useState<boolean>(false);
-  const [tweetsSaveError, setTweetsSaveError] = useState<string | null>(null);
-  const [tweetsLiveContextSource, setTweetsLiveContextSource] = useState<'live' | 'stale' | 'none' | null>(null);
-  const [tweetsLiveContextPreview, setTweetsLiveContextPreview] = useState<string | null>(null);
-  const [selectedTwitterTrend, setSelectedTwitterTrend] = useState<TwitterTrend | null>(null);
+  const [twitterData, setTwitterData] = useState<TwitterTrendsResponse | null>(session?.twitterData ?? null);
+  const [generatedTweets, setGeneratedTweets] = useState<GeneratedTweet[]>(session?.generatedTweets ?? []);
+  const [tweetsSaved, setTweetsSaved] = useState<boolean>(session?.tweetsSaved ?? false);
+  const [tweetsSaveError, setTweetsSaveError] = useState<string | null>(session?.tweetsSaveError ?? null);
+  const [tweetsLiveContextSource, setTweetsLiveContextSource] = useState<'live' | 'stale' | 'none' | null>(session?.tweetsLiveContextSource ?? null);
+  const [tweetsLiveContextPreview, setTweetsLiveContextPreview] = useState<string | null>(session?.tweetsLiveContextPreview ?? null);
+  const [selectedTwitterTrend, setSelectedTwitterTrend] = useState<TwitterTrend | null>(session?.selectedTwitterTrend ?? null);
   const [tweetsLoading, setTweetsLoading] = useState(false);
   const [tweetsError, setTweetsError] = useState<string | null>(null);
   const [isRefreshingTwitter, setIsRefreshingTwitter] = useState(false);
 
   // Brand memory for learning from feedback
   const [brandMemory, setBrandMemory] = useState<BrandMemory | null>(null);
+
+  // ── Persist state to sessionStorage whenever results/inputs change ───────
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+        selectedBrandId,
+        inputValues,
+        activeStep,
+        recommendations,
+        categoryFallback,
+        brandName,
+        creativeDirections,
+        selectedTrendName,
+        selectedTrendId,
+        detailedDirection,
+        selectedIdeaTitle,
+        selectedDirection,
+        trendHashtags,
+        twitterData,
+        generatedTweets,
+        tweetsSaved,
+        tweetsSaveError,
+        tweetsLiveContextSource,
+        tweetsLiveContextPreview,
+        selectedTwitterTrend,
+      }));
+    } catch { /* quota exceeded — silent */ }
+  }, [
+    selectedBrandId, inputValues, activeStep,
+    recommendations, categoryFallback, brandName,
+    creativeDirections, selectedTrendName, selectedTrendId,
+    detailedDirection, selectedIdeaTitle, selectedDirection, trendHashtags,
+    twitterData, generatedTweets, tweetsSaved, tweetsSaveError,
+    tweetsLiveContextSource, tweetsLiveContextPreview, selectedTwitterTrend,
+  ]);
 
   // Auto-select first brand if only one exists
   useEffect(() => {
