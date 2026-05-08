@@ -243,9 +243,14 @@ function AddReferenceForm({ onAdded }: { onAdded: (account: ReferenceAccount) =>
 
   if (!open) {
     return (
-      <Button variant="outline" size="sm" className="gap-1.5 border-dashed" onClick={() => setOpen(true)}>
-        <Plus className="w-3.5 h-3.5" /> Add Reference Account
-      </Button>
+      <div className="flex items-center gap-3">
+        <Button variant="outline" size="sm" className="gap-1.5 border-dashed opacity-50 cursor-not-allowed" disabled>
+          <Plus className="w-3.5 h-3.5" /> Add Reference Account
+        </Button>
+        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
+          Coming Soon
+        </span>
+      </div>
     );
   }
 
