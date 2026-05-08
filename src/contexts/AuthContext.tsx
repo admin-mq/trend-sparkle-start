@@ -235,8 +235,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (accountType?: import('@/types/auth').AccountType) => {
     try {
+      if (accountType) {
+        sessionStorage.setItem('mq_google_account_type', accountType);
+      }
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {

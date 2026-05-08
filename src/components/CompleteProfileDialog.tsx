@@ -43,7 +43,8 @@ export function CompleteProfileDialog({
 }: CompleteProfileDialogProps) {
   const navigate = useSafeNavigate();
   const [loading, setLoading] = useState(false);
-  const [accountType, setAccountType] = useState<AccountType>('brand');
+  const storedType = sessionStorage.getItem('mq_google_account_type') as AccountType | null;
+  const [accountType, setAccountType] = useState<AccountType>(storedType ?? 'brand');
   const [brandName, setBrandName] = useState('');
   const [fullName, setFullName] = useState('');
   const [brandEmail, setBrandEmail] = useState('');
@@ -102,6 +103,7 @@ export function CompleteProfileDialog({
 
       if (error) throw error;
 
+      sessionStorage.removeItem('mq_google_account_type');
       toast.success('Profile completed successfully!');
       onClose();
       navigate?.('/dashboard', { replace: true });

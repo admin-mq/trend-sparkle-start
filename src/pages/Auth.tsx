@@ -404,7 +404,7 @@ export default function Auth() {
 
             <Divider />
 
-            <GoogleButton loading={loading} onClick={signInWithGoogle} />
+            <GoogleButton loading={loading} onClick={() => signInWithGoogle(accountType)} />
           </form>
         )}
 
@@ -530,7 +530,7 @@ export default function Auth() {
 
             <Divider />
 
-            <GoogleButton loading={loading} onClick={signInWithGoogle} />
+            <GoogleButton loading={loading} onClick={() => signInWithGoogle(accountType)} />
           </form>
         )}
 
