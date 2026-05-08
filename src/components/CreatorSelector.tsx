@@ -43,7 +43,13 @@ export const CreatorSelector = ({
       .select("full_name,industry,industry_other,location,business_summary")
       .eq("user_id", user.id)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("Failed to load creator profile:", error);
+          onProfileLoaded(null);
+          setProfileLoading(false);
+          return;
+        }
         const raw = data as Omit<CreatorProfileData, 'is_faceless'> | null;
         const p: CreatorProfileData | null = raw
           ? { ...raw, is_faceless: raw.industry_other === "faceless" }
@@ -51,8 +57,13 @@ export const CreatorSelector = ({
         setProfile(p);
         onProfileLoaded(p);
         setProfileLoading(false);
+      })
+      .catch((err) => {
+        console.error("Unexpected error loading creator profile:", err);
+        onProfileLoaded(null);
+        setProfileLoading(false);
       });
-  }, [user]);
+  }, [user, onProfileLoaded]);
 
   const isTwitter = inputValues.platform === "Twitter";
   const isFormValid =
