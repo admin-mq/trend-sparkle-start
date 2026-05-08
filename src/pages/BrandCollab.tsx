@@ -66,7 +66,7 @@ export default function BrandCollab() {
             Connect with Brands of your choice and negotiate offers.
           </h2>
           <p className="text-sm text-muted-foreground">
-            Brand Collab is on its way. You'll be able to browse brand deals, pitch yourself, and manage negotiations — all in one place.
+            Brand Collab is on its way. You'll be able to browse brand deals, pitch yourself, and manage negotiations, all in one place.
           </p>
         </div>
       </div>
