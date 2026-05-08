@@ -22,6 +22,7 @@ import {
   X,
   Sparkles,
   ListChecks,
+  DollarSign,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -76,6 +77,7 @@ const creatorNavGroups = [
       { path: "/hashtag-gap-analysis", label: "Tag Gap Finder",   icon: Layers },
       { path: "/trending-audios",      label: "Trending Audios",  icon: Music },
       { path: "/creator-analysis",     label: "Analysis",         icon: LineChart },
+      { path: "/brand-collab",          label: "Brand Collab",     icon: DollarSign },
     ],
   },
 ];
