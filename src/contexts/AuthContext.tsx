@@ -250,6 +250,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const refreshProfile = useCallback(async () => {
+    if (!user) return;
+    const { data: userProfile, failed } = await fetchProfile(user.id);
+    if (!failed) {
+      setProfile(userProfile);
+      setNeedsProfileCompletion(!userProfile);
+    }
+  }, [user, fetchProfile]);
+
   const signOut = async () => {
     try {
       intentionalSignOut.current = true;
@@ -280,6 +289,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signInWithGoogle,
         needsProfileCompletion,
         setNeedsProfileCompletion,
+        refreshProfile,
       }}
     >
       {children}

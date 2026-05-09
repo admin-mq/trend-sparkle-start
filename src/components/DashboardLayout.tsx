@@ -28,6 +28,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AmcueChat } from "@/components/amcue/AmcueChat";
+import { CompleteProfileDialog } from "@/components/CompleteProfileDialog";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -92,7 +93,7 @@ export const DashboardLayout = () => {
   const [sessionChecked, setSessionChecked] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, profile, loading: authLoading, signOut, needsProfileCompletion } = useAuthContext();
+  const { user, profile, loading: authLoading, signOut, needsProfileCompletion, refreshProfile } = useAuthContext();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -100,12 +101,6 @@ export const DashboardLayout = () => {
       setSessionChecked(true);
     });
   }, []);
-
-  useEffect(() => {
-    if (needsProfileCompletion && location.pathname !== '/profile') {
-      navigate('/profile', { replace: true });
-    }
-  }, [needsProfileCompletion, location.pathname, navigate]);
 
   const handleLogout = async () => {
     const { error } = await signOut();
@@ -286,6 +281,15 @@ export const DashboardLayout = () => {
       </div>
 
       <AmcueChat />
+
+      {needsProfileCompletion && user && (
+        <CompleteProfileDialog
+          open={true}
+          onClose={refreshProfile}
+          userId={user.id}
+          userEmail={user.email ?? ''}
+        />
+      )}
     </div>
   );
 };

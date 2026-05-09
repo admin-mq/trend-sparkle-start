@@ -42,4 +42,5 @@ export interface AuthContextType {
   signUp: (data: SignUpData) => Promise<{ error: Error | null }>;
   signOut: () => Promise<{ error: Error | null }>;
   signInWithGoogle: (accountType?: AccountType) => Promise<{ error: Error | null }>;
+  refreshProfile: () => Promise<void>;
 }
