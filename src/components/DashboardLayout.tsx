@@ -280,7 +280,7 @@ export const DashboardLayout = () => {
         </main>
       </div>
 
-      <ProfileCompletionWrapper />
+      
       <AmcueChat />
 
     </div>
