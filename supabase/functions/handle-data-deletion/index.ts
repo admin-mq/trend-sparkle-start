@@ -10,19 +10,46 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const FACEBOOK_APP_SECRET = Deno.env.get('FACEBOOK_APP_SECRET') || '';
 
-const USER_TABLES = [
-  'brand_profiles',
-  'brand_memory',
-  'brand_examples',
-  'user_profiles',
-  'profiles',
+// Tables with direct user_id FK — safe to delete in any order
+const USER_ID_TABLES = [
+  // Hashtag tool
+  'hashtag_requests',
+  'hashtag_outcomes',
+  'hashtag_results',
+  'hashtag_watchlist',
+  // Instagram
+  'instagram_connections',
+  'instagram_synced_posts',
+  // Connection requests
+  'connection_requests',
+  // Tweet drafts
+  'tweet_drafts',
+  // Saved content
+  'user_saved_blueprints',
+  'user_saved_trends',
+  'user_trend_sessions',
+  // AMCUE
+  'amcue_messages',
   'amcue_conversations',
   'amcue_cmo_memory',
   'amcue_brand_memory',
+  // PR tool — children must come before pr_projects
+  'pr_narrative_results',
+  'pr_actions',
+  'pr_alerts',
+  'pr_external_mentions',
+  'pr_score_history',
+  'pr_visibility_results',
+  'pr_visibility_runs',
+  'pr_scan_jobs',
   'pr_projects',
-  'scc_sites',
-  'scc_gsc_connections',
-  'scc_gbp_connections',
+  // Brand profiles
+  'brand_profiles',
+  'brand_memory',
+  'brand_examples',
+  // Core user profile tables
+  'user_profiles',
+  'profiles',
 ];
 
 function generateConfirmationCode(input: string): string {
@@ -30,14 +57,65 @@ function generateConfirmationCode(input: string): string {
   return `MQ-DEL-${safe || 'REQUEST'}`;
 }
 
+async function deleteSccData(supabase: ReturnType<typeof createClient>, userId: string) {
+  // scc_* child tables reference scc_sites.id (NO ACTION FK), so delete children first
+  try {
+    const { data: sites } = await supabase
+      .from('scc_sites')
+      .select('id')
+      .eq('user_id', userId);
+
+    if (sites && sites.length > 0) {
+      const siteIds = sites.map((s: { id: string }) => s.id);
+      const sccChildTables = [
+        'scc_pages',
+        'scc_queries',
+        'scc_snapshots',
+        'scc_actions',
+        'scc_crawl_queue',
+        'scc_crawl_jobs',
+        'scc_page_snapshot_crawl',
+        'scc_page_snapshot_metrics',
+        'scc_query_snapshot_metrics',
+        'scc_anon_scan_log',
+        'scc_ga4_connections',
+        'scc_gsc_connections',
+        'scc_gbp_connections',
+      ];
+      for (const table of sccChildTables) {
+        try {
+          await supabase.from(table).delete().in('site_id', siteIds);
+        } catch (e) {
+          console.warn(`[handle-data-deletion] Could not delete from ${table}:`, e);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[handle-data-deletion] Could not fetch scc_sites:', e);
+  }
+
+  // Now delete the parent
+  try {
+    await supabase.from('scc_sites').delete().eq('user_id', userId);
+  } catch (e) {
+    console.warn('[handle-data-deletion] Could not delete from scc_sites:', e);
+  }
+}
+
 async function deleteUserData(supabase: ReturnType<typeof createClient>, userId: string) {
-  for (const table of USER_TABLES) {
+  // Delete scc data (requires child-before-parent ordering)
+  await deleteSccData(supabase, userId);
+
+  // Delete all user_id-indexed tables
+  for (const table of USER_ID_TABLES) {
     try {
       await supabase.from(table).delete().eq('user_id', userId);
     } catch (e) {
       console.warn(`[handle-data-deletion] Could not delete from ${table}:`, e);
     }
   }
+
+  // Finally delete the auth user
   try {
     await supabase.auth.admin.deleteUser(userId);
   } catch (e) {
@@ -79,7 +157,6 @@ serve(async (req) => {
 
       console.log('[handle-data-deletion] Meta callback received, signed_request present:', !!signedRequest);
 
-      // Extract Facebook user_id from payload (without signature verification if no secret)
       let fbUserId = 'unknown';
       try {
         const parts = signedRequest.split('.');
@@ -95,7 +172,6 @@ serve(async (req) => {
         console.warn('[handle-data-deletion] Could not decode signed_request payload:', e);
       }
 
-      // Verify signature if app secret is available
       if (FACEBOOK_APP_SECRET && signedRequest) {
         try {
           const parts = signedRequest.split('.');
@@ -149,6 +225,7 @@ serve(async (req) => {
       const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
       if (authError || !user) {
+        console.error('[handle-data-deletion] Auth error:', authError);
         return new Response(JSON.stringify({ error: 'Invalid token' }), {
           status: 401,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

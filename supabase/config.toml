@@ -45,3 +45,6 @@ verify_jwt = false
 
 [functions.optimize-hashtags-inline]
 verify_jwt = false
+
+[functions.handle-data-deletion]
+verify_jwt = false
