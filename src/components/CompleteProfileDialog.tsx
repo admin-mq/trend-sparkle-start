@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
 // Safe wrapper — if somehow rendered outside Router, won't crash
@@ -42,9 +42,12 @@ export function CompleteProfileDialog({
   userEmail 
 }: CompleteProfileDialogProps) {
   const navigate = useSafeNavigate();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
-  const storedType = sessionStorage.getItem('mq_google_account_type') as AccountType | null;
-  const [accountType, setAccountType] = useState<AccountType>(storedType ?? 'brand');
+  const urlAcct = searchParams.get('acct') as AccountType | null;
+  const [accountType, setAccountType] = useState<AccountType>(
+    urlAcct === 'creator' || urlAcct === 'brand' ? urlAcct : 'brand'
+  );
   const [brandName, setBrandName] = useState('');
   const [fullName, setFullName] = useState('');
   const [brandEmail, setBrandEmail] = useState('');
@@ -103,7 +106,6 @@ export function CompleteProfileDialog({
 
       if (error) throw error;
 
-      sessionStorage.removeItem('mq_google_account_type');
       toast.success('Profile completed successfully!');
       onClose();
       navigate?.('/dashboard', { replace: true });

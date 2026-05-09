@@ -237,14 +237,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async (accountType?: import('@/types/auth').AccountType) => {
     try {
-      if (accountType) {
-        sessionStorage.setItem('mq_google_account_type', accountType);
-      }
+      const redirectTo = accountType
+        ? `${window.location.origin}/dashboard?acct=${accountType}`
+        : `${window.location.origin}/dashboard`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/dashboard`,
-        },
+        options: { redirectTo },
       });
       return { error: error ? new Error(error.message) : null };
     } catch (err) {
