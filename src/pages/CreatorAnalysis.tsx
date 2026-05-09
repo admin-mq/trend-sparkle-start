@@ -371,7 +371,7 @@ const CreatorAnalysis = () => {
         body: {
           instagram_handle: account.instagram_handle,
           why_inspiring: account.why_inspiring || null,
-          manual_captions: account.recent_captions || undefined,
+          manual_captions: (account as any).recent_captions || undefined,
         },
       });
       if (res.error) throw new Error(res.error.message);
