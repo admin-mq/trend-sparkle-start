@@ -9,6 +9,7 @@ const loadingMessages: Record<WorkspaceStep, { icon: React.ElementType; message:
   trends: { icon: Play, message: "Scanning today's trends…" },
   directions: { icon: Sparkles, message: "Cooking up ideas…" },
   blueprint: { icon: FileText, message: "Building your blueprint…" },
+  saved_trends: { icon: Play, message: "Loading saved trends…" },
 };
 
 export const WorkspaceLoading = ({ step }: WorkspaceLoadingProps) => {
