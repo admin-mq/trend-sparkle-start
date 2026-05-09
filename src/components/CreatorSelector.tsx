@@ -38,12 +38,13 @@ export const CreatorSelector = ({
 
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from("user_profiles")
-      .select("full_name,industry,industry_other,location,business_summary")
-      .eq("user_id", user.id)
-      .maybeSingle()
-      .then(({ data, error }) => {
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("user_profiles")
+          .select("full_name,industry,industry_other,location,business_summary")
+          .eq("user_id", user.id)
+          .maybeSingle();
         if (error) {
           console.error("Failed to load creator profile:", error);
           onProfileLoaded(null);
@@ -57,12 +58,12 @@ export const CreatorSelector = ({
         setProfile(p);
         onProfileLoaded(p);
         setProfileLoading(false);
-      })
-      .catch((err) => {
+      } catch (err) {
         console.error("Unexpected error loading creator profile:", err);
         onProfileLoaded(null);
         setProfileLoading(false);
-      });
+      }
+    })();
   }, [user, onProfileLoaded]);
 
   const isTwitter = inputValues.platform === "Twitter";

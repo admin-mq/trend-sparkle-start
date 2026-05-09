@@ -114,7 +114,7 @@ export const CreatorDashboard = () => {
 
   const creatorName = profile?.full_name || profile?.brand_name || "Creator";
   const niche = profile?.industry || "Content";
-  const geography = profile?.target_geography as string | undefined;
+  const geography = (profile as any)?.target_geography as string | undefined;
   const region = geoToRegion(geography);
   const regionLabel = region ? REGION_LABELS[region] ?? geography : geography;
 

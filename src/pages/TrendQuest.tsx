@@ -833,15 +833,6 @@ const TrendQuest = () => {
             isCreator={isCreator}
           />
         );
-      case "saved_trends":
-        return (
-          <SavedTrends
-            savedTrends={savedTrends}
-            loading={savedTrendsLoading}
-            onUseTrend={handleUseSavedTrend}
-            onRemoveTrend={handleRemoveSavedTrend}
-          />
-        );
       case "directions":
         if (directionsError) {
           return (
