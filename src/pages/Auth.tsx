@@ -5,12 +5,30 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Building2, User, Loader2, AlertCircle, CheckCircle, Eye, EyeOff, ArrowLeft, TrendingUp, Users, Zap, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AccountType } from '@/types/auth';
 import { MQLogo } from '@/components/MQLogo';
 
 const BLOCKED_EMAIL_DOMAINS = ['gmail.com', 'googlemail.com'];
+
+const COUNTRIES = [
+  "Afghanistan", "Albania", "Algeria", "Argentina", "Australia",
+  "Austria", "Bangladesh", "Belgium", "Brazil", "Canada",
+  "Chile", "China", "Colombia", "Croatia", "Czech Republic",
+  "Denmark", "Egypt", "Ethiopia", "Finland", "France",
+  "Germany", "Ghana", "Greece", "Hungary", "India",
+  "Indonesia", "Iran", "Iraq", "Ireland", "Israel",
+  "Italy", "Japan", "Jordan", "Kenya", "Malaysia",
+  "Mexico", "Morocco", "Netherlands", "New Zealand", "Nigeria",
+  "Norway", "Pakistan", "Peru", "Philippines", "Poland",
+  "Portugal", "Romania", "Russia", "Saudi Arabia", "Serbia",
+  "Singapore", "South Africa", "South Korea", "Spain", "Sweden",
+  "Switzerland", "Taiwan", "Tanzania", "Thailand", "Turkey",
+  "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom",
+  "United States", "Vietnam", "Zimbabwe",
+];
 
 type Step = 'select-type' | 'auth';
 type AuthMode = 'login' | 'signup';
@@ -453,14 +471,17 @@ export default function Auth() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="location">Location *</Label>
-              <Input
-                id="location"
-                placeholder="City, Country"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                disabled={loading}
-              />
+              <Label htmlFor="location">Country *</Label>
+              <Select value={location} onValueChange={setLocation} disabled={loading}>
+                <SelectTrigger id="location">
+                  <SelectValue placeholder="Select your country" />
+                </SelectTrigger>
+                <SelectContent>
+                  {COUNTRIES.map(country => (
+                    <SelectItem key={country} value={country}>{country}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {signupErrors.location && <FieldError msg={signupErrors.location} />}
             </div>
 
