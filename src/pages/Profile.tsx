@@ -46,17 +46,21 @@ const INDUSTRIES = [
   "Other"
 ];
 
-const GEOGRAPHIES = [
-  "Global",
-  "North America",
-  "Europe",
-  "Asia Pacific",
-  "Latin America",
-  "Middle East & Africa",
-  "United States",
-  "United Kingdom",
-  "India",
-  "Australia"
+const COUNTRIES = [
+  "Afghanistan", "Albania", "Algeria", "Argentina", "Australia",
+  "Austria", "Bangladesh", "Belgium", "Brazil", "Canada",
+  "Chile", "China", "Colombia", "Croatia", "Czech Republic",
+  "Denmark", "Egypt", "Ethiopia", "Finland", "France",
+  "Germany", "Ghana", "Greece", "Hungary", "India",
+  "Indonesia", "Iran", "Iraq", "Ireland", "Israel",
+  "Italy", "Japan", "Jordan", "Kenya", "Malaysia",
+  "Mexico", "Morocco", "Netherlands", "New Zealand", "Nigeria",
+  "Norway", "Pakistan", "Peru", "Philippines", "Poland",
+  "Portugal", "Romania", "Russia", "Saudi Arabia", "Serbia",
+  "Singapore", "South Africa", "South Korea", "Spain", "Sweden",
+  "Switzerland", "Taiwan", "Tanzania", "Thailand", "Turkey",
+  "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom",
+  "United States", "Vietnam", "Zimbabwe",
 ];
 
 // ─── Creator Profile ──────────────────────────────────────────────────────────
@@ -244,14 +248,14 @@ function CreatorProfile() {
             </div>
 
             <div className="space-y-2">
-              <Label>Geography</Label>
+              <Label>Country</Label>
               <Select value={location || ""} onValueChange={setLocation}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Where do you create content?" />
+                  <SelectValue placeholder="Select your country" />
                 </SelectTrigger>
                 <SelectContent>
-                  {GEOGRAPHIES.map(geo => (
-                    <SelectItem key={geo} value={geo}>{geo}</SelectItem>
+                  {COUNTRIES.map(country => (
+                    <SelectItem key={country} value={country}>{country}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
