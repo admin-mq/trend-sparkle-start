@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type TrendMode = "global" | "regional" | "niche";
+
 interface HotTrend {
   trend_id: string;
   trend_name: string;
@@ -101,6 +103,49 @@ const TIMING_CONFIG = {
   saturated: { label: "Saturated",    icon: Clock, cls: "text-muted-foreground border-border bg-muted" },
 };
 
+// ── Trend fetching with progressive fallback ──────────────────────────────────
+
+function extractNicheKeywords(niche: string): string[] {
+  return niche
+    .split(/\s+and\s+|[,&]/i)
+    .map(k => k.trim())
+    .filter(k => k.length > 2);
+}
+
+async function fetchHotTrends(
+  regionCode: string | null,
+  niche: string | null
+): Promise<{ data: HotTrend[]; mode: TrendMode }> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const baseQuery = () =>
+    supabase
+      .from("trends")
+      .select("trend_id, trend_name, category, virality_score, timing, region")
+      .eq("active", true)
+      .eq("premium_only", false)
+      .gte("last_seen_at", since)
+      .order("virality_score", { ascending: false })
+      .limit(3);
+
+  if (regionCode && niche) {
+    const keywords = extractNicheKeywords(niche);
+    const orFilter =
+      keywords.length > 0
+        ? keywords.map(k => `category.ilike.%${k}%`).join(",")
+        : `category.ilike.%${niche}%`;
+    const { data } = await baseQuery().eq("region", regionCode).or(orFilter);
+    if (data && data.length > 0) return { data: data as HotTrend[], mode: "niche" };
+  }
+
+  if (regionCode) {
+    const { data } = await baseQuery().eq("region", regionCode);
+    if (data && data.length > 0) return { data: data as HotTrend[], mode: "regional" };
+  }
+
+  const { data } = await baseQuery();
+  return { data: (data as HotTrend[]) ?? [], mode: "global" };
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const CreatorDashboard = () => {
@@ -111,10 +156,11 @@ export const CreatorDashboard = () => {
     pipelineSaved: 0, pipelineDrafted: 0, hotTrends: [],
   });
   const [loading, setLoading] = useState(true);
+  const [trendMode, setTrendMode] = useState<TrendMode>("global");
 
   const creatorName = profile?.full_name || profile?.brand_name || "Creator";
   const niche = profile?.industry || "Content";
-  const geography = (profile as any)?.target_geography as string | undefined;
+  const geography = (profile as any)?.location as string | undefined;
   const region = geoToRegion(geography);
   const regionLabel = region ? REGION_LABELS[region] ?? geography : geography;
 
@@ -131,7 +177,9 @@ export const CreatorDashboard = () => {
     const monthBegin = monthStart().toISOString();
     const now = new Date().toISOString();
 
-    const [savedWeekRes, draftsMonthRes, totalSavedRes, pipelineSavedRes, hotTrendsRes] =
+    const industryFilter = profile?.industry || null;
+
+    const [savedWeekRes, draftsMonthRes, totalSavedRes, pipelineSavedRes, hotTrendsResult] =
       await Promise.all([
         // Saved this week
         supabase
@@ -161,31 +209,25 @@ export const CreatorDashboard = () => {
           .eq("user_id", user.id)
           .gt("expires_at", now),
 
-        // Top 3 hottest trends globally — last 24 hours only, any region/category
-        supabase
-          .from("trends")
-          .select("trend_id, trend_name, category, virality_score, timing, region")
-          .eq("active", true)
-          .eq("premium_only", false)
-          .gte("last_seen_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-          .order("virality_score", { ascending: false })
-          .limit(3),
+        // Top 3 trends — filtered by region+niche if known, with progressive fallback
+        fetchHotTrends(region, industryFilter),
       ]);
 
     // Drafts count — tweet_drafts groups 3 drafts per generation_id,
     // so count unique generation_ids for a meaningful "sessions" number
     const draftsThisMonth = draftsMonthRes.count ?? 0;
 
+    setTrendMode(hotTrendsResult.mode);
     setStats({
       savedThisWeek:   savedWeekRes.count   ?? 0,
       draftsThisMonth: Math.ceil(draftsThisMonth / 3), // 3 drafts per generation
       totalSaved:      totalSavedRes.count  ?? 0,
       pipelineSaved:   pipelineSavedRes.count ?? 0,
       pipelineDrafted: Math.ceil(draftsThisMonth / 3),
-      hotTrends:       (hotTrendsRes.data as HotTrend[]) ?? [],
+      hotTrends:       hotTrendsResult.data,
     });
     setLoading(false);
-  }, [user, region]);
+  }, [user, region, profile?.industry]);
 
   useEffect(() => { void loadData(); }, [loadData]);
 
@@ -321,7 +363,11 @@ export const CreatorDashboard = () => {
                 <Flame className="w-3.5 h-3.5 text-amber-500" />
               </div>
               <span className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                What's trending on the internet right now
+                {trendMode === "niche" && regionLabel
+                  ? `Top ${niche} trends in ${regionLabel}`
+                  : trendMode === "regional" && regionLabel
+                  ? `What's trending in ${regionLabel}`
+                  : "What's trending on the internet right now"}
               </span>
             </div>
             <button
