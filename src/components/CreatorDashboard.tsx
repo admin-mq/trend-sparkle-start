@@ -36,17 +36,39 @@ interface CreatorStats {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const GEO_TO_REGION: Record<string, string> = {
-  "united states": "US",
-  "united kingdom": "UK",
-  "india": "IN",
-  "australia": "AU",
-  "canada": "CA",
-  "new zealand": "NZ",
+  // Countries — what users select from the dropdown
+  "united states": "US", "united kingdom": "UK", "india": "IN",
+  "australia": "AU", "canada": "CA", "new zealand": "NZ",
+  // US state names — covers old "city, state" free-text entries
+  "alabama": "US", "alaska": "US", "arizona": "US", "arkansas": "US",
+  "california": "US", "colorado": "US", "connecticut": "US", "delaware": "US",
+  "florida": "US", "georgia": "US", "hawaii": "US", "idaho": "US",
+  "illinois": "US", "indiana": "US", "iowa": "US", "kansas": "US",
+  "kentucky": "US", "louisiana": "US", "maine": "US", "maryland": "US",
+  "massachusetts": "US", "michigan": "US", "minnesota": "US",
+  "mississippi": "US", "missouri": "US", "montana": "US", "nebraska": "US",
+  "nevada": "US", "ohio": "US", "oklahoma": "US", "oregon": "US",
+  "pennsylvania": "US", "tennessee": "US", "texas": "US", "utah": "US",
+  "vermont": "US", "virginia": "US", "wisconsin": "US", "wyoming": "US",
+  "new york": "US", "new jersey": "US", "new mexico": "US",
+  "north carolina": "US", "north dakota": "US", "south carolina": "US",
+  "south dakota": "US", "west virginia": "US", "washington": "US",
+  "new hampshire": "US", "rhode island": "US",
+  // UK nations — covers old free-text entries
+  "england": "UK", "scotland": "UK", "wales": "UK",
 };
 
 function geoToRegion(geography?: string | null): string | null {
   if (!geography) return null;
-  return GEO_TO_REGION[geography.toLowerCase().trim()] ?? null;
+  const lower = geography.toLowerCase().trim();
+  // Exact match (new users with country dropdown)
+  if (GEO_TO_REGION[lower]) return GEO_TO_REGION[lower];
+  // Split "city, state" or "city, country" on commas and check each part
+  const parts = lower.split(",").map(p => p.trim());
+  for (const part of parts) {
+    if (GEO_TO_REGION[part]) return GEO_TO_REGION[part];
+  }
+  return null;
 }
 
 const REGION_LABELS: Record<string, string> = {
