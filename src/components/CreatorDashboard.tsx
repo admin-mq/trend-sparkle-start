@@ -36,15 +36,34 @@ interface CreatorStats {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const GEO_TO_REGION: Record<string, string> = {
+  // Countries
   "india": "IN",
-  "united kingdom": "UK",
-  "uk": "UK",
-  "united states": "US",
-  "usa": "US",
-  "us": "US",
+  "united kingdom": "UK", "uk": "UK", "great britain": "UK",
+  "england": "UK", "scotland": "UK", "wales": "UK",
+  "united states": "US", "united states of america": "US",
+  "usa": "US", "us": "US", "america": "US",
   "canada": "CA",
   "australia": "AU",
   "new zealand": "NZ",
+  // Broad dropdown regions → best single-country proxy
+  "north america": "US",
+  // US cities & states
+  "new york": "US", "new york city": "US", "nyc": "US",
+  "los angeles": "US", "la": "US", "chicago": "US",
+  "houston": "US", "san francisco": "US", "miami": "US",
+  "boston": "US", "seattle": "US", "dallas": "US",
+  "atlanta": "US", "denver": "US", "phoenix": "US",
+  "california": "US", "texas": "US", "florida": "US",
+  // UK cities
+  "london": "UK", "manchester": "UK", "birmingham": "UK",
+  "edinburgh": "UK", "glasgow": "UK", "leeds": "UK", "bristol": "UK",
+  // Australian cities
+  "sydney": "AU", "melbourne": "AU", "brisbane": "AU", "perth": "AU",
+  // Canadian cities
+  "toronto": "CA", "vancouver": "CA", "montreal": "CA",
+  // Indian cities
+  "mumbai": "IN", "delhi": "IN", "new delhi": "IN",
+  "bangalore": "IN", "bengaluru": "IN", "hyderabad": "IN",
 };
 
 function geoToRegion(geography?: string | null): string | null {
