@@ -289,7 +289,8 @@ async function fetchNicheTrends(
   apiKey: string,
   niche: string,
   region: string,
-  today: string
+  today: string,
+  targetCount: number = 30
 ): Promise<string[]> {
   const prompt = `Find the MOST discussed topics on X/Twitter in ${region} today (${today}) that are relevant to a ${niche} content creator.
 
@@ -301,8 +302,9 @@ Rules:
 
 Good examples for Travel: "#VisaOnArrival", "Bali digital nomad visa", "Emirates A380 new route", "solo travel safety tips trending"
 Good examples for Fitness: "#75Hard", "new creatine study", "Hyrox London", "running shoe drop"
+Good examples for Fashion: "#OOTD", "Met Gala 2026", "Zara drop", "Bella Hadid look", "#FashionWeek"
 
-Return 8-12 topics. JSON array of strings only (no markdown):
+Return ${targetCount} topics. JSON array of strings only (no markdown):
 ["topic1", "topic2", ...]`;
 
   console.log(`[fetch-twitter-trends] Fetching niche trends for: ${niche} in ${region}`);
@@ -328,7 +330,7 @@ Return 8-12 topics. JSON array of strings only (no markdown):
     const arr = Array.isArray(json) ? json : [];
     const filtered = arr
       .filter((x: any) => typeof x === 'string' && x.length > 0 && x.length < 80)
-      .slice(0, 12);
+      .slice(0, targetCount);
     console.log(`[fetch-twitter-trends] Got ${filtered.length} niche trends for ${niche}:`, filtered.slice(0, 3).join(', '));
     return filtered;
   } catch (err) {
@@ -352,9 +354,11 @@ serve(async (req) => {
     const todayShort = new Date().toISOString().split('T')[0];
 
     // ── PASS 1a: Scrape trends24.in ───────────────────────────────────────────
-    // When categories are selected, only scrape half from trends24 — the other
-    // half will come from niche-specific Perplexity search so results stay relevant.
-    const rawCount = categories.length > 0 ? Math.ceil(count / 2) : count;
+    // Always scrape half from trends24 when a creator profile is known — the
+    // other half comes from niche-specific Perplexity search so results stay
+    // relevant to who the creator is, not just what's generically viral.
+    const hasNicheContext = categories.length > 0 || !!user_niche;
+    const rawCount = hasNicheContext ? Math.ceil(count / 2) : count;
     let rawTrends: string[];
     try {
       rawTrends = await scrapeTrends24(regionSlug, rawCount);
@@ -363,23 +367,22 @@ serve(async (req) => {
       throw new Error(`Failed to fetch trends from trends24.in: ${scrapeErr instanceof Error ? scrapeErr.message : 'unknown'}`);
     }
 
-    // ── PASS 1b: Supplementary niche/category trends ─────────────────────────
-    // Priority: manually-selected categories > creator niche > raw trends only
+    // ── PASS 1b: Niche-relevant trends from creator profile ──────────────────
+    // Categories (selected chips) are a refinement of the creator's niche.
+    // If chips are selected, use those. Otherwise fall back to the profile niche.
+    // Either way, always apply niche context when a creator profile exists.
     let combinedTrends = rawTrends;
     let supplementaryCount = 0;
+    const nicheTarget = Math.ceil(count / 2);
+
     if (categories.length > 0) {
-      // Fetch up to half the total count as niche-specific trends
-      const catTarget = Math.ceil(count / 2);
-      const catTrends = await fetchCategoryTrends(PERPLEXITY_API_KEY, categories, region, today, catTarget);
+      const catTrends = await fetchCategoryTrends(PERPLEXITY_API_KEY, categories, region, today, nicheTarget);
       const seen = new Set(rawTrends.map(t => t.toLowerCase()));
       const unique = catTrends.filter(t => !seen.has(t.toLowerCase()));
       supplementaryCount = unique.length;
-      // Niche-specific trends lead; raw trends fill remaining slots up to count
       combinedTrends = [...unique, ...rawTrends].slice(0, count);
     } else if (user_niche) {
-      // No categories manually chosen — use the creator's niche to surface
-      // relevant trends they'd actually want to engage with.
-      const nicheTrends = await fetchNicheTrends(PERPLEXITY_API_KEY, user_niche, region, today);
+      const nicheTrends = await fetchNicheTrends(PERPLEXITY_API_KEY, user_niche, region, today, nicheTarget);
       const seen = new Set(rawTrends.map(t => t.toLowerCase()));
       const unique = nicheTrends.filter(t => !seen.has(t.toLowerCase()));
       supplementaryCount = unique.length;
