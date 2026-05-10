@@ -68,6 +68,8 @@ function decodeHtmlEntities(str: string): string {
 }
 
 // ── Scrape trends24.in directly via HTML fetch ───────────────────────────────
+// Iterates ALL trend-card__list blocks (newest first in DOM) to get the most
+// recent snapshot and enough trends to fill the requested count.
 async function scrapeTrends24(regionSlug: string, count: number): Promise<string[]> {
   const url = `https://trends24.in/${regionSlug}/`;
   console.log(`[fetch-twitter-trends] Scraping ${url}`);
@@ -83,21 +85,30 @@ async function scrapeTrends24(regionSlug: string, count: number): Promise<string
   if (!res.ok) throw new Error(`trends24.in HTTP ${res.status}`);
   const html = await res.text();
 
-  const olMatch = html.match(/<ol[^>]*class=["']?trend-card__list["']?[^>]*>([\s\S]*?)<\/ol>/);
-  if (!olMatch) throw new Error('trends24.in structure changed — no trend-card__list found');
-
-  const linkRegex = /class=["']?trend-link["']?[^>]*>([^<]+)<\/a>/g;
+  // Match ALL trend-card__list <ol> blocks — trends24 renders newest first in DOM
+  const olRegex = /<ol[^>]*class=["']?trend-card__list["']?[^>]*>([\s\S]*?)<\/ol>/g;
+  const seen = new Set<string>();
   const trends: string[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = linkRegex.exec(olMatch[1])) !== null) {
-    const name = decodeHtmlEntities(m[1].trim());
-    if (name && !trends.includes(name)) trends.push(name);
+  let olMatch: RegExpExecArray | null;
+  let listsFound = 0;
+
+  while ((olMatch = olRegex.exec(html)) !== null) {
+    listsFound++;
+    // Use matchAll on the captured list content so regex state is isolated per block
+    for (const m of olMatch[1].matchAll(/class=["']?trend-link["']?[^>]*>([^<]+)<\/a>/g)) {
+      const name = decodeHtmlEntities(m[1].trim());
+      if (name && !seen.has(name.toLowerCase())) {
+        seen.add(name.toLowerCase());
+        trends.push(name);
+      }
+    }
     if (trends.length >= count) break;
   }
 
+  if (listsFound === 0) throw new Error('trends24.in structure changed — no trend-card__list found');
   if (trends.length === 0) throw new Error('trends24.in returned no trends for this region');
-  console.log(`[fetch-twitter-trends] Scraped ${trends.length} trends:`, trends.slice(0, 5).join(', '));
-  return trends;
+  console.log(`[fetch-twitter-trends] Scraped ${trends.length} unique trends from ${listsFound} time snapshots:`, trends.slice(0, 5).join(', '));
+  return trends.slice(0, count);
 }
 
 // ── Fetch category-specific trending topics via Marketers Quest ───────────────────
@@ -355,8 +366,8 @@ serve(async (req) => {
       const seen = new Set(rawTrends.map(t => t.toLowerCase()));
       const unique = catTrends.filter(t => !seen.has(t.toLowerCase()));
       supplementaryCount = unique.length;
-      // Category-specific trends lead the list so they're visible; cap at 30 total
-      combinedTrends = [...unique, ...rawTrends].slice(0, Math.max(rawTrends.length, 30));
+      // Category-specific trends lead the list; cap at requested count
+      combinedTrends = [...unique, ...rawTrends].slice(0, count);
     } else if (user_niche) {
       // No categories manually chosen — use the creator's niche to surface
       // relevant trends they'd actually want to engage with.
@@ -364,7 +375,7 @@ serve(async (req) => {
       const seen = new Set(rawTrends.map(t => t.toLowerCase()));
       const unique = nicheTrends.filter(t => !seen.has(t.toLowerCase()));
       supplementaryCount = unique.length;
-      combinedTrends = [...unique, ...rawTrends].slice(0, Math.max(rawTrends.length, 30));
+      combinedTrends = [...unique, ...rawTrends].slice(0, count);
     }
 
     // ── PASS 2: Parallel batched verification ────────────────────────────────
@@ -383,7 +394,10 @@ serve(async (req) => {
 
     let finalTrends: any[] = batchResults.flat();
 
-    // Sort: category matches first, then by original rank within each bucket
+    // Sort by relevance: category/niche match → velocity (rising first) → confidence → rank
+    const velocityScore = (v: string) => v === 'rising' ? 0 : v === 'stable' ? 1 : 2;
+    const confidenceScore = (c: string) => c === 'high' ? 0 : c === 'medium' ? 1 : 2;
+
     if (categories.length > 0) {
       const prioritySet = new Set((categories as string[]).map(c => c.toLowerCase()));
       finalTrends = finalTrends
@@ -391,6 +405,21 @@ serve(async (req) => {
           const aMatch = prioritySet.has((a.category || '').toLowerCase()) ? 0 : 1;
           const bMatch = prioritySet.has((b.category || '').toLowerCase()) ? 0 : 1;
           if (aMatch !== bMatch) return aMatch - bMatch;
+          const velDiff = velocityScore(a.velocity) - velocityScore(b.velocity);
+          if (velDiff !== 0) return velDiff;
+          const conDiff = confidenceScore(a.confidence) - confidenceScore(b.confidence);
+          if (conDiff !== 0) return conDiff;
+          return (a.rank || 99) - (b.rank || 99);
+        })
+        .map((t: any, i: number) => ({ ...t, rank: i + 1 }));
+    } else {
+      // No category filter: sort by velocity then confidence to surface freshest trends first
+      finalTrends = finalTrends
+        .sort((a: any, b: any) => {
+          const velDiff = velocityScore(a.velocity) - velocityScore(b.velocity);
+          if (velDiff !== 0) return velDiff;
+          const conDiff = confidenceScore(a.confidence) - confidenceScore(b.confidence);
+          if (conDiff !== 0) return conDiff;
           return (a.rank || 99) - (b.rank || 99);
         })
         .map((t: any, i: number) => ({ ...t, rank: i + 1 }));

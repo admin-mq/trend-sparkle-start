@@ -454,7 +454,7 @@ const TrendQuest = () => {
           body: {
             region: inputValues.twitter_geography || 'UK',
             categories: inputValues.content_categories || [],
-            count: 20,
+            count: 60,
             user_niche: userProfile?.industry || undefined,
           },
         });
