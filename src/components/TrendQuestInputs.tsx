@@ -320,36 +320,32 @@ export const TrendQuestInputs = ({ values, onChange }: TrendQuestInputsProps) =>
         </p>
       </div>
 
-      {/* ── Target Location ──
-          Drives which country's trends get fetched (Google Trends geo +
-          YouTube region + trends24 slug). Default comes from the brand /
-          creator profile's geography; user can override per-run. We
-          deliberately separate this from the Twitter-only "Trend region"
-          dropdown below — that one is twitter-API-specific and lives
-          inside the X settings card. */}
-      <div className="space-y-1.5">
-        <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-          Target Location
-        </Label>
-        <Select
-          value={values.target_location}
-          onValueChange={(v) => handleChange("target_location", v as TargetLocationCode)}
-        >
-          <SelectTrigger className="h-9">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {TARGET_LOCATIONS.map((loc) => (
-              <SelectItem key={loc.code} value={loc.code}>
-                {loc.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-[10px] text-muted-foreground/70">
-          Trends are pulled from this country. Defaults from your profile — change to test other regions.
-        </p>
-      </div>
+      {/* ── Target Location — hidden for Twitter/X which has its own Trend region dropdown ── */}
+      {!isTwitter && (
+        <div className="space-y-1.5">
+          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Target Location
+          </Label>
+          <Select
+            value={values.target_location}
+            onValueChange={(v) => handleChange("target_location", v as TargetLocationCode)}
+          >
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TARGET_LOCATIONS.map((loc) => (
+                <SelectItem key={loc.code} value={loc.code}>
+                  {loc.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-[10px] text-muted-foreground/70">
+            Trends are pulled from this country. Defaults from your profile — change to test other regions.
+          </p>
+        </div>
+      )}
 
       {/* ── Topic angle (all platforms, optional) ── */}
       <div className="space-y-1.5">
