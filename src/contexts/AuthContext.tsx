@@ -16,6 +16,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const sessionResolved = useRef(false);
   const intentionalSignOut = useRef(false);
+  // Prevents handleSession from resolving loading while signUp() profile insert is in-flight
+  const profileInsertPending = useRef(false);
 
   const fetchProfile = useCallback(async (userId: string): Promise<{ data: UserProfile | null; failed: boolean }> => {
     try {
@@ -65,6 +67,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const { data: userProfile, failed } = await fetchProfile(currentSession.user.id);
       if (!mounted) return;
+
+      // signUp() is mid-flight — SIGNED_IN fired before the profile insert committed.
+      // Keep user/session in state but hold loading=true so Auth.tsx doesn't redirect.
+      // signUp() will set the profile and release loading after the insert.
+      if (profileInsertPending.current) {
+        setSession(currentSession);
+        setUser(currentSession.user);
+        return;
+      }
 
       const isGoogleUser = currentSession.user.app_metadata?.provider === 'google';
 
@@ -194,6 +205,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = async (data: SignUpData) => {
     try {
+      profileInsertPending.current = true;
+
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
@@ -203,8 +216,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       });
 
-      if (authError) return { error: new Error(authError.message) };
-      if (!authData.user) return { error: new Error('Failed to create user') };
+      if (authError) {
+        profileInsertPending.current = false;
+        return { error: new Error(authError.message) };
+      }
+      if (!authData.user) {
+        profileInsertPending.current = false;
+        return { error: new Error('Failed to create user') };
+      }
 
       const { error: profileError } = await supabase
         .from('user_profiles')
@@ -217,11 +236,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           location: data.location,
         });
 
-      if (profileError) console.error('Profile creation error:', profileError);
+      profileInsertPending.current = false;
 
+      if (profileError) {
+        console.error('Profile creation error:', profileError);
+      } else {
+        // Fetch the committed profile and resolve loading — handleSession was held
+        const { data: newProfile } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('user_id', authData.user.id)
+          .maybeSingle();
+        setProfile(newProfile as UserProfile | null);
+      }
+
+      setLoading(false);
       localStorage.setItem(SESSION_EXPIRY_KEY, new Date().toISOString());
       return { error: null };
     } catch (err) {
+      profileInsertPending.current = false;
       return { error: err as Error };
     }
   };
