@@ -66,8 +66,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data: userProfile, failed } = await fetchProfile(currentSession.user.id);
       if (!mounted) return;
 
-      if (!userProfile && !failed) {
-        // New Google OAuth user — auto-create profile from Google metadata + localStorage type
+      const isGoogleUser = currentSession.user.app_metadata?.provider === 'google';
+
+      if (!userProfile && !failed && isGoogleUser) {
+        // New Google OAuth user — silently create profile from Google metadata + localStorage type
         const pendingType = localStorage.getItem('mq_pending_acct_type') as import('@/types/auth').AccountType | null;
         const accountType: import('@/types/auth').AccountType = pendingType === 'creator' ? 'creator' : 'brand';
         const meta = currentSession.user.user_metadata;
