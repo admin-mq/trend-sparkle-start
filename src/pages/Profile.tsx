@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -70,6 +71,7 @@ type ReferenceAccount = {
 
 function CreatorProfile() {
   const { user } = useAuthContext();
+  const navigate = useNavigate();
 
   const [fullName, setFullName] = useState("");
   const [niche, setNiche] = useState("");
@@ -125,7 +127,10 @@ function CreatorProfile() {
     );
     setSaving(false);
     if (error) toast.error("Failed to save profile");
-    else toast.success("Profile saved");
+    else {
+      toast.success("Profile saved");
+      navigate("/dashboard");
+    }
   };
 
   const handleConnectInstagram = async () => {
