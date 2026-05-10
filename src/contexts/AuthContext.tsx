@@ -14,9 +14,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [needsProfileCompletion, setNeedsProfileCompletion] = useState(false);
   const sessionResolved = useRef(false);
   // Only honor SIGNED_OUT events when we explicitly trigger sign-out
   const intentionalSignOut = useRef(false);
+  // Set to true between signUp() and profile row insert so the SIGNED_IN handler
+  // doesn't trigger the completion dialog before the insert commits.
+  const profileInsertPending = useRef(false);
 
   const fetchProfile = useCallback(async (userId: string): Promise<{ data: UserProfile | null; failed: boolean }> => {
     try {
@@ -64,9 +68,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(currentSession.user);
       localStorage.setItem(SESSION_EXPIRY_KEY, new Date().toISOString());
 
-      const { data: userProfile } = await fetchProfile(currentSession.user.id);
+      const { data: userProfile, failed } = await fetchProfile(currentSession.user.id);
       if (mounted) {
         setProfile(userProfile);
+        if (!failed) {
+          setNeedsProfileCompletion(!userProfile && !profileInsertPending.current);
+        }
         setLoading(false);
       }
     };
@@ -98,6 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setSession(null);
             setUser(null);
             setProfile(null);
+            setNeedsProfileCompletion(false);
             setLoading(false);
           } else {
             console.log('[Auth] Ignoring non-intentional SIGNED_OUT (stale token refresh)');
@@ -170,6 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = async (data: SignUpData) => {
     try {
+      profileInsertPending.current = true;
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
@@ -179,8 +188,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       });
 
-      if (authError) return { error: new Error(authError.message) };
-      if (!authData.user) return { error: new Error('Failed to create user') };
+      if (authError) {
+        profileInsertPending.current = false;
+        return { error: new Error(authError.message) };
+      }
+      if (!authData.user) {
+        profileInsertPending.current = false;
+        return { error: new Error('Failed to create user') };
+      }
 
       const { error: profileError } = await supabase
         .from('user_profiles')
@@ -193,28 +208,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           location: data.location,
         });
 
+      profileInsertPending.current = false;
+
       if (profileError) {
         console.error('Profile creation error:', profileError);
+      } else {
+        setNeedsProfileCompletion(false);
       }
 
       localStorage.setItem(SESSION_EXPIRY_KEY, new Date().toISOString());
       return { error: null };
     } catch (err) {
+      profileInsertPending.current = false;
       return { error: err as Error };
     }
   };
 
   const signInWithGoogle = async (accountType?: import('@/types/auth').AccountType) => {
     try {
-      const redirectTo = accountType
-        ? `${window.location.origin}/dashboard?acct=${accountType}`
-        : `${window.location.origin}/dashboard`;
+      // Store in localStorage — survives the full PKCE OAuth redirect cycle
+      // (sessionStorage is wiped on cross-origin navigation; URL params can be
+      // stripped by Supabase's detectSessionInUrl URL cleanup)
+      if (accountType) {
+        localStorage.setItem('mq_pending_acct_type', accountType);
+      }
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo },
+        options: { redirectTo: `${window.location.origin}/dashboard` },
       });
+      if (error) localStorage.removeItem('mq_pending_acct_type');
       return { error: error ? new Error(error.message) : null };
     } catch (err) {
+      localStorage.removeItem('mq_pending_acct_type');
       return { error: err as Error };
     }
   };
@@ -227,6 +252,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setSession(null);
       setProfile(null);
+      setNeedsProfileCompletion(false);
       const { error } = await supabase.auth.signOut();
       return { error: error ? new Error(error.message) : null };
     } catch (err) {
@@ -242,6 +268,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         session,
         profile,
         loading,
+        needsProfileCompletion,
+        setNeedsProfileCompletion,
         signIn,
         signUp,
         signOut,
