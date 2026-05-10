@@ -237,15 +237,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async (accountType?: import('@/types/auth').AccountType) => {
     try {
-      const redirectTo = accountType
-        ? `${window.location.origin}/dashboard?acct=${accountType}`
-        : `${window.location.origin}/dashboard`;
+      // Store in localStorage — survives the full PKCE OAuth redirect cycle
+      // (sessionStorage is wiped on cross-origin navigation; URL params can be
+      // stripped by Supabase's detectSessionInUrl URL cleanup)
+      if (accountType) {
+        localStorage.setItem('mq_pending_acct_type', accountType);
+      }
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo },
+        options: { redirectTo: `${window.location.origin}/dashboard` },
       });
+      if (error) localStorage.removeItem('mq_pending_acct_type');
       return { error: error ? new Error(error.message) : null };
     } catch (err) {
+      localStorage.removeItem('mq_pending_acct_type');
       return { error: err as Error };
     }
   };

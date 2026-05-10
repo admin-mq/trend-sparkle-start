@@ -44,9 +44,14 @@ export function CompleteProfileDialog({
   const navigate = useSafeNavigate();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
+
+  // localStorage is the primary source (reliable across PKCE redirect cycles).
+  // URL ?acct= param is a fallback for any non-OAuth flows.
+  const pendingAcct = localStorage.getItem('mq_pending_acct_type') as AccountType | null;
   const urlAcct = searchParams.get('acct') as AccountType | null;
+  const resolvedAcct = pendingAcct ?? urlAcct;
   const [accountType, setAccountType] = useState<AccountType>(
-    urlAcct === 'creator' || urlAcct === 'brand' ? urlAcct : 'brand'
+    resolvedAcct === 'creator' || resolvedAcct === 'brand' ? resolvedAcct : 'brand'
   );
   const [brandName, setBrandName] = useState('');
   const [fullName, setFullName] = useState('');
@@ -106,6 +111,7 @@ export function CompleteProfileDialog({
 
       if (error) throw error;
 
+      localStorage.removeItem('mq_pending_acct_type');
       toast.success('Profile completed successfully!');
       onClose();
       navigate?.('/dashboard', { replace: true });
