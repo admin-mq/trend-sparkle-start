@@ -22,7 +22,7 @@ const REGION_SLUGS: Record<string, string> = {
 
 const ALL_CATEGORIES = [
   'Entertainment','Music','Politics','Sports','Tech','AI',
-  'Gaming','Culture','Finance','News','Religion','Fashion','Entrepreneurship',
+  'Gaming','Culture','Finance','News','Religion','Fashion','Lifestyle','Entrepreneurship',
 ];
 
 const BATCH_SIZE = 5;
@@ -120,20 +120,23 @@ async function fetchCategoryTrends(
   apiKey: string,
   categories: string[],
   region: string,
-  today: string
+  today: string,
+  targetCount: number = 30
 ): Promise<string[]> {
+  const perCat = Math.ceil(targetCount / categories.length);
   const prompt = `Find the MOST discussed topics on X/Twitter in ${region} today (${today}) within these categories: ${categories.join(', ')}.
 
 Rules:
 1. Search X/Twitter and recent news from the last 6 hours
 2. Topics must be SPECIFIC — product names, people, events, hashtags, launches, controversies
-3. Do NOT return generic terms like "AI", "Technology", "Business" — these are useless
-4. Prioritize what is actively buzzing with tweets right now
+3. Do NOT return generic terms — be very specific (brand names, designer names, show titles, viral moments)
+4. Prioritize what is actively buzzing with tweets RIGHT NOW
 
-Good examples: "Claude Opus 4.7", "#WWDC", "Sam Altman interview", "Vision Pro 2", "Marketers Quest outage"
-Bad examples: "AI", "Tech", "Programming", "Entrepreneurship"
+Good examples for Fashion: "#OOTD", "Met Gala 2026", "Zara new collection", "Bella Hadid outfit", "#FashionWeek"
+Good examples for Lifestyle: "#MorningRoutine", "Stanley Cup trend", "viral wellness hack", "digital nomad visa"
+Bad examples: "Fashion", "Lifestyle", "Style", "Trends"
 
-Return 3-5 topics per category, max 15 total. JSON array of strings only (no markdown):
+Return ${perCat}-${perCat + 3} topics per category, ${targetCount} total. JSON array of strings only (no markdown):
 ["topic1", "topic2", ...]`;
 
   console.log(`[fetch-twitter-trends] Fetching category-specific trends for: ${categories.join(', ')}`);
@@ -159,7 +162,7 @@ Return 3-5 topics per category, max 15 total. JSON array of strings only (no mar
     const arr = Array.isArray(json) ? json : (Array.isArray(json?.topics) ? json.topics : []);
     const filtered = arr
       .filter((x: any) => typeof x === 'string' && x.length > 0 && x.length < 80)
-      .slice(0, 15);
+      .slice(0, targetCount);
     console.log(`[fetch-twitter-trends] Got ${filtered.length} category-specific trends:`, filtered.slice(0, 3).join(', '));
     return filtered;
   } catch (err) {
@@ -349,9 +352,12 @@ serve(async (req) => {
     const todayShort = new Date().toISOString().split('T')[0];
 
     // ── PASS 1a: Scrape trends24.in ───────────────────────────────────────────
+    // When categories are selected, only scrape half from trends24 — the other
+    // half will come from niche-specific Perplexity search so results stay relevant.
+    const rawCount = categories.length > 0 ? Math.ceil(count / 2) : count;
     let rawTrends: string[];
     try {
-      rawTrends = await scrapeTrends24(regionSlug, count);
+      rawTrends = await scrapeTrends24(regionSlug, rawCount);
     } catch (scrapeErr) {
       console.error('[fetch-twitter-trends] Pass 1 scrape failed:', scrapeErr);
       throw new Error(`Failed to fetch trends from trends24.in: ${scrapeErr instanceof Error ? scrapeErr.message : 'unknown'}`);
@@ -362,11 +368,13 @@ serve(async (req) => {
     let combinedTrends = rawTrends;
     let supplementaryCount = 0;
     if (categories.length > 0) {
-      const catTrends = await fetchCategoryTrends(PERPLEXITY_API_KEY, categories, region, today);
+      // Fetch up to half the total count as niche-specific trends
+      const catTarget = Math.ceil(count / 2);
+      const catTrends = await fetchCategoryTrends(PERPLEXITY_API_KEY, categories, region, today, catTarget);
       const seen = new Set(rawTrends.map(t => t.toLowerCase()));
       const unique = catTrends.filter(t => !seen.has(t.toLowerCase()));
       supplementaryCount = unique.length;
-      // Category-specific trends lead the list; cap at requested count
+      // Niche-specific trends lead; raw trends fill remaining slots up to count
       combinedTrends = [...unique, ...rawTrends].slice(0, count);
     } else if (user_niche) {
       // No categories manually chosen — use the creator's niche to surface
