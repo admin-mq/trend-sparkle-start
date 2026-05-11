@@ -363,6 +363,7 @@ export interface TwitterTrend {
   why_trending: string;
   confidence: TrendConfidence;
   marketer_signal: string | null;
+  niche_hook: string | null;
 }
 
 export interface TwitterTrendsResponse {

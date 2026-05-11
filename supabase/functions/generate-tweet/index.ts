@@ -166,8 +166,12 @@ CRITICAL RULES:
       user_profile.tone_intensity ? `intensity ${user_profile.tone_intensity}/5` : '',
     ].filter(Boolean).join(', ');
 
+    const nicheHook = trend.niche_hook as string | null | undefined;
+
     const topicLine = topic_angle
       ? `\nUser's topic angle: "${topic_angle}" — every tweet must connect the trend to this topic.`
+      : nicheHook
+      ? `\nCreative angle (niche hook): "${nicheHook}" — use this as the creative bridge between the trend and the creator's niche. All 3 drafts should explore different executions of this angle.`
       : '';
 
     const charNote = isPremium
@@ -225,6 +229,10 @@ Best-guess reason: ${trend.why_trending || 'Unknown'}
 
 Write tweets that riff on the trend name itself since we don't have specific event details.`;
 
+    const nicheHookBlock = nicheHook
+      ? `\n━━━ NICHE HOOK (CREATIVE BRIEF) ━━━\n"${nicheHook}"\nThis one-liner is the creative bridge between the trend and the creator's niche. Every tweet draft must bring this angle to life in a different way — make it feel native, not forced.\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
+      : '';
+
     const userMessage = `Brand: ${user_profile.brand_name}
 Industry: ${user_profile.industry || 'N/A'}
 Business: ${user_profile.business_summary || 'N/A'}
@@ -235,12 +243,12 @@ ${topicLine}
 
 Trend name: ${trend.name}
 Category: ${trend.category || 'N/A'}
-
+${nicheHookBlock}
 ${liveContextBlock}
 
 Generate 3 tweet drafts. Each must:
 - Reference the SPECIFIC event in the live context above (not just the trend name)
-- Fit within ${char_limit} characters${topic_angle ? `\n- Connect the trend to: "${topic_angle}"` : ''}
+- Fit within ${char_limit} characters${nicheHook ? `\n- Execute a different angle of the niche hook: "${nicheHook}"` : topic_angle ? `\n- Connect the trend to: "${topic_angle}"` : ''}
 - Use a different angle from the others
 
 After writing each tweet, count the characters carefully and set char_count accurately.`;

@@ -339,6 +339,90 @@ Return ${targetCount} topics. JSON array of strings only (no markdown):
   }
 }
 
+// ── Generate witty niche hooks via OpenAI ────────────────────────────────────
+// For every trend (even unrelated ones), produces a punchy one-liner that gives
+// the creator a clever angle to use the trend in their content.
+async function generateNicheHooks(
+  openaiKey: string,
+  trends: Array<{ name: string; why_trending: string; category: string }>,
+  niche: string,
+): Promise<Map<string, string>> {
+  const HOOK_BATCH = 10;
+  const hookMap = new Map<string, string>();
+
+  const batches: typeof trends[] = [];
+  for (let i = 0; i < trends.length; i += HOOK_BATCH) {
+    batches.push(trends.slice(i, i + HOOK_BATCH));
+  }
+
+  await Promise.all(batches.map(async (batch) => {
+    const listText = batch
+      .map((t, i) => `${i + 1}. "${t.name}" — ${t.why_trending} (${t.category})`)
+      .join('\n');
+
+    const prompt = `You are a witty social media strategist for a ${niche} creator.
+
+For each trending topic below, write ONE punchy sentence (max 15 words) that gives the creator a clever, unexpected angle to use this trend in their ${niche} content.
+
+Rules:
+- The hook MUST connect the trend to ${niche} — even if the link feels unlikely, find it
+- Be specific, witty, and actionable — not generic
+- Use wordplay, sharp observations, or a surprising parallel
+- Make the creator think "YES, I can post about this right now"
+- Never start with "This trend..." or "Use this..."
+
+Examples for a fashion creator:
+- "Northwestern vs James Madison" → "Northwestern's defense was tighter than a tailored blazer — dress like you're undefeated"
+- "Sheryl Underwood" → "Kevin Hart's roast fit was louder than the jokes — your next mood board sorted"
+- "UK Budget" → "Spending cuts hit different when your wardrobe ROI outperforms the FTSE"
+
+Trends:
+${listText}
+
+Return JSON only — an array of exactly ${batch.length} strings, one per trend in order:
+["hook1", "hook2", ...]`;
+
+    try {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          temperature: 0.8,
+          messages: [
+            { role: 'system', content: `You are a witty social media strategist. Always return valid JSON arrays. Be creative and specific to ${niche}.` },
+            { role: 'user', content: prompt },
+          ],
+        }),
+      });
+
+      if (!res.ok) {
+        console.warn(`[fetch-twitter-trends] Hook batch HTTP ${res.status}`);
+        return;
+      }
+
+      const data = await res.json();
+      const text = data.choices?.[0]?.message?.content ?? '';
+      const cleaned = text.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
+      const arr = JSON.parse(cleaned);
+      if (Array.isArray(arr)) {
+        batch.forEach((t, i) => {
+          if (arr[i] && typeof arr[i] === 'string') {
+            hookMap.set(t.name.toLowerCase(), arr[i]);
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('[fetch-twitter-trends] Hook batch failed:', err);
+    }
+  }));
+
+  return hookMap;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
@@ -439,10 +523,32 @@ serve(async (req) => {
     const verifiedCount = finalTrends.filter((t: any) => t.confidence !== 'low').length;
     const highConfCount = finalTrends.filter((t: any) => t.confidence === 'high').length;
 
-    // Top insight: first high-confidence trend with a marketer_signal
-    const featured = finalTrends.find((t: any) => t.confidence === 'high' && t.marketer_signal)
+    // ── PASS 3: Niche hooks via OpenAI (parallel with nothing, runs after sort) ──
+    const effectiveNiche = user_niche || (categories.length > 0 ? categories.join(' & ') : null);
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || Deno.env.get('OPENAI_API_KEY_TRENDQUEST');
+    let nicheHooks = new Map<string, string>();
+    if (effectiveNiche && OPENAI_API_KEY) {
+      try {
+        nicheHooks = await generateNicheHooks(OPENAI_API_KEY, finalTrends, effectiveNiche);
+        console.log(`[fetch-twitter-trends] Generated ${nicheHooks.size} niche hooks for "${effectiveNiche}"`);
+      } catch (hookErr) {
+        console.warn('[fetch-twitter-trends] Niche hook generation failed (non-critical):', hookErr);
+      }
+    }
+
+    // Merge hooks onto trends
+    finalTrends = finalTrends.map((t: any) => ({
+      ...t,
+      niche_hook: nicheHooks.get(t.name.toLowerCase()) ?? null,
+    }));
+
+    // Top insight: prefer a trend with a niche hook
+    const featured = finalTrends.find((t: any) => t.niche_hook && t.confidence === 'high')
+                  || finalTrends.find((t: any) => t.niche_hook)
                   || finalTrends.find((t: any) => t.confidence !== 'low' && t.marketer_signal);
-    const topInsight = featured
+    const topInsight = featured?.niche_hook
+      ? `"${featured.name}" — ${featured.niche_hook}`
+      : featured?.marketer_signal
       ? `"${featured.name}" is a live opportunity — ${featured.marketer_signal}`
       : 'Scan complete. Pick a trend to generate on-brand tweet drafts.';
 

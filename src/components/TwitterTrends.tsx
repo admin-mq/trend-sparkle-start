@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { TwitterTrend, TwitterTrendsResponse } from "@/types/trends";
-import { TrendingUp, ArrowRight, RefreshCw, Zap, TrendingDown, Minus, CheckCircle, AlertCircle, HelpCircle, Twitter } from "lucide-react";
+import { TrendingUp, ArrowRight, RefreshCw, Zap, TrendingDown, Minus, CheckCircle, AlertCircle, HelpCircle, Twitter, Sparkles } from "lucide-react";
 
 interface TwitterTrendsProps {
   data: TwitterTrendsResponse;
@@ -235,15 +235,22 @@ export const TwitterTrends = ({ data, onGenerateTweets, onRefresh, isRefreshing 
                   </p>
                 )}
 
-                {/* Marketer signal */}
-                {trend.marketer_signal && (
+                {/* Niche hook — witty one-liner connecting this trend to the creator's niche */}
+                {trend.niche_hook ? (
+                  <div className="mt-2 px-3 py-2 rounded-lg bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20">
+                    <p className="text-xs font-semibold text-primary leading-snug">
+                      <Sparkles className="w-3 h-3 inline mr-1.5 mb-0.5" />
+                      {trend.niche_hook}
+                    </p>
+                  </div>
+                ) : trend.marketer_signal ? (
                   <div className="mt-2 px-2 py-1.5 rounded bg-primary/5 border border-primary/15">
                     <p className="text-xs text-primary font-medium">
                       <Zap className="w-3 h-3 inline mr-1" />
                       {trend.marketer_signal}
                     </p>
                   </div>
-                )}
+                ) : null}
 
                 <Button
                   onClick={() => onGenerateTweets(trend)}
@@ -253,7 +260,7 @@ export const TwitterTrends = ({ data, onGenerateTweets, onRefresh, isRefreshing 
                   title={
                     trend.confidence === 'low'
                       ? 'Upstream context is weak — we\'ll run a fresh live search before drafting'
-                      : 'Draft 3 on-brand tweets for this trend'
+                      : 'Draft tweets using this angle'
                   }
                 >
                   {trend.confidence === 'low' ? 'Generate (verify live)' : 'Generate tweets'}
