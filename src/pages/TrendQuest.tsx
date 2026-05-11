@@ -313,7 +313,7 @@ const TrendQuest = () => {
       : inputs.content_format;
     const primaryTone = getPrimaryTone(inputs.tones);
     // Prefer AI-parsed persona fields; fall back to raw profile fields
-    const persona = cp.creator_persona;
+    const persona = (cp as any).creator_persona;
     const resolvedNiche = persona?.niche || cp.industry || "";
     const resolvedLocation = persona?.location_normalized || cp.location || "";
     return {
@@ -641,6 +641,7 @@ const TrendQuest = () => {
       angle_summary: trend.niche_hook || '',
       source: 'twitter',
       twitter_trend_data: trend,
+      views_last_60h_millions: null,
     };
     const result = await saveTrend({ brand_id: savedTrendsBrandScope, trend: snapshot });
     if (result.ok) {

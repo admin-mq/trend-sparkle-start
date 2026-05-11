@@ -754,7 +754,7 @@ function BrandProfile() {
               <Select value={formData.geography || ""} onValueChange={(value) => setFormData(prev => ({ ...prev, geography: value }))}>
                 <SelectTrigger><SelectValue placeholder="Select geography" /></SelectTrigger>
                 <SelectContent>
-                  {GEOGRAPHIES.map((geo) => <SelectItem key={geo} value={geo}>{geo}</SelectItem>)}
+                  {GEOGRAPHIES_PROFILE.map((geo) => <SelectItem key={geo} value={geo}>{geo}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
