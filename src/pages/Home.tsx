@@ -1688,18 +1688,20 @@ export default function Home() {
           </Link>
           <p className="text-xs text-white/20 order-last sm:order-none">© 2026 Marketers Quest. All rights reserved.</p>
           <div className="flex items-center gap-5 text-xs text-white/28">
-            {[
-              ["Privacy Policy", "/privacy-policy"],
-              ["Terms", "/terms-and-conditions"],
-            ].map(([label, href]) => (
-              <Link key={href} to={href} className="relative group hover:text-white/55 transition-colors">
-                {label}
-                <span
-                  className="absolute bottom-[-1px] left-0 w-full h-[1px] origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-300"
-                  style={{ background: "hsl(217 91% 60% / 0.5)" }}
-                />
-              </Link>
-            ))}
+            <a href="https://marketers.quest/privacy-policy/" className="relative group hover:text-white/55 transition-colors">
+              Privacy Policy
+              <span
+                className="absolute bottom-[-1px] left-0 w-full h-[1px] origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-300"
+                style={{ background: "hsl(217 91% 60% / 0.5)" }}
+              />
+            </a>
+            <Link to="/terms-and-conditions" className="relative group hover:text-white/55 transition-colors">
+              Terms
+              <span
+                className="absolute bottom-[-1px] left-0 w-full h-[1px] origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-300"
+                style={{ background: "hsl(217 91% 60% / 0.5)" }}
+              />
+            </Link>
           </div>
         </div>
       </footer>

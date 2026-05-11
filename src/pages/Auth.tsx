@@ -302,7 +302,7 @@ export default function Auth() {
               By continuing, you agree to our{' '}
               <Link to="/terms-and-conditions" className="underline underline-offset-4 hover:text-foreground">Terms</Link>
               {' '}and{' '}
-              <Link to="/privacy-policy" className="underline underline-offset-4 hover:text-foreground">Privacy Policy</Link>.
+              <a href="https://marketers.quest/privacy-policy/" className="underline underline-offset-4 hover:text-foreground">Privacy Policy</a>.
             </p>
           </div>
         </div>
