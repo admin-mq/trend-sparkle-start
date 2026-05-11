@@ -97,7 +97,12 @@ const TrendQuest = () => {
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(session?.selectedBrandId ?? null);
 
   // Trend Quest inputs (non-brand fields)
-  const [inputValues, setInputValues] = useState<TrendQuestInputValues>(session?.inputValues ?? DEFAULT_INPUT_VALUES);
+  const [inputValues, setInputValues] = useState<TrendQuestInputValues>({
+    ...(session?.inputValues ?? DEFAULT_INPUT_VALUES),
+    // Always reset to standard on page load — never restore a persisted Premium
+    // selection so that Standard 280 chars is always the out-of-the-box default.
+    twitter_user_type: 'standard',
+  });
 
   // Step navigation
   const [activeStep, setActiveStep] = useState<WorkspaceStep>(session?.activeStep ?? "trends");
@@ -165,10 +170,14 @@ const TrendQuest = () => {
   // ── Persist state to sessionStorage whenever results/inputs change ───────
   useEffect(() => {
     try {
+      // Strip twitter_user_type from persisted session — it's a per-session
+      // preference that should always default to 'standard' on page load.
+      // Persisting it caused Premium to look like the app default after one click.
+      const { twitter_user_type: _omit, ...inputValuesToStore } = inputValues;
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
         userId: user?.id,
         selectedBrandId,
-        inputValues,
+        inputValues: inputValuesToStore,
         activeStep,
         recommendations,
         categoryFallback,
