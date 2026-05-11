@@ -39,6 +39,7 @@ import AmcueBrandProfile from "./pages/AmcueBrandProfile";
 import CreatorAnalysis from "./pages/CreatorAnalysis";
 import BrandCollab from "./pages/BrandCollab";
 import CreatorCollab from "./pages/CreatorCollab";
+import CreatorAnalytics from "./pages/CreatorAnalytics";
 import DataDeletion from "./pages/DataDeletion";
 import MasterAdmin from "./pages/MasterAdmin";
 import TrendTest from "./pages/TrendTest";
@@ -92,6 +93,7 @@ const App = () => (
               <Route path="/creator-analysis" element={<CreatorAnalysis />} />
               <Route path="/brand-collab" element={<BrandCollab />} />
               <Route path="/creator-collab" element={<CreatorCollab />} />
+              <Route path="/creator-analytics" element={<CreatorAnalytics />} />
               <Route path="/amcue" element={<Amcue />} />
               <Route path="/amcue/brand-profile" element={<AmcueBrandProfile />} />
               <Route path="/profile" element={<Profile />} />

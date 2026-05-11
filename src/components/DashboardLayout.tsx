@@ -26,6 +26,7 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
+  BarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -92,6 +93,12 @@ const creatorNavGroups = [
       { path: "/creator-analysis",     label: "Analysis",         icon: LineChart },
       { path: "/brand-collab",          label: "Brand Collab",     icon: DollarSign },
       { path: "/creator-collab",        label: "Creator Collab",   icon: Eye },
+    ],
+  },
+  {
+    label: "Analytics",
+    items: [
+      { path: "/creator-analytics", label: "Analytics", icon: BarChart2 },
     ],
   },
 ];
