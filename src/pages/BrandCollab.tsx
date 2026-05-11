@@ -39,8 +39,8 @@ const brands = [
 
 export default function BrandCollab() {
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      {/* Blurred brand logo grid */}
+    <div className="relative min-h-screen">
+      {/* Scrollable blurred brand logo grid */}
       <div
         className="grid gap-4 p-8 select-none pointer-events-none"
         style={{
@@ -72,9 +72,9 @@ export default function BrandCollab() {
         ))}
       </div>
 
-      {/* Coming Soon overlay */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="mx-4 max-w-sm w-full rounded-2xl border border-border bg-background/90 backdrop-blur-md shadow-2xl p-8 flex flex-col items-center gap-4 text-center">
+      {/* Coming Soon card — fixed to viewport center so it never scrolls away */}
+      <div className="fixed inset-x-0 top-14 bottom-16 lg:bottom-0 flex items-center justify-center z-20 pointer-events-none">
+        <div className="pointer-events-auto mx-4 max-w-sm w-full rounded-2xl border border-border bg-background/95 backdrop-blur-md shadow-2xl p-8 flex flex-col items-center gap-4 text-center">
           <span className="text-xs font-semibold tracking-widest uppercase px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/20">
             Coming Soon
           </span>
