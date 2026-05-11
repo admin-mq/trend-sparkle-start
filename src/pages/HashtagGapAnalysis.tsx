@@ -685,7 +685,7 @@ const HashtagGapAnalysis = () => {
             <div>
               <h1 className="text-xl font-bold text-foreground">Find Your Missing Tags</h1>
               <p className="text-xs text-muted-foreground">
-                Paste hashtags working in your niche — we'll find what you're missing and verify it with live Instagram data.
+                Paste hashtags working in your niche, we'll find what you're missing and verify it with live Instagram data.
               </p>
             </div>
           </div>
@@ -707,7 +707,7 @@ const HashtagGapAnalysis = () => {
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">
               Competitor / niche hashtags
-              <span className="text-muted-foreground font-normal ml-1.5">— from a top creator, competitor post, or anywhere</span>
+              <span className="text-muted-foreground font-normal ml-1.5">&nbsp;- from a top creator, competitor post, or anywhere</span>
             </label>
             <Textarea
               placeholder={"#fashion #ootd #styleinspo\n\nPaste from any post — one per line, comma-separated, or all at once."}
@@ -729,7 +729,7 @@ const HashtagGapAnalysis = () => {
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">
               Your hashtags
-              <span className="text-muted-foreground font-normal ml-1.5">— optional · enables personal gap comparison</span>
+              <span className="text-muted-foreground font-normal ml-1.5">&nbsp;- optional · enables personal gap comparison</span>
             </label>
             <Textarea
               placeholder={"#fashion #womensstyle #outfitoftheday\n\nPaste hashtags from your recent posts."}
@@ -751,7 +751,7 @@ const HashtagGapAnalysis = () => {
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">
               Your Niche / Content Type
-              <span className="text-muted-foreground font-normal ml-1.5">— improves scoring accuracy</span>
+              <span className="text-muted-foreground font-normal ml-1.5">&nbsp;- improves scoring accuracy</span>
             </label>
             <Input
               placeholder="e.g. sustainable fashion for women 25–35, B2B SaaS marketing, fitness coaching"
@@ -797,7 +797,7 @@ const HashtagGapAnalysis = () => {
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">How it works</p>
             <div className="space-y-2.5">
               {[
-                { step: "1", text: "Paste hashtags working in your niche — from a competitor post, a top creator, or your own research." },
+                { step: "1", text: "Paste hashtags working in your niche, from a competitor post, a top creator, or your own research." },
                 { step: "2", text: "We verify each tag with a live Perplexity web search to check real Instagram performance right now." },
                 { step: "3", text: "Every gap tag is scored using live data + your niche context: Adopt, Test, or Skip — with a specific reason why." },
               ].map(({ step, text }) => (
