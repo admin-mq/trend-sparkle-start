@@ -541,13 +541,13 @@ export function AmcueChat() {
                   <button
                     onClick={() => updatePersonaField("is_faceless", !persona.is_faceless)}
                     className={cn(
-                      "relative w-9 h-5 rounded-full transition-colors",
+                      "relative inline-flex w-10 h-6 rounded-full transition-colors flex-shrink-0",
                       persona.is_faceless ? "bg-primary" : "bg-secondary border border-border"
                     )}
                   >
                     <span className={cn(
-                      "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform",
-                      persona.is_faceless ? "translate-x-4" : "translate-x-0.5"
+                      "absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200",
+                      persona.is_faceless ? "translate-x-4" : "translate-x-0"
                     )} />
                   </button>
                 </div>
