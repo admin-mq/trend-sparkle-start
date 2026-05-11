@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Sparkles, X, Plus, Send, MessageSquare, ChevronLeft, Brain, Pencil, Check, AlertCircle } from "lucide-react";
+import { Sparkles, X, Plus, Send, MessageSquare, ChevronLeft, Brain, Pencil, Check, AlertCircle, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -18,6 +18,15 @@ interface Conversation {
   title: string;
   created_at: string;
 }
+
+interface Nudge {
+  headline: string;
+  body: string;
+  cta: string;
+}
+
+const NUDGE_CACHE_KEY = "mq_amcue_nudge_v1";
+const NUDGE_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 interface PersonaForm {
   niche: string;
@@ -107,6 +116,19 @@ export function AmcueChat() {
 
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<"chat" | "history" | "persona">("chat");
+
+  // Proactive nudge
+  const [nudge, setNudge] = useState<Nudge | null>(() => {
+    try {
+      const raw = sessionStorage.getItem(NUDGE_CACHE_KEY);
+      if (!raw) return null;
+      const { nudge: cached, generatedAt } = JSON.parse(raw);
+      if (Date.now() - generatedAt > NUDGE_TTL_MS) return null;
+      return cached ?? null;
+    } catch { return null; }
+  });
+  const [nudgeSeen, setNudgeSeen] = useState(false);
+  const nudgeFetchedRef = useRef(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -171,6 +193,32 @@ export function AmcueChat() {
     if (open && user) loadConversations();
   }, [open, user, loadConversations]);
 
+  // Fetch nudge once per session when panel first opens (creators only)
+  useEffect(() => {
+    if (!open || !user || !isCreator || nudgeFetchedRef.current) return;
+
+    // Check if we already have a fresh cached nudge
+    try {
+      const raw = sessionStorage.getItem(NUDGE_CACHE_KEY);
+      if (raw) {
+        const { generatedAt } = JSON.parse(raw);
+        if (Date.now() - generatedAt < NUDGE_TTL_MS) {
+          nudgeFetchedRef.current = true;
+          return;
+        }
+      }
+    } catch { /* ignore */ }
+
+    nudgeFetchedRef.current = true;
+    supabase.functions.invoke("amcue-nudge").then(({ data }) => {
+      const incoming = data?.nudge ?? null;
+      setNudge(incoming);
+      try {
+        sessionStorage.setItem(NUDGE_CACHE_KEY, JSON.stringify({ nudge: incoming, generatedAt: Date.now() }));
+      } catch { /* ignore */ }
+    }).catch(() => { /* non-critical, fail silently */ });
+  }, [open, user, isCreator]);
+
   const loadMessages = async (convId: string) => {
     const { data } = await supabase
       .from("amcue_messages")
@@ -230,6 +278,11 @@ export function AmcueChat() {
     }
   };
 
+  const actOnNudge = (cta: string) => {
+    setNudgeSeen(true);
+    sendMessage(cta);
+  };
+
   const updatePersonaField = (field: keyof PersonaForm, value: string | boolean) => {
     setPersona((prev) => ({ ...prev, [field]: value }));
   };
@@ -284,8 +337,12 @@ export function AmcueChat() {
         aria-label="Open Amcue AI assistant"
       >
         <Sparkles className="w-6 h-6 text-white" />
+        {/* Badge dot — shows when there's an unseen nudge */}
+        {nudge && !nudgeSeen && !open && (
+          <span className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-background animate-pulse" />
+        )}
         <span className="absolute right-full mr-3 px-3 py-1.5 rounded-lg bg-card border border-border text-xs font-medium text-foreground whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
-          Amcue
+          {nudge && !nudgeSeen ? "Amcue noticed something" : "Amcue"}
         </span>
       </button>
 
@@ -533,6 +590,27 @@ export function AmcueChat() {
                       }
                     </p>
                   </div>
+                  {/* Proactive nudge card */}
+                  {nudge && !nudgeSeen && (
+                    <div className="w-full max-w-[320px] rounded-xl border border-amber-500/25 bg-amber-500/6 overflow-hidden">
+                      <div className="px-3 pt-3 pb-2 space-y-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-400">Amcue noticed</span>
+                        </div>
+                        <p className="text-xs font-semibold text-foreground leading-snug">{nudge.headline}</p>
+                        <p className="text-xs text-muted-foreground leading-snug">{nudge.body}</p>
+                      </div>
+                      <button
+                        onClick={() => actOnNudge(nudge.cta)}
+                        className="w-full flex items-center justify-between px-3 py-2 border-t border-amber-500/20 text-xs text-amber-400 hover:bg-amber-500/10 transition-colors font-medium"
+                      >
+                        <span className="truncate pr-2">{nudge.cta}</span>
+                        <ArrowRight className="w-3.5 h-3.5 flex-shrink-0" />
+                      </button>
+                    </div>
+                  )}
+
                   {/* Creator persona nudge for empty profiles */}
                   {isCreator && personaIsEmpty && (
                     <button
