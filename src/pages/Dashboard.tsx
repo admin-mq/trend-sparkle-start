@@ -855,7 +855,7 @@ const Dashboard = () => {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-[1fr_auto_auto] items-center gap-4 pb-2 mb-1 text-xs font-medium text-muted-foreground border-b border-border">
+                <div className="hidden sm:grid grid-cols-[1fr_auto_auto] items-center gap-4 pb-2 mb-1 text-xs font-medium text-muted-foreground border-b border-border">
                   <span>Site</span>
                   <span className="w-32 text-center">Opportunity</span>
                   <span className="w-24 text-center">Structural</span>
@@ -863,10 +863,10 @@ const Dashboard = () => {
                 {data?.sitePerf.map((site) => (
                   <div
                     key={site.siteId}
-                    className="grid grid-cols-[1fr_auto_auto] items-center gap-4 py-3 border-b border-border last:border-0 cursor-pointer hover:bg-muted/20 rounded-lg px-2 -mx-2 transition-colors"
+                    className="sm:grid sm:grid-cols-[1fr_auto_auto] flex items-center justify-between gap-3 sm:gap-4 py-3 border-b border-border last:border-0 cursor-pointer hover:bg-muted/20 rounded-lg px-2 -mx-2 transition-colors"
                     onClick={() => navigate(`/seo/results?snapshot=${site.snapshotId}`)}
                   >
-                    <div className="min-w-0">
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">
                         {site.siteUrl.replace(/^https?:\/\//, "")}
                       </p>
@@ -874,8 +874,12 @@ const Dashboard = () => {
                         {site.pagesCrawled} pages · {timeAgo(site.finishedAt)}
                       </p>
                     </div>
-                    <div className="w-32"><ScoreBar value={site.opportunity} /></div>
-                    <div className="w-24"><ScoreBar value={site.structural} /></div>
+                    <div className="hidden sm:block w-32"><ScoreBar value={site.opportunity} /></div>
+                    <div className="hidden sm:block w-24"><ScoreBar value={site.structural} /></div>
+                    <div className="sm:hidden flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs font-semibold text-primary">{site.opportunity}%</span>
+                      <ArrowRight className="w-3 h-3 text-muted-foreground/40" />
+                    </div>
                   </div>
                 ))}
               </>
