@@ -624,6 +624,32 @@ const TrendQuest = () => {
     }
   };
 
+  const handleSaveTwitterTrend = async (trend: TwitterTrend) => {
+    const region = inputValues.twitter_geography || 'UK';
+    const trendId = `twitter-${region}-${trend.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+    if (savedTrendIds.has(trendId)) {
+      toast.message("Already in My Trends");
+      return;
+    }
+    const snapshot: RecommendedTrend = {
+      trend_id: trendId,
+      trend_name: trend.name,
+      category: trend.category,
+      region,
+      why_good_fit: trend.why_trending || '',
+      example_hook: trend.niche_hook || trend.marketer_signal || '',
+      angle_summary: trend.niche_hook || '',
+      source: 'twitter',
+      twitter_trend_data: trend,
+    };
+    const result = await saveTrend({ brand_id: savedTrendsBrandScope, trend: snapshot });
+    if (result.ok) {
+      toast.success("Saved to My Trends", { description: "Lives there for 48 hours." });
+    } else {
+      toast.error(result.error || "Could not save trend");
+    }
+  };
+
   const handleRemoveSavedTrend = async (id: string) => {
     const result = await removeTrend(id);
     if (!result.ok) toast.error("Could not remove");
@@ -765,6 +791,7 @@ const TrendQuest = () => {
           loading={savedTrendsLoading}
           onUseTrend={handleUseSavedTrend}
           onRemoveTrend={handleRemoveSavedTrend}
+          onGenerateTweets={handleGenerateTweets}
         />
       );
     }
@@ -779,6 +806,8 @@ const TrendQuest = () => {
               onGenerateTweets={handleGenerateTweets}
               onRefresh={handleRefreshTwitterTrends}
               isRefreshing={isRefreshingTwitter}
+              onSaveTrend={handleSaveTwitterTrend}
+              savedTrendIds={savedTrendIds}
             />
           );
         case "directions":

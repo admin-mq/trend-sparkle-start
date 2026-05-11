@@ -1,6 +1,6 @@
-import { Bookmark, Trash2, ArrowRight, Clock } from "lucide-react";
+import { Bookmark, Trash2, ArrowRight, Clock, Twitter } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { RecommendedTrend } from "@/types/trends";
+import type { RecommendedTrend, TwitterTrend } from "@/types/trends";
 import type { SavedTrend } from "@/hooks/useSavedTrends";
 
 // ── My Trends panel ────────────────────────────────────────────────────────
@@ -26,6 +26,7 @@ interface SavedTrendsProps {
   loading?: boolean;
   onUseTrend: (trend: RecommendedTrend) => void;
   onRemoveTrend: (id: string) => void;
+  onGenerateTweets?: (trend: TwitterTrend) => void;
 }
 
 function hoursUntil(expiresAt: string): number {
@@ -49,6 +50,7 @@ export const SavedTrends = ({
   loading = false,
   onUseTrend,
   onRemoveTrend,
+  onGenerateTweets,
 }: SavedTrendsProps) => {
   if (loading && savedTrends.length === 0) {
     return (
@@ -146,16 +148,30 @@ export const SavedTrends = ({
                 </div>
               )}
 
-              <Button
-                onClick={() => trend && onUseTrend(trend)}
-                disabled={!trend}
-                variant="ghost"
-                size="sm"
-                className="mt-3 text-primary hover:text-primary hover:bg-primary/10 gap-1"
-              >
-                Use this trend
-                <ArrowRight className="w-3 h-3" />
-              </Button>
+              {trend?.source === 'twitter' && trend.twitter_trend_data ? (
+                <Button
+                  onClick={() => onGenerateTweets?.(trend.twitter_trend_data!)}
+                  disabled={!onGenerateTweets}
+                  variant="ghost"
+                  size="sm"
+                  className="mt-3 text-primary hover:text-primary hover:bg-primary/10 gap-1"
+                >
+                  <Twitter className="w-3.5 h-3.5" />
+                  Generate tweets
+                  <ArrowRight className="w-3 h-3" />
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => trend && onUseTrend(trend)}
+                  disabled={!trend}
+                  variant="ghost"
+                  size="sm"
+                  className="mt-3 text-primary hover:text-primary hover:bg-primary/10 gap-1"
+                >
+                  Use this trend
+                  <ArrowRight className="w-3 h-3" />
+                </Button>
+              )}
             </div>
           );
         })}

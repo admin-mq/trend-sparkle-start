@@ -1,13 +1,15 @@
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { TwitterTrend, TwitterTrendsResponse } from "@/types/trends";
-import { TrendingUp, ArrowRight, RefreshCw, Zap, TrendingDown, Minus, CheckCircle, AlertCircle, HelpCircle, Twitter, Sparkles } from "lucide-react";
+import { TrendingUp, ArrowRight, RefreshCw, Zap, TrendingDown, Minus, CheckCircle, AlertCircle, HelpCircle, Twitter, Sparkles, Bookmark, BookmarkCheck } from "lucide-react";
 
 interface TwitterTrendsProps {
   data: TwitterTrendsResponse;
   onGenerateTweets: (trend: TwitterTrend) => void;
   onRefresh?: () => void;
   isRefreshing?: boolean;
+  onSaveTrend?: (trend: TwitterTrend) => void;
+  savedTrendIds?: Set<string>;
 }
 
 // ── Velocity badge ─────────────────────────────────────────────────────────
@@ -70,7 +72,7 @@ const CategoryBadge = ({ category }: { category: string }) => {
 };
 
 // ── Main component ─────────────────────────────────────────────────────────
-export const TwitterTrends = ({ data, onGenerateTweets, onRefresh, isRefreshing = false }: TwitterTrendsProps) => {
+export const TwitterTrends = ({ data, onGenerateTweets, onRefresh, isRefreshing = false, onSaveTrend, savedTrendIds }: TwitterTrendsProps) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
 
   const categories = useMemo(() => {
@@ -252,20 +254,44 @@ export const TwitterTrends = ({ data, onGenerateTweets, onRefresh, isRefreshing 
                   </div>
                 ) : null}
 
-                <Button
-                  onClick={() => onGenerateTweets(trend)}
-                  variant="ghost"
-                  size="sm"
-                  className="mt-3 text-primary hover:text-primary hover:bg-primary/10 gap-1"
-                  title={
-                    trend.confidence === 'low'
-                      ? 'Upstream context is weak — we\'ll run a fresh live search before drafting'
-                      : 'Draft tweets using this angle'
-                  }
-                >
-                  {trend.confidence === 'low' ? 'Generate (verify live)' : 'Generate tweets'}
-                  <ArrowRight className="w-3 h-3" />
-                </Button>
+                <div className="mt-3 flex items-center gap-2">
+                  <Button
+                    onClick={() => onGenerateTweets(trend)}
+                    variant="ghost"
+                    size="sm"
+                    className="text-primary hover:text-primary hover:bg-primary/10 gap-1"
+                    title={
+                      trend.confidence === 'low'
+                        ? 'Upstream context is weak — we\'ll run a fresh live search before drafting'
+                        : 'Draft tweets using this angle'
+                    }
+                  >
+                    {trend.confidence === 'low' ? 'Generate (verify live)' : 'Generate tweets'}
+                    <ArrowRight className="w-3 h-3" />
+                  </Button>
+                  {onSaveTrend && (() => {
+                    const savedId = `twitter-${data.region}-${trend.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+                    const isSaved = savedTrendIds?.has(savedId);
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => onSaveTrend(trend)}
+                        disabled={isSaved}
+                        title={isSaved ? 'Saved to My Trends' : 'Save to My Trends'}
+                        className={`p-1.5 rounded-md transition-colors ${
+                          isSaved
+                            ? 'text-primary cursor-default'
+                            : 'text-muted-foreground hover:text-primary hover:bg-primary/10'
+                        }`}
+                      >
+                        {isSaved
+                          ? <BookmarkCheck className="w-4 h-4" />
+                          : <Bookmark className="w-4 h-4" />
+                        }
+                      </button>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
           </div>
