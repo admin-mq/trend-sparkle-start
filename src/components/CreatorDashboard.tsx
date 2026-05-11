@@ -124,6 +124,38 @@ const TIMING_CONFIG = {
 
 // ── Trend fetching with progressive fallback ──────────────────────────────────
 
+// Maps creator niches to the DB category labels that fetch-trends actually stores
+const NICHE_TO_CATEGORIES: Record<string, string[]> = {
+  fashion:       ["Fashion", "Lifestyle", "Entertainment", "Culture"],
+  lifestyle:     ["Lifestyle", "Entertainment", "Culture", "Fashion"],
+  beauty:        ["Fashion", "Lifestyle", "Entertainment"],
+  fitness:       ["Sports", "Lifestyle", "Health"],
+  health:        ["Lifestyle", "Health", "Sports"],
+  food:          ["Lifestyle", "Entertainment", "Culture"],
+  travel:        ["Lifestyle", "Culture", "Entertainment"],
+  tech:          ["Tech", "Science", "AI", "Entertainment"],
+  finance:       ["Finance", "News", "Business"],
+  gaming:        ["Gaming", "Entertainment", "Tech"],
+  music:         ["Music", "Entertainment", "Culture"],
+  sports:        ["Sports", "Entertainment"],
+  news:          ["News", "Politics", "Culture"],
+  business:      ["Finance", "News", "Business", "Entrepreneurship"],
+  entertainment: ["Entertainment", "Culture", "Music"],
+  education:     ["Education", "News", "Science"],
+  parenting:     ["Lifestyle", "Culture", "News"],
+  pets:          ["Lifestyle", "Entertainment"],
+};
+
+function nicheToDbCategories(niche: string): string[] {
+  const lower = niche.toLowerCase().trim();
+  // Direct lookup first
+  for (const [key, cats] of Object.entries(NICHE_TO_CATEGORIES)) {
+    if (lower.includes(key)) return cats;
+  }
+  // Fallback: use niche word itself + Lifestyle + Entertainment
+  return [niche, "Lifestyle", "Entertainment"];
+}
+
 function extractNicheKeywords(niche: string): string[] {
   return niche
     .split(/\s+and\s+|[,&]/i)
@@ -148,10 +180,10 @@ async function fetchHotTrends(
 
   const nicheFilter = (q: ReturnType<typeof baseQuery>) => {
     if (!niche) return q;
-    const keywords = extractNicheKeywords(niche);
-    const orFilter = keywords.length > 0
-      ? keywords.map(k => `category.ilike.%${k}%`).join(",")
-      : `category.ilike.%${niche}%`;
+    // Map creator niche to actual DB category labels (trends table uses
+    // "Lifestyle", "Entertainment", etc. — not raw niche words like "fashion")
+    const dbCategories = nicheToDbCategories(niche);
+    const orFilter = dbCategories.map(c => `category.ilike.%${c}%`).join(",");
     return q.or(orFilter);
   };
 
