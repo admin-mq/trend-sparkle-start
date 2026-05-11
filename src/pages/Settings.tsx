@@ -310,7 +310,7 @@ const Settings = () => {
               <p className="text-muted-foreground text-xs mt-0.5">Rules governing your use of the platform</p>
             </div>
             <a
-              href="https://marketers.quest/terms-of-service/"
+              href="https://marketers.quest/terms-of-service"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary text-xs underline underline-offset-2"
