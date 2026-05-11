@@ -432,15 +432,14 @@ export const TrendQuestInputs = ({ values, onChange }: TrendQuestInputsProps) =>
               </button>
               <button
                 type="button"
-                onClick={() => handleChange("twitter_user_type", "premium")}
-                className={`flex flex-col items-start px-3 py-2 rounded-lg border text-left transition-colors ${
-                  values.twitter_user_type === 'premium'
-                    ? 'bg-primary/15 border-primary'
-                    : 'bg-background border-border/50 hover:border-primary/40'
-                }`}
+                disabled
+                className="relative flex flex-col items-start px-3 py-2 rounded-lg border text-left opacity-50 cursor-not-allowed bg-background border-border/50"
               >
-                <span className={`text-xs font-semibold ${values.twitter_user_type === 'premium' ? 'text-primary' : 'text-foreground'}`}>Premium ✓</span>
+                <span className="text-xs font-semibold text-foreground">Premium ✓</span>
                 <span className="text-[10px] text-muted-foreground">25,000 chars</span>
+                <span className="absolute -top-2 -right-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground border border-border leading-tight">
+                  Soon
+                </span>
               </button>
             </div>
           </div>
