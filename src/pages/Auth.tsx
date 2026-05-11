@@ -211,15 +211,19 @@ export default function Auth() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Brand Card */}
             <button
-              onClick={() => selectType('brand')}
+              disabled
               className={cn(
                 "group relative text-left rounded-2xl border-2 p-8 transition-all duration-200",
-                "border-border bg-card hover:border-primary hover:shadow-lg hover:shadow-primary/10",
-                "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                "border-border bg-card opacity-60 cursor-not-allowed"
               )}
             >
+              <div className="absolute top-4 right-4">
+                <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground border border-border">
+                  Coming Soon
+                </span>
+              </div>
               <div className="space-y-5">
-                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center transition-colors">
                   <Building2 className="w-6 h-6 text-primary" />
                 </div>
                 <div className="space-y-1">
@@ -240,9 +244,6 @@ export default function Auth() {
                     </li>
                   ))}
                 </ul>
-              </div>
-              <div className="absolute bottom-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity">
-                <span className="text-xs font-medium text-primary">Get started →</span>
               </div>
             </button>
 
