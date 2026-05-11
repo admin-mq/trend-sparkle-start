@@ -198,12 +198,36 @@ export const TwitterTrends = ({ data, onGenerateTweets, onRefresh, isRefreshing 
                 {trend.rank}
               </span>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h4 className="font-semibold text-foreground text-base">
-                    {trend.name}
-                  </h4>
-                  <VelocityBadge velocity={trend.velocity} />
-                  <CategoryBadge category={trend.category} />
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+                    <h4 className="font-semibold text-foreground text-base">
+                      {trend.name}
+                    </h4>
+                    <VelocityBadge velocity={trend.velocity} />
+                    <CategoryBadge category={trend.category} />
+                  </div>
+                  {onSaveTrend && (() => {
+                    const savedId = `twitter-${data.region}-${trend.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+                    const isSaved = savedTrendIds?.has(savedId);
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => onSaveTrend(trend)}
+                        disabled={isSaved}
+                        title={isSaved ? 'Saved to My Trends' : 'Save to My Trends'}
+                        className={`flex-shrink-0 p-1 rounded-md transition-colors ${
+                          isSaved
+                            ? 'text-primary cursor-default'
+                            : 'text-muted-foreground/50 hover:text-primary hover:bg-primary/10'
+                        }`}
+                      >
+                        {isSaved
+                          ? <BookmarkCheck className="w-4 h-4" />
+                          : <Bookmark className="w-4 h-4" />
+                        }
+                      </button>
+                    );
+                  })()}
                 </div>
 
                 {/* Confidence + freshness */}
@@ -254,44 +278,20 @@ export const TwitterTrends = ({ data, onGenerateTweets, onRefresh, isRefreshing 
                   </div>
                 ) : null}
 
-                <div className="mt-3 flex items-center gap-2">
-                  <Button
-                    onClick={() => onGenerateTweets(trend)}
-                    variant="ghost"
-                    size="sm"
-                    className="text-primary hover:text-primary hover:bg-primary/10 gap-1"
-                    title={
-                      trend.confidence === 'low'
-                        ? 'Upstream context is weak — we\'ll run a fresh live search before drafting'
-                        : 'Draft tweets using this angle'
-                    }
-                  >
-                    {trend.confidence === 'low' ? 'Generate (verify live)' : 'Generate tweets'}
-                    <ArrowRight className="w-3 h-3" />
-                  </Button>
-                  {onSaveTrend && (() => {
-                    const savedId = `twitter-${data.region}-${trend.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-                    const isSaved = savedTrendIds?.has(savedId);
-                    return (
-                      <button
-                        type="button"
-                        onClick={() => onSaveTrend(trend)}
-                        disabled={isSaved}
-                        title={isSaved ? 'Saved to My Trends' : 'Save to My Trends'}
-                        className={`p-1.5 rounded-md transition-colors ${
-                          isSaved
-                            ? 'text-primary cursor-default'
-                            : 'text-muted-foreground hover:text-primary hover:bg-primary/10'
-                        }`}
-                      >
-                        {isSaved
-                          ? <BookmarkCheck className="w-4 h-4" />
-                          : <Bookmark className="w-4 h-4" />
-                        }
-                      </button>
-                    );
-                  })()}
-                </div>
+                <Button
+                  onClick={() => onGenerateTweets(trend)}
+                  variant="ghost"
+                  size="sm"
+                  className="mt-3 text-primary hover:text-primary hover:bg-primary/10 gap-1"
+                  title={
+                    trend.confidence === 'low'
+                      ? 'Upstream context is weak — we\'ll run a fresh live search before drafting'
+                      : 'Draft tweets using this angle'
+                  }
+                >
+                  {trend.confidence === 'low' ? 'Generate (verify live)' : 'Generate tweets'}
+                  <ArrowRight className="w-3 h-3" />
+                </Button>
               </div>
             </div>
           </div>
