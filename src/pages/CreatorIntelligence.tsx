@@ -620,10 +620,7 @@ const LockedState = ({ count, navigate }: { count: number; navigate: ReturnType<
                 <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
               </button>
 
-              <button
-                onClick={() => navigate("/hashtag-analysis")}
-                className="w-full post-card p-4 flex items-center gap-3 hover:border-pink-500/30 transition-colors text-left"
-              >
+              <div className="w-full post-card p-4 flex items-center gap-3 text-left opacity-60 cursor-not-allowed">
                 <div className="w-8 h-8 rounded-lg bg-pink-500/10 flex items-center justify-center flex-shrink-0">
                   <Instagram className="w-4 h-4 text-pink-400" />
                 </div>
@@ -631,8 +628,10 @@ const LockedState = ({ count, navigate }: { count: number; navigate: ReturnType<
                   <p className="text-sm font-medium text-foreground">Connect Instagram</p>
                   <p className="text-xs text-muted-foreground">Auto-pulls views, saves &amp; shares from your real posts — no manual entry</p>
                 </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-              </button>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border flex-shrink-0">
+                  Coming Soon
+                </span>
+              </div>
             </div>
           </div>
 
