@@ -107,7 +107,7 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
       { data: trendSession },
     ] = await Promise.all([
       supabase.from("user_profiles")
-        .select("account_type, creator_persona, full_name, brand_name, industry, geography, business_summary, primary_goal, creator_niche")
+        .select("account_type, creator_persona, full_name, brand_name, industry, geography, business_summary")
         .eq("user_id", userId)
         .maybeSingle(),
 
@@ -223,11 +223,10 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
         if (persona.summary) lines.push(`Profile Summary: ${persona.summary}`);
       } else {
         // Fall back to raw profile fields
-        if (userProfile.creator_niche || userProfile.industry)
-          lines.push(`Niche/Industry: ${userProfile.creator_niche || userProfile.industry}`);
+        if (userProfile.industry)
+          lines.push(`Niche/Industry: ${userProfile.industry}`);
         if (userProfile.geography) lines.push(`Location: ${userProfile.geography}`);
         if (userProfile.business_summary) lines.push(`Bio: ${userProfile.business_summary}`);
-        if (userProfile.primary_goal) lines.push(`Primary Goal: ${userProfile.primary_goal}`);
       }
 
       if (lines.length)
