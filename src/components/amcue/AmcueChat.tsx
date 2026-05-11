@@ -138,13 +138,24 @@ export function AmcueChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // ── FAB: cycling icons + drag-to-snap ────────────────────────────────────
+  // ── FAB: cycling icons + free drag snapping to left/right edge ──────────
+  const FAB_SIZE = 56; // w-14 h-14 = 56px
+  const FAB_EDGE_GAP = 16;
   const FAB_ICONS = [Sparkles, Brain, BarChart2] as const;
   const [fabIconIdx, setFabIconIdx] = useState(0);
   const [fabIconVisible, setFabIconVisible] = useState(true);
+
+  // Persisted resting position: side + distance from top
   const [fabSide, setFabSide] = useState<"left" | "right">("right");
-  const fabDragStartX = useRef<number | null>(null);
+  const [fabTop, setFabTop] = useState<number>(() =>
+    typeof window !== "undefined" ? window.innerHeight * 0.72 : 500
+  );
+  // Live Y during active drag (null = not dragging)
+  const [fabDragY, setFabDragY] = useState<number | null>(null);
+
+  const fabDragOrigin = useRef<{ touchY: number; fabTopAtStart: number } | null>(null);
   const fabDragging = useRef(false);
+  const fabRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (open) return;
@@ -159,26 +170,49 @@ export function AmcueChat() {
   }, [open]);
 
   const handleFabTouchStart = (e: React.TouchEvent) => {
-    fabDragStartX.current = e.touches[0].clientX;
+    const t = e.touches[0];
+    fabDragOrigin.current = { touchY: t.clientY, fabTopAtStart: fabTop };
     fabDragging.current = false;
   };
 
   const handleFabTouchMove = (e: React.TouchEvent) => {
-    if (fabDragStartX.current !== null && Math.abs(e.touches[0].clientX - fabDragStartX.current) > 8) {
+    if (!fabDragOrigin.current) return;
+    const t = e.touches[0];
+    const dy = t.clientY - fabDragOrigin.current.touchY;
+    const dx = t.clientX - (fabSide === "right" ? window.innerWidth - FAB_EDGE_GAP - FAB_SIZE : FAB_EDGE_GAP);
+    if (!fabDragging.current && (Math.abs(dy) > 5 || Math.abs(dx) > 5)) {
       fabDragging.current = true;
+    }
+    if (fabDragging.current) {
+      e.preventDefault(); // block page scroll while dragging
+      const rawY = fabDragOrigin.current.fabTopAtStart + dy;
+      const minY = 60;
+      const maxY = window.innerHeight - FAB_SIZE - 80; // keep above bottom nav
+      setFabDragY(Math.max(minY, Math.min(maxY, rawY)));
     }
   };
 
   const handleFabTouchEnd = (e: React.TouchEvent) => {
     if (fabDragging.current) {
-      const x = e.changedTouches[0].clientX;
-      setFabSide(x < window.innerWidth / 2 ? "left" : "right");
-      fabDragStartX.current = null;
-      fabDragging.current = false;
+      const t = e.changedTouches[0];
+      const newSide = t.clientX < window.innerWidth / 2 ? "left" : "right";
+      setFabSide(newSide);
+      if (fabDragY !== null) setFabTop(fabDragY);
+      setFabDragY(null);
     }
+    fabDragging.current = false;
+    fabDragOrigin.current = null;
   };
 
   const FabIcon = FAB_ICONS[fabIconIdx];
+  const fabCurrentY = fabDragY ?? fabTop;
+  const fabStyle: React.CSSProperties = {
+    top: `${fabCurrentY}px`,
+    bottom: "auto",
+    ...(fabSide === "right"
+      ? { right: `${FAB_EDGE_GAP}px`, left: "auto" }
+      : { left: `${FAB_EDGE_GAP}px`, right: "auto" }),
+  };
 
   // Local persona form — initialised from profile, updated on save
   const [persona, setPersona] = useState<PersonaForm>(() => {
@@ -365,18 +399,20 @@ export function AmcueChat() {
     <>
       {/* Floating Button */}
       <button
+        ref={fabRef}
         onClick={() => { if (!fabDragging.current) setOpen(true); }}
         onTouchStart={handleFabTouchStart}
         onTouchMove={handleFabTouchMove}
         onTouchEnd={handleFabTouchEnd}
+        style={fabStyle}
         className={cn(
-          "fixed bottom-6 z-50 group",
-          fabSide === "right" ? "right-4 sm:right-6" : "left-4 sm:left-6",
+          "fixed z-50 group",
           "w-14 h-14 rounded-full",
           "bg-gradient-to-br from-[hsl(var(--primary))] to-[#7C3AED]",
           "shadow-xl shadow-purple-500/30",
           "flex items-center justify-center",
-          "hover:scale-110 active:scale-95 transition-all duration-200",
+          "hover:scale-110 active:scale-95",
+          fabDragY !== null ? "transition-none" : "transition-all duration-200",
           "focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-2 focus:ring-offset-background",
           "touch-none select-none",
           open && "hidden"
