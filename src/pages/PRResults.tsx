@@ -87,6 +87,13 @@ interface RecommendedAction {
   sources?: string[];
 }
 
+interface BrandContextContradiction {
+  field: string;
+  claimed: string;
+  evidence_says: string;
+  severity: "high" | "medium" | "low";
+}
+
 interface EvidenceSignals {
   brand_pages_crawled?: number;
   competitor_pages_crawled?: number;
@@ -95,6 +102,8 @@ interface EvidenceSignals {
   evidence_url_pool_size?: number;
   brand_context_present?: boolean;
   brand_context_tier?: string | null;
+  brand_context_effective_tier?: string | null;
+  brand_context_contradictions?: BrandContextContradiction[];
   warnings?: string[];
   low_confidence?: boolean;
 }

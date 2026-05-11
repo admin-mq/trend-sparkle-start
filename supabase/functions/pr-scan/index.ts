@@ -172,6 +172,126 @@ async function fetchDomainPages(
   return results.slice(0, maxBrandPages);
 }
 
+// ── Brand-context contradiction check ─────────────────────────────────────────
+// derive-brand-context infers tier/scale/HQ/etc. from the URL alone via an LLM.
+// Sometimes it's wrong — labels a 10-person startup as "mega", picks the wrong
+// industry, misstates the founding year. Once we've crawled the brand's own
+// pages, we have ground truth to check against. We flag concrete contradictions
+// so (a) synthesis can drop a wrong tier instead of producing tier-mismatched
+// recommendations, and (b) the low-confidence banner can warn the user.
+
+interface ContradictionFinding {
+  field: string;
+  claimed: string;
+  evidence_says: string;
+  severity: "high" | "medium" | "low";
+}
+
+async function detectBrandContextContradictions(
+  brandContext: any,
+  brandFacts: string[],
+  project: { brand_name: string; domain: string }
+): Promise<{ contradictions: ContradictionFinding[]; warnings: string[] }> {
+  if (!brandContext) return { contradictions: [], warnings: [] };
+  if (brandFacts.length === 0) return { contradictions: [], warnings: [] };
+
+  const claimedSummary = [
+    `Tier: ${brandContext.tier ?? "unknown"}${brandContext.tier_rationale ? ` (${brandContext.tier_rationale})` : ""}`,
+    `Approximate revenue: ${brandContext.approximate_revenue ?? "unknown"}`,
+    `Approximate employees: ${brandContext.approximate_employees ?? "unknown"}`,
+    `Public/private: ${brandContext.public_or_private ?? "unknown"}${brandContext.ticker_symbol ? ` (${brandContext.ticker_symbol})` : ""}`,
+    `Founded: ${brandContext.founded_year ?? "unknown"}`,
+    `HQ: ${brandContext.headquarters ?? "unknown"}`,
+    `Market position: ${brandContext.market_position ?? "unknown"}`,
+  ].join("\n");
+
+  // Cap evidence sample so the prompt stays cheap; first 6 pages is usually
+  // homepage + about + a few high-signal pages from the scored crawl.
+  const evidenceSample = brandFacts.slice(0, 6).join("\n\n");
+
+  const prompt = `You are checking whether an externally-derived brand profile contradicts what the brand's own website actually says.
+
+BRAND: ${project.brand_name} (${project.domain})
+
+CLAIMED BRAND PROFILE (derived from external web search by an LLM — may be wrong):
+${claimedSummary}
+
+EVIDENCE FROM THE BRAND'S OWN WEBSITE (extracted facts from crawled pages):
+${evidenceSample}
+
+Identify ONLY clear, concrete contradictions. Absence of evidence is NOT a contradiction — only flag a field if the evidence explicitly indicates something incompatible with the claim.
+
+Severity guide:
+- "high" — the contradiction would materially mislead a PR strategist (wrong tier, wrong industry, wrong public/private status). Use sparingly.
+- "medium" — the contradiction matters but doesn't break the analysis (wrong HQ city, wrong founding year by a few years).
+- "low" — minor or partial mismatch.
+
+Examples of genuine contradictions:
+- Claimed "mega" tier, but evidence shows a small founder-led team, no scale signals, copy like "we're a small studio"
+- Claimed "fintech" industry, but evidence is about pet supplies
+- Claimed "public" with a ticker, but evidence says "privately held" or has no IR/investor relations content and reads as a private SMB
+
+Return ONLY valid JSON (no prose, no fences):
+{
+  "contradictions": [
+    {
+      "field": "<one of: tier, industry, public_or_private, founded_year, headquarters, market_position, approximate_revenue, approximate_employees>",
+      "claimed": "<short string of what the profile claims>",
+      "evidence_says": "<short string of what the website indicates, with a brief paraphrase>",
+      "severity": "high" | "medium" | "low"
+    }
+  ]
+}
+
+If there are no clear contradictions, return: { "contradictions": [] }
+Be conservative — when in doubt, omit.`;
+
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.1,
+        max_tokens: 700,
+      }),
+    });
+    if (!res.ok) {
+      console.warn(`[pr-scan] contradiction check HTTP ${res.status}`);
+      return { contradictions: [], warnings: [] };
+    }
+    const data = await res.json();
+    const parsed = JSON.parse(data.choices?.[0]?.message?.content ?? "{}");
+    const raw = Array.isArray(parsed.contradictions) ? parsed.contradictions : [];
+
+    const contradictions: ContradictionFinding[] = [];
+    for (const c of raw) {
+      if (!c || typeof c !== "object") continue;
+      const field = typeof c.field === "string" ? c.field : null;
+      const claimed = typeof c.claimed === "string" ? c.claimed : null;
+      const evidence_says = typeof c.evidence_says === "string" ? c.evidence_says : null;
+      const sev = c.severity === "high" || c.severity === "medium" || c.severity === "low" ? c.severity : "low";
+      if (!field || !claimed || !evidence_says) continue;
+      contradictions.push({ field, claimed, evidence_says, severity: sev });
+    }
+
+    const warnings: string[] = [];
+    for (const c of contradictions) {
+      if (c.severity === "high" || c.severity === "medium") {
+        warnings.push(
+          `Brand context may be wrong about ${c.field}: claimed "${c.claimed}" but website suggests "${c.evidence_says}" — consider re-deriving brand context`,
+        );
+      }
+    }
+    return { contradictions, warnings };
+  } catch (e) {
+    console.warn(`[pr-scan] contradiction check exception: ${(e as any)?.message}`);
+    return { contradictions: [], warnings: [] };
+  }
+}
+
 // ── AI Analysis — multi-stage pipeline ────────────────────────────────────────
 
 /**
@@ -772,6 +892,34 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ── Step 3.8: Cross-check brand_context against crawled evidence ─────────
+    // brand_context is LLM-derived from the URL alone — sometimes wrong (e.g.
+    // labeling a tiny startup as "mega"). With brand pages in hand, we now have
+    // ground truth to verify against. We pass the original context to synthesis
+    // but downgrade `tier` to "unknown" locally when a high-severity tier
+    // contradiction is found, so synthesis doesn't apply a tier-mismatched
+    // playbook. Warnings flow into evidence_signals for the banner to surface.
+    const contradictionCheck = await detectBrandContextContradictions(
+      brandContext,
+      brandFacts,
+      { brand_name: project.brand_name, domain: project.domain },
+    );
+    if (contradictionCheck.contradictions.length > 0) {
+      console.log(
+        `[pr-scan] brand_context contradictions: ${contradictionCheck.contradictions.length} (` +
+          contradictionCheck.contradictions.map((c) => `${c.field}:${c.severity}`).join(", ") + ")",
+      );
+    }
+
+    let effectiveBrandContext = brandContext;
+    const highSevTierContradiction = contradictionCheck.contradictions.find(
+      (c) => c.field === "tier" && c.severity === "high",
+    );
+    if (highSevTierContradiction && brandContext) {
+      console.log(`[pr-scan] downgrading brand_context.tier ${brandContext.tier} → unknown for this synthesis (high-severity contradiction)`);
+      effectiveBrandContext = { ...brandContext, tier: "unknown" };
+    }
+
     // ── Step 4: Strategic synthesis (gpt-4o) ─────────────────────────────────
     await supabase
       .from("pr_scan_jobs")
@@ -783,7 +931,7 @@ Deno.serve(async (req: Request) => {
       brandFacts,
       competitorFacts,
       externalMentions ?? [],
-      brandContext,
+      effectiveBrandContext,
       visibilityResults
     );
 
@@ -805,11 +953,14 @@ Deno.serve(async (req: Request) => {
     if (visibilityCount === 0) warnings.push("No AI search visibility data — run a visibility check for the strongest signal");
     if (!brandContext) warnings.push("No live brand context derived — strategic suggestions may be generic");
     else if (!hasBrandContext) warnings.push("Brand tier is unknown — synthesis defaulted to growth-stage playbook");
+    // Surface contradictions found in Step 3.8 (high/medium severity only)
+    warnings.push(...contradictionCheck.warnings);
 
     const lowConfidence =
       brandPages.length < 3 ||
       evidence_url_pool_size < 3 ||
-      !brandContext;
+      !brandContext ||
+      contradictionCheck.contradictions.some((c) => c.severity === "high");
 
     const evidence_signals = {
       brand_pages_crawled: brandPages.length,
@@ -819,6 +970,8 @@ Deno.serve(async (req: Request) => {
       evidence_url_pool_size,
       brand_context_present: !!brandContext,
       brand_context_tier: brandContext?.tier ?? null,
+      brand_context_effective_tier: effectiveBrandContext?.tier ?? null,
+      brand_context_contradictions: contradictionCheck.contradictions,
       warnings,
       low_confidence: lowConfidence,
     };
