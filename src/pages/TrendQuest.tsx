@@ -581,8 +581,8 @@ const TrendQuest = () => {
         body: {
           region: inputValues.twitter_geography || 'UK',
           categories: inputValues.content_categories || [],
-          count: 20,
-          user_niche: userProfile?.industry || undefined,
+          count: 60,
+          user_niche: userProfile?.niche || userProfile?.industry || undefined,
         },
       });
       if (fnError) throw new Error(fnError.message);
