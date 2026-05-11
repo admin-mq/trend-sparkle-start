@@ -289,19 +289,29 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+    // Support BOTH runtimes: Lovable AI gateway (legacy) and OpenAI (current).
+    // The project was switched to OpenAI runtime — pick whichever key is set.
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    const useOpenAI = !!OPENAI_API_KEY;
+    const aiKey = OPENAI_API_KEY || LOVABLE_API_KEY;
+    const aiUrl = useOpenAI
+      ? "https://api.openai.com/v1/chat/completions"
+      : "https://ai.gateway.lovable.dev/v1/chat/completions";
+    const aiModel = useOpenAI ? "gpt-4o-mini" : "google/gemini-3-flash-preview";
 
     if (!supabaseUrl || !serviceKey || !anonKey) {
       console.error("Missing Supabase env vars");
       return new Response(JSON.stringify({ error: "Server misconfigured" }), {
-        status: 500,
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (!OPENAI_API_KEY) {
-      console.error("Missing OPENAI_API_KEY");
-      return new Response(JSON.stringify({ error: "AI key not configured" }), {
-        status: 500,
+    if (!aiKey) {
+      console.error("Missing both LOVABLE_API_KEY and OPENAI_API_KEY");
+      return new Response(JSON.stringify({ error: "AI key not configured (need LOVABLE_API_KEY or OPENAI_API_KEY)" }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -369,14 +379,14 @@ serve(async (req) => {
     ];
 
     // ── Call AI ───────────────────────────────────────────────────────────────
-    const aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    const aiResponse = await fetch(aiUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        Authorization: `Bearer ${aiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: aiModel,
         messages,
       }),
     });
