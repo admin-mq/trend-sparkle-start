@@ -89,23 +89,19 @@ interface ContextResult {
   accountType: "creator" | "brand" | "unknown";
 }
 
+// Helper: extract data from allSettled results without throwing
+function settled<T>(result: PromiseSettledResult<{ data: T | null; error: unknown }>): T | null {
+  if (result.status === "rejected") return null;
+  return result.value?.data ?? null;
+}
+
 async function buildUserContext(userId: string, supabase: ReturnType<typeof createClient>): Promise<ContextResult> {
   const sections: string[] = [];
   let accountType: "creator" | "brand" | "unknown" = "unknown";
 
   try {
-    // Round 1: parallel fetches
-    const [
-      { data: userProfile },
-      { data: brandMemory },
-      { data: prProjects },
-      { data: hashtagRequests },
-      { data: watchlist },
-      { data: seoSites },
-      { data: referenceAccounts },
-      { data: savedTrends },
-      { data: trendSession },
-    ] = await Promise.all([
+    // Round 1: parallel fetches — allSettled so one bad query can't kill the rest
+    const round1 = await Promise.allSettled([
       supabase.from("user_profiles")
         .select("account_type, creator_persona, full_name, brand_name, industry, geography, business_summary")
         .eq("user_id", userId)
@@ -161,19 +157,25 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
         .maybeSingle(),
     ]);
 
+    const userProfile = settled<Record<string, unknown>>(round1[0] as PromiseSettledResult<{ data: Record<string, unknown> | null; error: unknown }>);
+    const brandMemory = settled<Record<string, unknown>>(round1[1] as PromiseSettledResult<{ data: Record<string, unknown> | null; error: unknown }>);
+    const prProjects = settled<Record<string, string>[]>(round1[2] as PromiseSettledResult<{ data: Record<string, string>[] | null; error: unknown }>) ?? [];
+    const hashtagRequests = settled<Record<string, unknown>[]>(round1[3] as PromiseSettledResult<{ data: Record<string, unknown>[] | null; error: unknown }>) ?? [];
+    const watchlist = settled<Record<string, unknown>[]>(round1[4] as PromiseSettledResult<{ data: Record<string, unknown>[] | null; error: unknown }>) ?? [];
+    const seoSites = settled<Record<string, unknown>[]>(round1[5] as PromiseSettledResult<{ data: Record<string, unknown>[] | null; error: unknown }>) ?? [];
+    const referenceAccounts = settled<Record<string, unknown>[]>(round1[6] as PromiseSettledResult<{ data: Record<string, unknown>[] | null; error: unknown }>) ?? [];
+    const savedTrends = settled<Record<string, unknown>[]>(round1[7] as PromiseSettledResult<{ data: Record<string, unknown>[] | null; error: unknown }>) ?? [];
+    const trendSession = settled<Record<string, unknown>>(round1[8] as PromiseSettledResult<{ data: Record<string, unknown> | null; error: unknown }>);
+
     // Determine account type early — everything below may branch on it
     accountType = (userProfile?.account_type as "creator" | "brand") ?? "unknown";
 
     // Round 2: hashtag results (depend on IDs from round 1)
-    const prProjectIds = (prProjects || []).map((p: Record<string, string>) => p.id);
-    const hashtagReqIds = (hashtagRequests || []).map((r: Record<string, string>) => r.id);
-    const seoSiteId = seoSites?.[0]?.id;
+    const prProjectIds = prProjects.map((p) => p.id);
+    const hashtagReqIds = hashtagRequests.map((r) => r.id as string);
+    const seoSiteId = (seoSites[0] as Record<string, unknown> | undefined)?.id;
 
-    const [
-      { data: prResult },
-      { data: hashtagResults },
-      { data: seoSnapshot },
-    ] = await Promise.all([
+    const round2 = await Promise.allSettled([
       prProjectIds.length
         ? supabase.from("pr_narrative_results")
             .select("narrative_score, authority_score, proof_density_score, risk_score, opportunity_score, executive_summary, proof_gaps, recommended_actions, pages_analyzed, created_at, project_id")
@@ -185,7 +187,7 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
 
       hashtagReqIds.length
         ? supabase.from("hashtag_results")
-            .select("set_score, confidence_level, set_type, why_this_works, warnings, hashtags, best_posting_time, created_at, request_id")
+            .select("set_score, confidence_level, why_this_works, warnings, hashtags, best_posting_time, created_at, request_id")
             .in("request_id", hashtagReqIds)
             .order("created_at", { ascending: false })
             .limit(5)
@@ -201,6 +203,10 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
             .maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
+
+    const prResult = settled<Record<string, unknown>>(round2[0] as PromiseSettledResult<{ data: Record<string, unknown> | null; error: unknown }>);
+    const hashtagResults = settled<Record<string, unknown>[]>(round2[1] as PromiseSettledResult<{ data: Record<string, unknown>[] | null; error: unknown }>) ?? [];
+    const seoSnapshot = settled<Record<string, unknown>>(round2[2] as PromiseSettledResult<{ data: Record<string, unknown> | null; error: unknown }>);
 
     // ── Creator Persona ───────────────────────────────────────────────────────
     if (accountType === "creator" && userProfile) {
@@ -222,20 +228,17 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
         if (persona.location_normalized) lines.push(`Location: ${persona.location_normalized}`);
         if (persona.summary) lines.push(`Profile Summary: ${persona.summary}`);
       } else {
-        // Fall back to raw profile fields
-        if (userProfile.industry)
-          lines.push(`Niche/Industry: ${userProfile.industry}`);
+        if (userProfile.industry) lines.push(`Niche/Industry: ${userProfile.industry}`);
         if (userProfile.geography) lines.push(`Location: ${userProfile.geography}`);
         if (userProfile.business_summary) lines.push(`Bio: ${userProfile.business_summary}`);
       }
 
-      if (lines.length)
-        sections.push(`### Creator Profile\n${lines.join("\n")}`);
+      if (lines.length) sections.push(`### Creator Profile\n${lines.join("\n")}`);
     }
 
     // ── Brand Profile (brand users) ───────────────────────────────────────────
     if (brandMemory) {
-      const b = brandMemory as Record<string, unknown>;
+      const b = brandMemory;
       const lines: string[] = [];
       if (b.company_name) lines.push(`Company: ${b.company_name}`);
       if (b.industry) lines.push(`Industry: ${b.industry}`);
@@ -261,9 +264,8 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
     // ── Trend Quest Activity ──────────────────────────────────────────────────
     const trendLines: string[] = [];
 
-    // Saved/bookmarked trends (active within 48h)
-    if (savedTrends?.length) {
-      const saved = (savedTrends as Record<string, unknown>[]).map((t) => {
+    if (savedTrends.length) {
+      const saved = savedTrends.map((t) => {
         const snap = t.trend_snapshot as Record<string, unknown> | null;
         const virality = snap?.virality_score ?? snap?.score;
         return `${t.trend_name}${virality ? ` (virality: ${virality})` : ""}${t.trend_category ? ` [${t.trend_category}]` : ""}`;
@@ -271,11 +273,9 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
       trendLines.push(`Recently saved trends (bookmarked for content): ${saved.join(", ")}`);
     }
 
-    // Last trend session: what niche/location the recommendations were for + the actual recommendations
     if (trendSession) {
-      const ts = trendSession as Record<string, unknown>;
-      if (ts.niche) trendLines.push(`Last Trend Quest search: niche = "${ts.niche}", location = ${ts.location || "global"}`);
-      const recs = ts.last_recommendations as unknown[];
+      if (trendSession.niche) trendLines.push(`Last Trend Quest search: niche = "${trendSession.niche}", location = ${trendSession.location || "global"}`);
+      const recs = trendSession.last_recommendations as unknown[];
       if (Array.isArray(recs) && recs.length) {
         const recNames = recs.slice(0, 5).map((r) => {
           const rec = r as Record<string, unknown>;
@@ -286,17 +286,13 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
       }
     }
 
-    if (trendLines.length)
-      sections.push(`### Trend Quest Activity\n${trendLines.join("\n")}`);
+    if (trendLines.length) sections.push(`### Trend Quest Activity\n${trendLines.join("\n")}`);
 
     // ── Hashtag Analysis (recent set) ─────────────────────────────────────────
-    if (hashtagResults?.length) {
-      const results = hashtagResults as Record<string, unknown>[];
-
-      // Group by request_id to show the safe + experimental pair for the latest analysis
-      const latestRequestId = (hashtagRequests?.[0] as Record<string, string> | undefined)?.id;
-      const latestSet = results.filter((r) => r.request_id === latestRequestId);
-      const latestRequest = (hashtagRequests as Record<string, unknown>[] | null)?.[0];
+    if (hashtagResults.length) {
+      const latestRequestId = (hashtagRequests[0] as Record<string, string> | undefined)?.id;
+      const latestSet = hashtagResults.filter((r) => r.request_id === latestRequestId);
+      const latestRequest = hashtagRequests[0];
 
       if (latestSet.length) {
         const hLines: string[] = [];
@@ -304,8 +300,9 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
           hLines.push(`Post idea analyzed: "${latestRequest.caption}"`);
         hLines.push(`Analyzed: ${new Date(latestSet[0].created_at as string).toLocaleDateString()}`);
 
-        for (const set of latestSet) {
-          const setLabel = set.set_type === "safe" ? "Safe Reach Set" : "Experimental Set";
+        for (let i = 0; i < latestSet.length; i++) {
+          const set = latestSet[i];
+          const setLabel = i === 0 ? "Safe Reach Set" : "Experimental Set";
           hLines.push(`${setLabel} — Score: ${set.set_score}/100 (${set.confidence_level} confidence)`);
           if (set.why_this_works) hLines.push(`  Why it works: ${set.why_this_works}`);
           if (set.best_posting_time) hLines.push(`  Best posting time: ${set.best_posting_time}`);
@@ -321,21 +318,19 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
             hLines.push(`  Warnings: ${(warnings as string[]).slice(0, 2).join("; ")}`);
         }
 
-        // Mention how many total analyses they've run (context for patterns)
-        if ((hashtagRequests?.length ?? 0) > 1)
-          hLines.push(`Total analyses run: ${hashtagRequests?.length}`);
+        if (hashtagRequests.length > 1)
+          hLines.push(`Total analyses run: ${hashtagRequests.length}`);
 
         sections.push(`### Latest Hashtag Analysis\n${hLines.join("\n")}`);
       }
     }
 
     // ── Hashtag Watchlist ─────────────────────────────────────────────────────
-    if (watchlist?.length) {
-      const wl = watchlist as Record<string, unknown>[];
-      const rising = wl.filter((w) => w.trend_status === "rising");
-      const plateauing = wl.filter((w) => w.trend_status === "plateauing");
-      const declining = wl.filter((w) => w.trend_status === "declining");
-      const untracked = wl.filter((w) => !w.trend_status);
+    if (watchlist.length) {
+      const rising = watchlist.filter((w) => w.trend_status === "rising");
+      const plateauing = watchlist.filter((w) => w.trend_status === "plateauing");
+      const declining = watchlist.filter((w) => w.trend_status === "declining");
+      const untracked = watchlist.filter((w) => !w.trend_status);
 
       const lines: string[] = [];
       if (rising.length)
@@ -351,8 +346,8 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
     }
 
     // ── Creator Style References ──────────────────────────────────────────────
-    if (referenceAccounts?.length) {
-      const refLines = (referenceAccounts as Record<string, unknown>[]).map((ref) => {
+    if (referenceAccounts.length) {
+      const refLines = referenceAccounts.map((ref) => {
         const ta = ref.tone_analysis as Record<string, unknown> | null;
         if (!ta) return null;
         const parts = [`@${ref.instagram_handle}`];
@@ -371,10 +366,10 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
 
     // ── PR Campaign Results (brand-relevant) ──────────────────────────────────
     if (prResult) {
-      const pr = prResult as Record<string, unknown>;
-      const project = (prProjects || []).find((p: Record<string, string>) => p.id === pr.project_id);
+      const pr = prResult;
+      const project = prProjects.find((p) => p.id === pr.project_id);
       const lines: string[] = [
-        `Brand/Domain: ${(project as Record<string, string>)?.brand_name || "unknown"} (${(project as Record<string, string>)?.domain || ""})`,
+        `Brand/Domain: ${project?.brand_name || "unknown"} (${project?.domain || ""})`,
         `Narrative Score: ${pr.narrative_score}/100`,
         `Authority Score: ${pr.authority_score}/100`,
         `Proof Density Score: ${pr.proof_density_score}/100`,
@@ -401,14 +396,14 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
     }
 
     // ── SEO Analysis ──────────────────────────────────────────────────────────
-    if (seoSites?.[0] && seoSnapshot) {
-      const snap = seoSnapshot as Record<string, unknown>;
+    if (seoSites[0] && seoSnapshot) {
+      const snap = seoSnapshot;
       const date = (snap.finished_at || snap.created_at) as string;
       const sym = (snap.currency_symbol as string) || "$";
       const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(Math.round(n));
 
       const lines: string[] = [
-        `Site: ${seoSites[0].site_url}`,
+        `Site: ${(seoSites[0] as Record<string, unknown>).site_url}`,
         `Last crawl: ${new Date(date).toLocaleDateString()}`,
       ];
       if (snap.business_name) lines.push(`Business: ${snap.business_name}`);
@@ -445,8 +440,8 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
       } catch { /* ignore */ }
 
       sections.push(`### SEO Analysis\n${lines.join("\n")}`);
-    } else if (seoSites?.[0]) {
-      sections.push(`### SEO\nSite connected: ${seoSites[0].site_url} (no completed crawl yet)`);
+    } else if (seoSites[0]) {
+      sections.push(`### SEO\nSite connected: ${(seoSites[0] as Record<string, unknown>).site_url} (no completed crawl yet)`);
     }
 
   } catch (e) {
@@ -540,46 +535,27 @@ serve(async (req) => {
       });
     }
 
-    const { conversation_id, message, context_page } = await req.json();
+    const { message, context_page: _context_page, conversationHistory } = await req.json();
 
-    let convId = conversation_id;
-
-    if (!convId) {
-      const title = message.length > 50 ? message.substring(0, 50) + "..." : message;
-      const { data: conv, error: convErr } = await supabase
-        .from("amcue_conversations")
-        .insert({ user_id: user.id, title })
-        .select("id")
-        .single();
-      if (convErr) throw convErr;
-      convId = conv.id;
+    if (!message) {
+      return new Response(JSON.stringify({ error: "No message provided" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    await supabase.from("amcue_messages").insert({
-      conversation_id: convId,
-      role: "user",
-      content: message,
-      context_page,
-    });
-
-    // Fetch history and build user context in parallel
-    const [{ data: history }, { context: userContext, accountType }] = await Promise.all([
-      supabase
-        .from("amcue_messages")
-        .select("role, content")
-        .eq("conversation_id", convId)
-        .order("created_at", { ascending: true })
-        .limit(20),
-      buildUserContext(user.id, supabase),
-    ]);
+    // Build user context (non-blocking — errors are caught inside)
+    const { context: userContext, accountType } = await buildUserContext(user.id, supabase);
 
     // Select the right system prompt based on account type
     const basePrompt = accountType === "creator" ? CREATOR_SYSTEM_PROMPT : BRAND_SYSTEM_PROMPT;
     const systemPrompt = basePrompt + userContext;
 
+    const history = Array.isArray(conversationHistory) ? conversationHistory : [];
     const messages = [
       { role: "system", content: systemPrompt },
-      ...(history || []).map((m: { role: string; content: string }) => ({ role: m.role, content: m.content })),
+      ...history.slice(-18), // keep last 18 turns (9 exchanges) to stay within token budget
+      { role: "user", content: message },
     ];
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -622,16 +598,7 @@ serve(async (req) => {
     const aiData = await aiResponse.json();
     const reply = aiData.choices?.[0]?.message?.content || "I'm sorry, I couldn't generate a response.";
 
-    await supabase.from("amcue_messages").insert({
-      conversation_id: convId,
-      role: "assistant",
-      content: reply,
-    });
-
-    return new Response(JSON.stringify({
-      conversation_id: convId,
-      content: reply,
-    }), {
+    return new Response(JSON.stringify({ reply }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
