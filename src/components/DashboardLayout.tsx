@@ -24,6 +24,8 @@ import {
   ListChecks,
   DollarSign,
   Eye,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -98,11 +100,21 @@ const creatorNavGroups = [
 
 export const DashboardLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [desktopCollapsed, setDesktopCollapsed] = useState(() =>
+    localStorage.getItem("mq_sidebar_collapsed") === "true"
+  );
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { user, profile, loading: authLoading, signOut } = useAuthContext();
+
+  const toggleDesktop = () => {
+    setDesktopCollapsed(prev => {
+      localStorage.setItem("mq_sidebar_collapsed", String(!prev));
+      return !prev;
+    });
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -142,16 +154,18 @@ export const DashboardLayout = () => {
     return (
       <button
         onClick={() => { navigate(path); setSidebarOpen(false); }}
+        title={desktopCollapsed ? label : undefined}
         className={cn(
-          "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all text-left",
+          "w-full flex items-center rounded-lg text-sm transition-all text-left",
+          desktopCollapsed ? "justify-center px-0 py-2" : "gap-2.5 px-3 py-2",
           active
             ? "bg-primary/15 text-primary font-medium"
             : "text-muted-foreground hover:text-foreground hover:bg-secondary/60 font-normal"
         )}
       >
         <Icon className={cn("w-4 h-4 flex-shrink-0", active ? "text-primary" : "")} />
-        <span>{label}</span>
-        {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
+        {!desktopCollapsed && <span>{label}</span>}
+        {!desktopCollapsed && active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
       </button>
     );
   };
@@ -188,44 +202,69 @@ export const DashboardLayout = () => {
 
       {/* ── Sidebar ──────────────────────────────────────────────────────── */}
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 w-60 bg-card border-r border-border flex flex-col transition-transform duration-200 ease-in-out",
-        sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        "fixed inset-y-0 left-0 z-50 bg-card border-r border-border flex flex-col transition-all duration-200 ease-in-out",
+        // Mobile: slide in/out
+        sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+        // Desktop: full or icon-only width
+        desktopCollapsed ? "lg:w-14" : "lg:w-60",
+        // Mobile always full width when open
+        "w-60"
       )}>
 
-        {/* Logo */}
-        <div className="h-14 px-4 flex items-center justify-between border-b border-border shrink-0">
-          <div className="flex items-center gap-2.5">
-            <MQLogo size={28} showBackground={true} />
-            <span className="text-sm font-bold text-foreground tracking-tight">Marketers Quest</span>
-          </div>
+        {/* Logo + collapse toggle */}
+        <div className="h-14 px-3 flex items-center justify-between border-b border-border shrink-0">
+          {!desktopCollapsed && (
+            <div className="flex items-center gap-2.5 overflow-hidden">
+              <MQLogo size={28} showBackground={true} />
+              <span className="text-sm font-bold text-foreground tracking-tight whitespace-nowrap">Marketers Quest</span>
+            </div>
+          )}
+          {desktopCollapsed && (
+            <div className="w-full flex justify-center">
+              <MQLogo size={28} showBackground={true} />
+            </div>
+          )}
+          {/* Mobile close */}
           <button
-            className="lg:hidden text-muted-foreground hover:text-foreground"
+            className="lg:hidden text-muted-foreground hover:text-foreground flex-shrink-0"
             onClick={() => setSidebarOpen(false)}
           >
             <X className="w-4 h-4" />
           </button>
+          {/* Desktop collapse toggle */}
+          <button
+            onClick={toggleDesktop}
+            className="hidden lg:flex items-center justify-center w-6 h-6 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors flex-shrink-0"
+            title={desktopCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {desktopCollapsed
+              ? <ChevronRight className="w-3.5 h-3.5" />
+              : <ChevronLeft className="w-3.5 h-3.5" />}
+          </button>
         </div>
 
         {/* Amcue AI CMO — featured */}
-        <div className="px-3 pt-3 pb-2 shrink-0">
+        <div className={cn("pt-3 pb-2 shrink-0", desktopCollapsed ? "px-2" : "px-3")}>
           <button
             onClick={() => { navigate("/amcue"); setSidebarOpen(false); }}
+            title={desktopCollapsed ? "Amcue AI CMO" : undefined}
             className={cn(
-              "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all border",
+              "w-full flex items-center rounded-lg text-sm font-medium transition-all border",
+              desktopCollapsed ? "justify-center px-0 py-2.5" : "gap-2.5 px-3 py-2.5",
               location.pathname.startsWith("/amcue")
                 ? "bg-primary text-white border-primary shadow-sm"
                 : "bg-primary/8 text-foreground border-primary/20 hover:bg-primary/12 hover:border-primary/35"
             )}
           >
             <Brain className="w-4 h-4 flex-shrink-0" />
-            <span>Amcue AI CMO</span>
+            {!desktopCollapsed && <span>Amcue AI CMO</span>}
           </button>
         </div>
 
-        <div className="mx-3 border-t border-border shrink-0" />
+        <div className={cn("border-t border-border shrink-0", desktopCollapsed ? "mx-2" : "mx-3")} />
 
         {/* Nav groups */}
-        <nav className="flex-1 px-3 pb-3 overflow-y-auto">
+        <nav className={cn("flex-1 pb-3 overflow-y-auto", desktopCollapsed ? "px-2" : "px-3")}>
           {authLoading ? (
             <div className="space-y-1.5 mt-3">
               {[...Array(6)].map((_, i) => (
@@ -234,7 +273,8 @@ export const DashboardLayout = () => {
             </div>
           ) : navGroups.map((group) => (
             <div key={group.label}>
-              <p className="nav-group-label mt-3 mb-1">{group.label}</p>
+              {!desktopCollapsed && <p className="nav-group-label mt-3 mb-1">{group.label}</p>}
+              {desktopCollapsed && <div className="mt-3" />}
               <div className="space-y-0.5">
                 {group.items.map((item) => (
                   <NavItem key={item.path} {...item} />
@@ -244,22 +284,29 @@ export const DashboardLayout = () => {
           ))}
         </nav>
 
-        {/* Bottom — Profile, Settings, [Admin for brands], Logout */}
-        <div className="px-3 pb-3 pt-2 border-t border-border space-y-0.5 shrink-0">
+        {/* Bottom — Profile, Settings, Logout */}
+        <div className={cn("pb-3 pt-2 border-t border-border space-y-0.5 shrink-0", desktopCollapsed ? "px-2" : "px-3")}>
           <NavItem path="/profile" label="Profile" icon={User} />
           <NavItem path="/settings" label="Settings" icon={Settings} />
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-all mt-1"
+            title={desktopCollapsed ? "Log out" : undefined}
+            className={cn(
+              "w-full flex items-center rounded-lg text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-all mt-1",
+              desktopCollapsed ? "justify-center px-0 py-2" : "gap-2.5 px-3 py-2"
+            )}
           >
             <LogOut className="w-4 h-4 flex-shrink-0" />
-            <span>Log out</span>
+            {!desktopCollapsed && <span>Log out</span>}
           </button>
         </div>
       </aside>
 
       {/* ── Main content ─────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 lg:ml-60">
+      <div className={cn(
+        "flex-1 flex flex-col min-w-0 transition-all duration-200",
+        desktopCollapsed ? "lg:ml-14" : "lg:ml-60"
+      )}>
 
         {/* Top bar */}
         <header className="h-14 flex items-center justify-between px-4 border-b border-border bg-card/60 shrink-0">
