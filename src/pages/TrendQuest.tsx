@@ -312,13 +312,17 @@ const TrendQuest = () => {
       ? inputs.content_format_other
       : inputs.content_format;
     const primaryTone = getPrimaryTone(inputs.tones);
+    // Prefer AI-parsed persona fields; fall back to raw profile fields
+    const persona = cp.creator_persona;
+    const resolvedNiche = persona?.niche || cp.industry || "";
+    const resolvedLocation = persona?.location_normalized || cp.location || "";
     return {
-      brand_name: cp.full_name || cp.industry || "Creator",
-      business_summary: cp.business_summary || "",
-      industry: cp.industry || "",
-      niche: cp.industry || "",
+      brand_name: cp.full_name || resolvedNiche || "Creator",
+      business_summary: persona?.summary || cp.business_summary || "",
+      industry: resolvedNiche,
+      niche: resolvedNiche,
       audience,
-      geography: cp.location || "",
+      geography: resolvedLocation,
       content_format: contentFormat,
       primary_goal: inputs.primary_goal,
       tone: deriveToneString(inputs.tones),
@@ -455,7 +459,7 @@ const TrendQuest = () => {
             region: inputValues.twitter_geography || 'UK',
             categories: inputValues.content_categories || [],
             count: 60,
-            user_niche: userProfile?.industry || undefined,
+            user_niche: userProfile?.niche || userProfile?.industry || undefined,
           },
         });
         if (fnError) throw new Error(fnError.message || 'Failed to fetch Twitter trends');

@@ -223,9 +223,11 @@ export const CreatorDashboard = () => {
   const [trendMode, setTrendMode] = useState<TrendMode>("global");
 
   const creatorName = profile?.full_name || profile?.brand_name || "Creator";
-  const niche = profile?.industry || "Content";
-  const geography = (profile as any)?.location as string | undefined;
-  const region = geoToRegion(geography);
+  // Prefer AI-parsed persona fields; fall back to raw profile fields
+  const persona = profile?.creator_persona;
+  const niche = persona?.niche || profile?.industry || "Content";
+  const region = persona?.region_code || geoToRegion((profile as any)?.location);
+  const geography = persona?.location_normalized || (profile as any)?.location;
   const regionLabel = region ? REGION_LABELS[region] ?? geography : geography;
 
   // Follower / audience size — stored in audience_size or similar field
