@@ -741,6 +741,147 @@ Be brutally specific about ${project.brand_name}. Reference real things. Make it
   return { analysis: parsed, evidence_url_pool_size: evidenceUrls.size };
 }
 
+// ── Post-synthesis description ↔ source validator ─────────────────────────────
+// Fix #6 made every claim cite a source from the evidence pool. But the LLM can
+// still cite a real URL while subtly mischaracterizing what it says — e.g.
+// claiming "market leader" while the source just lists the brand as one vendor
+// among many. This pass takes each brand/competitor narrative {description,
+// cited excerpts} and asks gpt-4o-mini whether the description is fairly
+// supported. Verdict is attached to each narrative as `verification:
+// 'supported' | 'unsupported' | 'unchecked'` so the UI can surface a badge.
+
+type VerificationVerdict = "supported" | "unsupported" | "unchecked";
+
+interface NarrativeValidationOutput {
+  brandResults: VerificationVerdict[];
+  competitorResults: Record<string, VerificationVerdict[]>;
+  unsupportedCount: number;
+}
+
+async function validateNarrativeClaims(
+  brandNarratives: any[],
+  competitorNarratives: Record<string, any[]>,
+  urlToExcerpt: Map<string, string>,
+  project: { brand_name: string }
+): Promise<NarrativeValidationOutput> {
+  // Default everything to 'unchecked' — flip to supported/unsupported only when
+  // we actually run an LLM judgment.
+  const brandResults: VerificationVerdict[] = brandNarratives.map(() => "unchecked");
+  const competitorResults: Record<string, VerificationVerdict[]> = {};
+  for (const [domain, list] of Object.entries(competitorNarratives ?? {})) {
+    if (Array.isArray(list)) competitorResults[domain] = list.map(() => "unchecked");
+  }
+
+  type Item = {
+    section: "brand" | string;
+    index: number;
+    description: string;
+    excerpts: string[];
+  };
+  const items: Item[] = [];
+
+  const enqueue = (section: "brand" | string, list: any[]) => {
+    for (let i = 0; i < list.length; i++) {
+      const n = list[i];
+      const desc = typeof n?.description === "string" ? n.description.trim() : "";
+      const sources = Array.isArray(n?.sources) ? n.sources : [];
+      const excerpts: string[] = [];
+      for (const url of sources) {
+        if (typeof url !== "string") continue;
+        const ex = urlToExcerpt.get(url);
+        // 1200 chars per source keeps the prompt manageable when a narrative
+        // cites 3 sources; the extracted-facts summaries are already condensed.
+        if (ex) excerpts.push(`[${url}]\n${ex.slice(0, 1200)}`);
+      }
+      if (desc && excerpts.length > 0) {
+        items.push({ section, index: i, description: desc, excerpts });
+      }
+    }
+  };
+
+  enqueue("brand", brandNarratives);
+  for (const [domain, list] of Object.entries(competitorNarratives ?? {})) {
+    if (Array.isArray(list)) enqueue(domain, list);
+  }
+
+  if (items.length === 0) {
+    return { brandResults, competitorResults, unsupportedCount: 0 };
+  }
+
+  const itemsBlock = items.map((it, i) =>
+    `--- ITEM ${i} (${it.section === "brand" ? "brand" : `competitor ${it.section}`}) ---
+Description: ${it.description}
+Cited source excerpts:
+${it.excerpts.join("\n--- next source ---\n")}`,
+  ).join("\n\n");
+
+  const prompt = `You are validating whether each claim's description is fairly supported by its cited source excerpts.
+
+Brand under analysis: ${project.brand_name}
+
+For each ITEM below, judge:
+- "supported" — the description is a fair, faithful summary of what the cited source(s) say. It doesn't have to be a verbatim match; loose support is fine.
+- "unsupported" — the description makes a specific claim that the cited source(s) do NOT back. Examples:
+  • Description claims "market leader" but the source just lists the brand among many vendors
+  • Description claims a specific metric/award the source doesn't mention
+  • Description states a positioning the source contradicts or doesn't support
+
+Be CONSERVATIVE on unsupported. Only flag when the source clearly fails to back the description. If the source loosely supports it, mark "supported". Doubt → supported.
+
+${itemsBlock}
+
+Return ONLY valid JSON (no prose, no fences):
+{
+  "results": [
+    {"item": 0, "verdict": "supported" | "unsupported", "reason": "<one short sentence>"},
+    {"item": 1, "verdict": "supported" | "unsupported", "reason": "..."}
+  ]
+}
+
+Include a result entry for every item ${items.length === 1 ? "(item 0)" : `(items 0 through ${items.length - 1})`}.`;
+
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.1,
+        max_tokens: 1500,
+      }),
+    });
+    if (!res.ok) {
+      console.warn(`[pr-scan] narrative validation HTTP ${res.status}`);
+      return { brandResults, competitorResults, unsupportedCount: 0 };
+    }
+    const data = await res.json();
+    const parsed = JSON.parse(data.choices?.[0]?.message?.content ?? "{}");
+    const results = Array.isArray(parsed.results) ? parsed.results : [];
+
+    let unsupportedCount = 0;
+    for (const r of results) {
+      if (!r || typeof r !== "object") continue;
+      const itemIdx = typeof r.item === "number" ? r.item : -1;
+      if (itemIdx < 0 || itemIdx >= items.length) continue;
+      const verdict = r.verdict === "supported" || r.verdict === "unsupported" ? r.verdict : null;
+      if (!verdict) continue;
+      const item = items[itemIdx];
+      if (item.section === "brand") {
+        brandResults[item.index] = verdict;
+      } else if (competitorResults[item.section]) {
+        competitorResults[item.section][item.index] = verdict;
+      }
+      if (verdict === "unsupported") unsupportedCount++;
+    }
+    return { brandResults, competitorResults, unsupportedCount };
+  } catch (e) {
+    console.warn(`[pr-scan] narrative validation exception: ${(e as any)?.message}`);
+    return { brandResults, competitorResults, unsupportedCount: 0 };
+  }
+}
+
 // ── Main handler ───────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
@@ -935,6 +1076,60 @@ Deno.serve(async (req: Request) => {
       visibilityResults
     );
 
+    // ── Step 4a: Validate each narrative description vs. its cited source ────
+    // Synthesis is told to cite only from the evidence pool, and Fix #6 strips
+    // off-pool citations. But a real URL can still be cited under a description
+    // that mischaracterizes its content. This pass attaches a `verification`
+    // verdict per narrative so the UI can flag unsupported claims.
+    const urlToExcerpt = new Map<string, string>();
+    for (const f of brandFacts) {
+      const m = f.match(/^\[(https?:\/\/[^\]]+)\]\n([\s\S]*)$/);
+      if (m) urlToExcerpt.set(m[1], m[2]);
+    }
+    for (const list of Object.values(competitorFacts)) {
+      for (const f of list) {
+        const m = f.match(/^\[(https?:\/\/[^\]]+)\]\n([\s\S]*)$/);
+        if (m) urlToExcerpt.set(m[1], m[2]);
+      }
+    }
+    for (const m of externalMentions ?? []) {
+      if (typeof m?.url !== "string" || !m.url.startsWith("http")) continue;
+      const ai = typeof m.ai_summary === "string" ? m.ai_summary : "";
+      const quotes = Array.isArray(m.key_quotes)
+        ? m.key_quotes.map((q: any) => (q && typeof q.quote === "string" ? `"${q.quote}"` : "")).filter(Boolean).join(" ")
+        : "";
+      const combined = `${ai} ${quotes}`.trim();
+      if (combined) urlToExcerpt.set(m.url, combined);
+    }
+
+    const validation = await validateNarrativeClaims(
+      Array.isArray(analysis.brand_narratives) ? analysis.brand_narratives : [],
+      analysis.competitor_narratives && typeof analysis.competitor_narratives === "object"
+        ? analysis.competitor_narratives
+        : {},
+      urlToExcerpt,
+      { brand_name: project.brand_name },
+    );
+    console.log(`[pr-scan] narrative validation — unsupported:${validation.unsupportedCount}`);
+
+    // Attach verdicts to each narrative (sticky on the persisted record)
+    if (Array.isArray(analysis.brand_narratives)) {
+      analysis.brand_narratives = analysis.brand_narratives.map((n: any, i: number) => ({
+        ...n,
+        verification: validation.brandResults[i] ?? "unchecked",
+      }));
+    }
+    if (analysis.competitor_narratives && typeof analysis.competitor_narratives === "object") {
+      for (const [domain, list] of Object.entries(analysis.competitor_narratives)) {
+        if (!Array.isArray(list)) continue;
+        const verdicts = validation.competitorResults[domain] ?? [];
+        analysis.competitor_narratives[domain] = (list as any[]).map((n, i) => ({
+          ...n,
+          verification: verdicts[i] ?? "unchecked",
+        }));
+      }
+    }
+
     // ── Step 4b: Compute evidence_signals for low-confidence detection ───────
     // The synthesis is only as good as the evidence behind it. We capture the
     // input shape at scan-time so the UI can warn users when a report was
@@ -955,6 +1150,12 @@ Deno.serve(async (req: Request) => {
     else if (!hasBrandContext) warnings.push("Brand tier is unknown — synthesis defaulted to growth-stage playbook");
     // Surface contradictions found in Step 3.8 (high/medium severity only)
     warnings.push(...contradictionCheck.warnings);
+    // Surface unsupported narrative claims found in Step 4a
+    if (validation.unsupportedCount > 0) {
+      warnings.push(
+        `${validation.unsupportedCount} narrative claim${validation.unsupportedCount === 1 ? "" : "s"} flagged as unsupported by their cited source(s)`,
+      );
+    }
 
     const lowConfidence =
       brandPages.length < 3 ||
@@ -972,6 +1173,7 @@ Deno.serve(async (req: Request) => {
       brand_context_tier: brandContext?.tier ?? null,
       brand_context_effective_tier: effectiveBrandContext?.tier ?? null,
       brand_context_contradictions: contradictionCheck.contradictions,
+      unsupported_narrative_count: validation.unsupportedCount,
       warnings,
       low_confidence: lowConfidence,
     };

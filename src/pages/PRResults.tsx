@@ -59,6 +59,7 @@ interface BrandNarrative {
   description: string;
   status: "strong" | "emerging" | "weak" | "missing";
   sources?: string[];
+  verification?: "supported" | "unsupported" | "unchecked";
 }
 
 interface CompetitorNarrative {
@@ -66,6 +67,7 @@ interface CompetitorNarrative {
   strength: number;
   description: string;
   sources?: string[];
+  verification?: "supported" | "unsupported" | "unchecked";
 }
 
 interface ProofGap {
@@ -104,6 +106,7 @@ interface EvidenceSignals {
   brand_context_tier?: string | null;
   brand_context_effective_tier?: string | null;
   brand_context_contradictions?: BrandContextContradiction[];
+  unsupported_narrative_count?: number;
   warnings?: string[];
   low_confidence?: boolean;
 }
@@ -1740,11 +1743,20 @@ const PRResults = () => {
                 result.brand_narratives.map((n, i) => (
                   <div key={i} className="space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium text-foreground">{n.theme}</span>
                         <Badge variant="outline" className={`text-xs ${narrativeStatusBadge(n.status)}`}>
                           {n.status}
                         </Badge>
+                        {n.verification === "unsupported" && (
+                          <Badge
+                            variant="outline"
+                            className="text-xs border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                            title="Cited source does not clearly back this description"
+                          >
+                            ⚠ Unverified
+                          </Badge>
+                        )}
                       </div>
                       <span className="text-xs font-bold text-foreground">{formatScore(n.strength)}</span>
                     </div>
@@ -1780,7 +1792,18 @@ const PRResults = () => {
                       {compNarratives.map((n, i) => (
                         <div key={i} className="space-y-1.5">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-medium text-foreground">{n.theme}</span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium text-foreground">{n.theme}</span>
+                              {n.verification === "unsupported" && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                  title="Cited source does not clearly back this description"
+                                >
+                                  ⚠ Unverified
+                                </Badge>
+                              )}
+                            </div>
                             <span className="text-xs font-bold text-muted-foreground">{formatScore(n.strength)}</span>
                           </div>
                           <StrengthBar value={roundScore(n.strength) ?? 0} color="bg-secondary-foreground/30" />
