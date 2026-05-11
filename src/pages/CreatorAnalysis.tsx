@@ -531,7 +531,7 @@ const CreatorAnalysis = () => {
       <div className="space-y-3">
         <div>
           <h2 className="text-sm font-semibold text-foreground">Analytics Insights</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Deeper intelligence for your content and earnings — coming soon.</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Deeper intelligence for your content and earnings | COMING SOON.</p>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {INSIGHT_CARDS.map((card) => (
