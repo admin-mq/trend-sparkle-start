@@ -15,6 +15,16 @@ type CreatorProfileData = {
   location: string | null;
   business_summary: string | null;
   is_faceless: boolean;
+  // AI-parsed persona — populated after first profile save
+  creator_persona?: {
+    niche: string;
+    region_code: string;
+    location_normalized: string;
+    sub_niches: string[];
+    content_style: string;
+    audience_type: string;
+    summary: string;
+  } | null;
 };
 
 interface CreatorSelectorProps {
@@ -42,7 +52,7 @@ export const CreatorSelector = ({
       try {
         const { data, error } = await supabase
           .from("user_profiles")
-          .select("full_name,industry,industry_other,location,business_summary")
+          .select("full_name,industry,industry_other,location,business_summary,creator_persona")
           .eq("user_id", user.id)
           .maybeSingle();
         if (error) {

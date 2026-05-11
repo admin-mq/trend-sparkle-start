@@ -130,11 +130,16 @@ function CreatorProfile() {
       { onConflict: "user_id" }
     );
     setSaving(false);
-    if (error) toast.error("Failed to save profile");
-    else {
-      toast.success("Profile saved");
-      navigate("/dashboard");
+    if (error) {
+      toast.error("Failed to save profile");
+      return;
     }
+    toast.success("Profile saved");
+    // Fire-and-forget: let AI parse the profile in the background
+    supabase.functions.invoke("parse-creator-persona", {
+      body: { user_id: user.id, industry: niche, location, bio, full_name: fullName },
+    }).catch(() => { /* non-critical — persona will be parsed on next save */ });
+    navigate("/dashboard");
   };
 
   const handleConnectInstagram = async () => {

@@ -1,5 +1,18 @@
 export type AccountType = 'brand' | 'creator';
 
+export interface CreatorPersona {
+  niche: string;
+  sub_niches: string[];
+  region_code: string;
+  location_normalized: string;
+  content_style: string;
+  audience_type: string;
+  platform_focus: string[];
+  is_faceless: boolean;
+  summary: string;
+  parsed_at: string;
+}
+
 export interface UserProfile {
   user_id: string;
   account_type: AccountType;
@@ -9,6 +22,7 @@ export interface UserProfile {
   location: string | null;
   created_at: string;
   updated_at: string | null;
+  creator_persona?: CreatorPersona | null;
   // Legacy fields from existing table
   industry?: string | null;
   industry_other?: string | null;
