@@ -109,6 +109,7 @@ const TrendQuest = () => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [trendsLoading, setTrendsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [mobileConfigOpen, setMobileConfigOpen] = useState(!session?.recommendations?.length);
 
   // ── Saved Trends (My Trends) — 48h-TTL bookmarks ────────────────────────
   // Scope to active brand for brand accounts, null for creator profiles.
@@ -438,6 +439,7 @@ const TrendQuest = () => {
     setRecommendations(newRecommendations);
     setCategoryFallback(!!opts?.categoryFallback);
     setActiveStep("trends");
+    setMobileConfigOpen(false);
     // Clear downstream state
     setCreativeDirections([]);
     setDetailedDirection(null);
@@ -467,6 +469,7 @@ const TrendQuest = () => {
 
         setTwitterData(data);
         setActiveStep("trends");
+        setMobileConfigOpen(false);
         setGeneratedTweets([]);
         setSelectedTwitterTrend(null);
         // Clear normal-flow state
@@ -888,11 +891,14 @@ const TrendQuest = () => {
     }
   };
 
+  const hasTrends = recommendations.length > 0 || twitterData !== null;
+
   return (
-    <div className="h-full p-4 lg:p-6">
-      <div className="h-full flex flex-col lg:flex-row gap-4 max-w-7xl mx-auto">
-        {/* Left: Profile Selector Panel */}
-        <aside className="w-full lg:w-[360px] xl:w-[380px] flex-shrink-0">
+    <div className="min-h-full p-3 sm:p-4 lg:p-6">
+      <div className="min-h-full flex flex-col lg:flex-row lg:h-[calc(100vh-3.5rem-3rem)] gap-3 sm:gap-4 max-w-7xl mx-auto">
+
+        {/* Left: Profile Selector Panel — collapsible on mobile */}
+        <aside className={`w-full lg:w-[360px] xl:w-[380px] flex-shrink-0 ${mobileConfigOpen ? "block" : "hidden"} lg:block`}>
           {isCreator ? (
             <CreatorSelector
               onGetTrends={handleGetTrends}
@@ -915,14 +921,24 @@ const TrendQuest = () => {
           )}
         </aside>
 
-        {/* Right: Workspace */}
-        <section className="flex-1 min-w-0 flex flex-col">
+        {/* Right: Workspace (always visible; on mobile hides when config is open) */}
+        <section className={`flex-1 min-w-0 flex flex-col ${mobileConfigOpen && !hasTrends ? "hidden lg:flex" : "flex"}`}>
           <div className="bg-card rounded-xl border border-border shadow-card flex-1 flex flex-col overflow-hidden">
+            {/* Mobile toggle bar */}
+            <div className="lg:hidden flex items-center gap-2 px-3 pt-3 pb-0">
+              <button
+                onClick={() => setMobileConfigOpen(v => !v)}
+                className="flex items-center gap-1.5 text-xs font-medium text-primary border border-primary/30 bg-primary/8 hover:bg-primary/15 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                {mobileConfigOpen ? "← Back to Results" : "⚙ Configure"}
+              </button>
+            </div>
+
             {/* Stepper */}
             <div className="p-3 border-b border-border">
               <WorkspaceStepper
                 activeStep={activeStep}
-                hasTrends={recommendations.length > 0 || twitterData !== null}
+                hasTrends={hasTrends}
                 hasDirections={creativeDirections.length > 0 || generatedTweets.length > 0}
                 hasBlueprint={detailedDirection !== null}
                 hasSavedTrends={savedTrendsCount > 0}
@@ -931,7 +947,7 @@ const TrendQuest = () => {
             </div>
 
             {/* Content area */}
-            <div className="flex-1 p-4 relative overflow-hidden">
+            <div className="flex-1 p-3 sm:p-4 relative overflow-hidden">
               {isLoading && <WorkspaceLoading step={activeStep} />}
               <div className="h-full w-full">
                 {renderWorkspaceContent()}

@@ -33,6 +33,16 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { MQLogo } from "@/components/MQLogo";
 
+// ── Mobile bottom nav items ───────────────────────────────────────────────────
+
+const mobileNavItems = [
+  { path: "/dashboard",        label: "Home",       icon: LayoutDashboard },
+  { path: "/trend-quest",      label: "Trends",     icon: TrendingUp },
+  { path: "/tweet-drafts",     label: "Drafts",     icon: Sparkles },
+  { path: "/hashtag-analysis", label: "Hashtags",   icon: Hash },
+  { path: "/amcue",            label: "AI CMO",     icon: Brain },
+];
+
 // ── Nav structure ─────────────────────────────────────────────────────────────
 
 const brandNavGroups = [
@@ -274,12 +284,37 @@ export const DashboardLayout = () => {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto pb-16 lg:pb-0">
           <Outlet />
         </main>
       </div>
 
-      
+      {/* ── Mobile bottom nav ────────────────────────────────────────── */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-card/95 backdrop-blur-sm border-t border-border safe-area-bottom">
+        <div className="flex items-center justify-around px-1 py-1.5">
+          {mobileNavItems.map((item) => {
+            const active = location.pathname === item.path || location.pathname.startsWith(item.path + "/");
+            return (
+              <button
+                key={item.path}
+                onClick={() => navigate(item.path)}
+                className={cn(
+                  "flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all min-w-0 flex-1",
+                  active
+                    ? "text-primary bg-primary/10"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <item.icon className={cn("w-5 h-5", active && "text-primary")} />
+                <span className={cn("text-[10px] font-medium", active ? "text-primary" : "text-muted-foreground")}>
+                  {item.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
       <AmcueChat />
 
     </div>

@@ -329,6 +329,11 @@
   66%       { transform: translate(-4%, -7%) scale(0.96); }
 }
 
+/* iOS safe-area support for mobile bottom nav */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* Letterbox slide */
 @keyframes lb-top {
   from { transform: translateY(0); }

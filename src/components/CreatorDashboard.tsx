@@ -399,23 +399,23 @@ export const CreatorDashboard = () => {
         </div>
 
         {/* ── 2. Stat strip ──────────────────────────────────────────────── */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
           {loading
-            ? [1, 2, 3].map(i => <Skeleton key={i} className="h-28" />)
+            ? [1, 2, 3].map(i => <Skeleton key={i} className="h-24 sm:h-28" />)
             : statCards.map(card => (
               <button
                 key={card.label}
                 onClick={() => navigate(card.path)}
-                className="rounded-xl border border-border bg-card p-4 text-left hover:border-primary/30 hover:bg-primary/3 transition-all group space-y-2"
+                className="rounded-xl border border-border bg-card p-2.5 sm:p-4 text-left hover:border-primary/30 hover:bg-primary/3 transition-all group space-y-1.5 sm:space-y-2"
               >
-                <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", card.bg)}>
-                  <card.icon className={cn("w-4 h-4", card.accent)} />
+                <div className={cn("w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center", card.bg)}>
+                  <card.icon className={cn("w-3.5 h-3.5 sm:w-4 sm:h-4", card.accent)} />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground tabular-nums leading-none">
+                  <p className="text-xl sm:text-2xl font-bold text-foreground tabular-nums leading-none">
                     {card.value}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1 leading-snug">{card.label}</p>
+                  <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 leading-snug">{card.label}</p>
                 </div>
               </button>
             ))
@@ -501,7 +501,7 @@ export const CreatorDashboard = () => {
                     </div>
                     {timingCfg && (
                       <span className={cn(
-                        "inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border flex-shrink-0",
+                        "hidden sm:inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border flex-shrink-0",
                         timingCfg.cls
                       )}>
                         <timingCfg.icon className="w-2.5 h-2.5" />
@@ -509,7 +509,7 @@ export const CreatorDashboard = () => {
                       </span>
                     )}
                     {bar > 0 && (
-                      <div className="w-16 flex-shrink-0">
+                      <div className="hidden sm:block w-16 flex-shrink-0">
                         <div className="h-1 bg-secondary rounded-full overflow-hidden">
                           <div className={cn("h-full rounded-full", barColor)} style={{ width: `${bar}%` }} />
                         </div>
@@ -527,46 +527,46 @@ export const CreatorDashboard = () => {
         {/* ── 4. Content pipeline ────────────────────────────────────────── */}
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-foreground">Content Pipeline</h2>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
 
             {/* Saved trends */}
             <button
               onClick={() => navigate("/trend-quest")}
-              className="rounded-xl border border-border bg-card p-4 text-left hover:border-primary/30 transition-all group"
+              className="rounded-xl border border-border bg-card p-2.5 sm:p-4 text-left hover:border-primary/30 transition-all group"
             >
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-2 sm:mb-3">
                 <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
                   <Bookmark className="w-3.5 h-3.5 text-primary" />
                 </div>
                 <ArrowRight className="w-3 h-3 text-transparent group-hover:text-primary transition-colors" />
               </div>
-              <p className="text-2xl font-bold text-foreground tabular-nums leading-none">
+              <p className="text-xl sm:text-2xl font-bold text-foreground tabular-nums leading-none">
                 {loading ? "—" : stats.pipelineSaved}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">Saved trends</p>
-              <p className="text-[10px] text-muted-foreground/60 mt-0.5">active · expires in 48h</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">Saved trends</p>
+              <p className="hidden sm:block text-[10px] text-muted-foreground/60 mt-0.5">active · expires in 48h</p>
             </button>
 
             {/* Drafts */}
             <button
               onClick={() => navigate("/tweet-drafts")}
-              className="rounded-xl border border-border bg-card p-4 text-left hover:border-violet-500/30 transition-all group"
+              className="rounded-xl border border-border bg-card p-2.5 sm:p-4 text-left hover:border-violet-500/30 transition-all group"
             >
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-2 sm:mb-3">
                 <div className="w-7 h-7 rounded-lg bg-violet-500/10 flex items-center justify-center">
                   <FileText className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400" />
                 </div>
                 <ArrowRight className="w-3 h-3 text-transparent group-hover:text-violet-500 transition-colors" />
               </div>
-              <p className="text-2xl font-bold text-foreground tabular-nums leading-none">
+              <p className="text-xl sm:text-2xl font-bold text-foreground tabular-nums leading-none">
                 {loading ? "—" : stats.pipelineDrafted}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">Drafts created</p>
-              <p className="text-[10px] text-muted-foreground/60 mt-0.5">this month</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">Drafts created</p>
+              <p className="hidden sm:block text-[10px] text-muted-foreground/60 mt-0.5">this month</p>
             </button>
 
             {/* Published — Coming Soon */}
-            <div className="relative rounded-xl border border-border bg-card p-4 overflow-hidden">
+            <div className="relative rounded-xl border border-border bg-card p-2.5 sm:p-4 overflow-hidden">
               <div className="absolute inset-0 bg-background/50 backdrop-blur-[1px] flex items-center justify-center z-10">
                 <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-muted text-muted-foreground border border-border">
                   Coming Soon

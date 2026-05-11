@@ -158,28 +158,30 @@ export const ExecutionBlueprint = ({
 
       {/* Detailed upgrade banner — distinct from the small Refresh in the header */}
       {onGenerateDetailed && needsDetailedUpgrade && !regenerating && (
-        <div className="mb-4 rounded-lg border border-primary/40 bg-gradient-to-r from-primary/10 to-primary/5 p-3.5 flex items-start gap-3">
-          <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0">
-            {isVideo
-              ? <Mic2 className="w-4 h-4 text-primary" />
-              : <Camera className="w-4 h-4 text-primary" />}
-          </div>
-          <div className="flex-1 text-sm min-w-0">
-            <p className="text-foreground font-semibold">
+        <div className="mb-4 rounded-lg border border-primary/40 bg-gradient-to-r from-primary/10 to-primary/5 p-3.5 flex flex-col sm:flex-row items-start gap-3">
+          <div className="flex items-start gap-3 flex-1 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0 mt-0.5">
               {isVideo
-                ? "Generate director-grade shooting script & long caption"
-                : "Generate art-director-grade visual brief & long caption"}
-            </p>
-            <p className="text-muted-foreground text-xs mt-1 leading-relaxed">
-              {isVideo
-                ? <>A <span className="text-foreground font-medium">1200–1600 word shooting script</span> at the level of a top-tier creative director — numbered scenes with frame, camera, lighting, wardrobe, performance, text overlays, sound design, b-roll, transitions and concrete film/creator references — plus a <span className="text-foreground font-medium">~1500-character keyword-rich caption</span>. Uses GPT-4o, takes 60–90 s.</>
-                : <>A <span className="text-foreground font-medium">1200–1600 word visual brief</span> at the level of a Pentagram art director — numbered frames with subject, composition, lighting, hex-coded colour palette, typography hierarchy, layout grid and concrete designer/photographer references — plus a <span className="text-foreground font-medium">~1500-character keyword-rich caption</span>. Uses GPT-4o, takes 60–90 s.</>}
-            </p>
+                ? <Mic2 className="w-4 h-4 text-primary" />
+                : <Camera className="w-4 h-4 text-primary" />}
+            </div>
+            <div className="flex-1 text-sm min-w-0">
+              <p className="text-foreground font-semibold">
+                {isVideo
+                  ? "Generate director-grade shooting script & long caption"
+                  : "Generate art-director-grade visual brief & long caption"}
+              </p>
+              <p className="text-muted-foreground text-xs mt-1 leading-relaxed">
+                {isVideo
+                  ? <>A <span className="text-foreground font-medium">1200–1600 word shooting script</span> at the level of a top-tier creative director — numbered scenes with frame, camera, lighting, wardrobe, performance, text overlays, sound design, b-roll, transitions and concrete film/creator references — plus a <span className="text-foreground font-medium">~1500-character keyword-rich caption</span>. Uses GPT-4o, takes 60–90 s.</>
+                  : <>A <span className="text-foreground font-medium">1200–1600 word visual brief</span> at the level of a Pentagram art director — numbered frames with subject, composition, lighting, hex-coded colour palette, typography hierarchy, layout grid and concrete designer/photographer references — plus a <span className="text-foreground font-medium">~1500-character keyword-rich caption</span>. Uses GPT-4o, takes 60–90 s.</>}
+              </p>
+            </div>
           </div>
           <Button
             size="sm"
             onClick={onGenerateDetailed}
-            className="gap-1.5 text-xs h-8 flex-shrink-0"
+            className="gap-1.5 text-xs h-9 w-full sm:w-auto flex-shrink-0"
           >
             {isVideo
               ? <Mic2 className="w-3.5 h-3.5" />
