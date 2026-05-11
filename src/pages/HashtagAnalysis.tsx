@@ -809,23 +809,46 @@ const HashtagSetPanel = ({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
+const SESSION_KEY = "mq_hashtag_analysis_v1";
+
+interface PersistedSession {
+  result: AnalysisResult;
+  caption: string;
+  platform: string;
+  region: string;
+  goal: string;
+  chosenSet: "safe" | "experimental" | null;
+}
+
 const HashtagAnalysis = () => {
   const { user }   = useAuth();
   const location   = useLocation();
   const navigate   = useNavigate();
 
-  const [view,        setView]        = useState<"input" | "loading" | "results">("input");
-  const [loadingStep, setLoadingStep] = useState(0);
-  const [platform,    setPlatform]    = useState("instagram");
-  const [region,      setRegion]      = useState("global");
-  const [goal,        setGoal]        = useState("reach");
-  const [caption,     setCaption]     = useState("");
+  const tqState        = location.state as Record<string, unknown> | null;
+  const fromTrendQuest = tqState?.fromTrendQuest === true;
 
-  const [result,      setResult]      = useState<AnalysisResult | null>(null);
+  // Restore persisted session (only when NOT arriving from TrendQuest with fresh data)
+  const saved: PersistedSession | null = (() => {
+    if (fromTrendQuest) return null;
+    try {
+      const raw = sessionStorage.getItem(SESSION_KEY);
+      return raw ? (JSON.parse(raw) as PersistedSession) : null;
+    } catch { return null; }
+  })();
+
+  const [view,        setView]        = useState<"input" | "loading" | "results">(saved ? "results" : "input");
+  const [loadingStep, setLoadingStep] = useState(0);
+  const [platform,    setPlatform]    = useState(saved?.platform ?? "instagram");
+  const [region,      setRegion]      = useState(saved?.region ?? "global");
+  const [goal,        setGoal]        = useState(saved?.goal ?? "reach");
+  const [caption,     setCaption]     = useState(saved?.caption ?? "");
+
+  const [result,      setResult]      = useState<AnalysisResult | null>(saved?.result ?? null);
   const [expandedTag, setExpandedTag] = useState<string | null>(null);
 
   // Which set the user chose — "safe" | "experimental" | null
-  const [chosenSet,   setChosenSet]   = useState<"safe" | "experimental" | null>(null);
+  const [chosenSet,   setChosenSet]   = useState<"safe" | "experimental" | null>(saved?.chosenSet ?? null);
   const [copiedSafe,  setCopiedSafe]  = useState(false);
   const [copiedExp,   setCopiedExp]   = useState(false);
 
@@ -843,9 +866,6 @@ const HashtagAnalysis = () => {
   const [igConnection, setIgConnection] = useState<{ username: string; last_synced_at: string | null } | null>(null);
   const [igConnecting, setIgConnecting] = useState(false);
   const [igSyncing,    setIgSyncing]    = useState(false);
-
-  const tqState        = location.state as Record<string, unknown> | null;
-  const fromTrendQuest = tqState?.fromTrendQuest === true;
 
   useEffect(() => {
     if (!fromTrendQuest || !tqState) return;
@@ -1005,8 +1025,19 @@ const HashtagAnalysis = () => {
       if (error) throw error;
       setLoadingStep(5);
       setTimeout(() => {
-        setResult(data as AnalysisResult);
+        const analysisResult = data as AnalysisResult;
+        setResult(analysisResult);
         setView("results");
+        try {
+          sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+            result: analysisResult,
+            caption: caption.trim(),
+            platform,
+            region,
+            goal,
+            chosenSet: null,
+          } satisfies PersistedSession));
+        } catch { /* ignore quota errors */ }
       }, 350);
     } catch (err) {
       handles.forEach(clearTimeout);
@@ -1020,6 +1051,13 @@ const HashtagAnalysis = () => {
     setChosenSet(setType);
     setFeedbackState("idle");
     toast.success(`${setType === "safe" ? "Safe Reach" : "Experimental Reach"} set selected — good luck with the post!`);
+    try {
+      const raw = sessionStorage.getItem(SESSION_KEY);
+      if (raw) {
+        const s = JSON.parse(raw) as PersistedSession;
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify({ ...s, chosenSet: setType }));
+      }
+    } catch { /* ignore */ }
   };
 
   const handleCopySet = (setType: "safe" | "experimental") => {
@@ -1037,6 +1075,7 @@ const HashtagAnalysis = () => {
   };
 
   const handleReset = () => {
+    sessionStorage.removeItem(SESSION_KEY);
     setView("input"); setResult(null); setExpandedTag(null); setChosenSet(null);
     setFeedbackState("idle");
     setPerfViews(""); setPerfSaves(""); setPerfShares(""); setPerfFollows("");
@@ -1511,16 +1550,9 @@ const HashtagAnalysis = () => {
                     Auto-pull real post performance instead of logging manually.
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleConnectInstagram}
-                  disabled={igConnecting}
-                  className="flex-shrink-0 gap-1.5 text-xs border-pink-500/30 text-pink-400 hover:bg-pink-500/10"
-                >
-                  <Link2 className="w-3 h-3" />
-                  {igConnecting ? "Redirecting..." : "Connect"}
-                </Button>
+                <span className="flex-shrink-0 px-3 py-1.5 text-xs rounded-md border border-border text-muted-foreground bg-secondary cursor-not-allowed select-none">
+                  Coming Soon
+                </span>
               </div>
             )}
           </div>
