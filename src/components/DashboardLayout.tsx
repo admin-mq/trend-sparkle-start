@@ -40,7 +40,7 @@ const mobileNavItems = [
   { path: "/trend-quest",      label: "Trends",     icon: TrendingUp },
   { path: "/tweet-drafts",     label: "Drafts",     icon: Sparkles },
   { path: "/hashtag-analysis", label: "Hashtags",   icon: Hash },
-  { path: "/amcue",            label: "AI CMO",     icon: Brain },
+  { path: "/profile",          label: "Profile",    icon: User },
 ];
 
 // ── Nav structure ─────────────────────────────────────────────────────────────
