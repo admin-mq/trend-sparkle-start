@@ -146,21 +146,34 @@ async function fetchHotTrends(
       .order("virality_score", { ascending: false })
       .limit(3);
 
-  if (regionCode && niche) {
+  const nicheFilter = (q: ReturnType<typeof baseQuery>) => {
+    if (!niche) return q;
     const keywords = extractNicheKeywords(niche);
-    const orFilter =
-      keywords.length > 0
-        ? keywords.map(k => `category.ilike.%${k}%`).join(",")
-        : `category.ilike.%${niche}%`;
-    const { data } = await baseQuery().eq("region", regionCode).or(orFilter);
+    const orFilter = keywords.length > 0
+      ? keywords.map(k => `category.ilike.%${k}%`).join(",")
+      : `category.ilike.%${niche}%`;
+    return q.or(orFilter);
+  };
+
+  // 1. Niche + region (best match)
+  if (regionCode && niche) {
+    const { data } = await nicheFilter(baseQuery().eq("region", regionCode));
     if (data && data.length > 0) return { data: data as HotTrend[], mode: "niche" };
   }
 
+  // 2. Niche only — any region (creator's niche > creator's region)
+  if (niche) {
+    const { data } = await nicheFilter(baseQuery());
+    if (data && data.length > 0) return { data: data as HotTrend[], mode: "niche" };
+  }
+
+  // 3. Region only (no niche data available)
   if (regionCode) {
     const { data } = await baseQuery().eq("region", regionCode);
     if (data && data.length > 0) return { data: data as HotTrend[], mode: "regional" };
   }
 
+  // 4. Global fallback (profile not filled)
   const { data } = await baseQuery();
   return { data: (data as HotTrend[]) ?? [], mode: "global" };
 }
@@ -196,7 +209,8 @@ export const CreatorDashboard = () => {
     const monthBegin = monthStart().toISOString();
     const now = new Date().toISOString();
 
-    const industryFilter = profile?.industry || null;
+    // Use the actual profile niche — null means "no profile filled" → global fallback
+    const industryFilter = profile?.industry ?? null;
 
     const [savedWeekRes, draftsMonthRes, totalSavedRes, pipelineSavedRes, hotTrendsResult] =
       await Promise.all([
