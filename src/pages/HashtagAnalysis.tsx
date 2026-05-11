@@ -1113,8 +1113,9 @@ const HashtagAnalysis = () => {
       <div className="h-full flex items-start justify-center p-4 lg:p-6 pt-8 lg:pt-14 overflow-y-auto">
         <div className="w-full max-w-xl space-y-6">
 
-          <div className="flex items-start justify-between">
-            <div className="text-center flex-1 space-y-2">
+          <div className="relative">
+            {/* True-center title block */}
+            <div className="text-center space-y-2">
               <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center mx-auto mb-3">
                 <Hash className="w-5 h-5 text-primary" />
               </div>
@@ -1123,20 +1124,21 @@ const HashtagAnalysis = () => {
                 Returns two optimised sets — a Safe strategy and an Experimental one. Pick your bet.
               </p>
             </div>
-            <div className="flex items-center gap-3 mt-1">
+            {/* Nav buttons absolutely to top-right so they don't shift the title */}
+            <div className="absolute top-0 right-0 flex items-center gap-3">
               <button
                 onClick={() => navigate("/hashtag-history")}
                 className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 <History className="w-3.5 h-3.5" />
-                History
+                <span className="hidden sm:inline">History</span>
               </button>
               <button
                 onClick={() => navigate("/creator-intelligence")}
                 className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
               >
                 <Brain className="w-3.5 h-3.5" />
-                Intelligence
+                <span className="hidden sm:inline">Intelligence</span>
               </button>
             </div>
           </div>

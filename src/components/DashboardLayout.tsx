@@ -173,6 +173,19 @@ export const DashboardLayout = () => {
         />
       )}
 
+      {/* Mobile sidebar pill — center-left edge, only when sidebar is closed */}
+      {!sidebarOpen && (
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="lg:hidden fixed left-0 top-1/2 -translate-y-1/2 z-40 bg-card border border-l-0 border-border rounded-r-xl py-4 px-1.5 flex flex-col items-center gap-1.5 shadow-lg hover:bg-secondary transition-colors"
+          aria-label="Open navigation"
+        >
+          <div className="w-0.5 h-4 bg-muted-foreground/40 rounded-full" />
+          <div className="w-0.5 h-4 bg-muted-foreground/40 rounded-full" />
+          <div className="w-0.5 h-4 bg-muted-foreground/40 rounded-full" />
+        </button>
+      )}
+
       {/* ── Sidebar ──────────────────────────────────────────────────────── */}
       <aside className={cn(
         "fixed inset-y-0 left-0 z-50 w-60 bg-card border-r border-border flex flex-col transition-transform duration-200 ease-in-out",

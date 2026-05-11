@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Sparkles, X, Plus, Send, MessageSquare, ChevronLeft, Brain, Pencil, Check, AlertCircle, ArrowRight } from "lucide-react";
+import { Sparkles, X, Plus, Send, MessageSquare, ChevronLeft, Brain, Pencil, Check, AlertCircle, ArrowRight, BarChart2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -137,6 +137,48 @@ export function AmcueChat() {
   const [savingPersona, setSavingPersona] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // ── FAB: cycling icons + drag-to-snap ────────────────────────────────────
+  const FAB_ICONS = [Sparkles, Brain, BarChart2] as const;
+  const [fabIconIdx, setFabIconIdx] = useState(0);
+  const [fabIconVisible, setFabIconVisible] = useState(true);
+  const [fabSide, setFabSide] = useState<"left" | "right">("right");
+  const fabDragStartX = useRef<number | null>(null);
+  const fabDragging = useRef(false);
+
+  useEffect(() => {
+    if (open) return;
+    const id = setInterval(() => {
+      setFabIconVisible(false);
+      setTimeout(() => {
+        setFabIconIdx(i => (i + 1) % FAB_ICONS.length);
+        setFabIconVisible(true);
+      }, 180);
+    }, 2200);
+    return () => clearInterval(id);
+  }, [open]);
+
+  const handleFabTouchStart = (e: React.TouchEvent) => {
+    fabDragStartX.current = e.touches[0].clientX;
+    fabDragging.current = false;
+  };
+
+  const handleFabTouchMove = (e: React.TouchEvent) => {
+    if (fabDragStartX.current !== null && Math.abs(e.touches[0].clientX - fabDragStartX.current) > 8) {
+      fabDragging.current = true;
+    }
+  };
+
+  const handleFabTouchEnd = (e: React.TouchEvent) => {
+    if (fabDragging.current) {
+      const x = e.changedTouches[0].clientX;
+      setFabSide(x < window.innerWidth / 2 ? "left" : "right");
+      fabDragStartX.current = null;
+      fabDragging.current = false;
+    }
+  };
+
+  const FabIcon = FAB_ICONS[fabIconIdx];
 
   // Local persona form — initialised from profile, updated on save
   const [persona, setPersona] = useState<PersonaForm>(() => {
@@ -323,26 +365,43 @@ export function AmcueChat() {
     <>
       {/* Floating Button */}
       <button
-        onClick={() => setOpen(true)}
+        onClick={() => { if (!fabDragging.current) setOpen(true); }}
+        onTouchStart={handleFabTouchStart}
+        onTouchMove={handleFabTouchMove}
+        onTouchEnd={handleFabTouchEnd}
         className={cn(
-          "fixed bottom-6 right-6 z-50 group",
+          "fixed bottom-6 z-50 group",
+          fabSide === "right" ? "right-4 sm:right-6" : "left-4 sm:left-6",
           "w-14 h-14 rounded-full",
           "bg-gradient-to-br from-[hsl(var(--primary))] to-[#7C3AED]",
-          "shadow-lg shadow-purple-500/25",
+          "shadow-xl shadow-purple-500/30",
           "flex items-center justify-center",
-          "hover:scale-110 transition-all duration-200",
+          "hover:scale-110 active:scale-95 transition-all duration-200",
           "focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-2 focus:ring-offset-background",
+          "touch-none select-none",
           open && "hidden"
         )}
         aria-label="Open Amcue AI assistant"
       >
-        <Sparkles className="w-6 h-6 text-white" />
+        {/* Cycling icon with fade transition */}
+        <span
+          key={fabIconIdx}
+          className={cn(
+            "transition-all duration-180",
+            fabIconVisible ? "opacity-100 scale-100" : "opacity-0 scale-75"
+          )}
+        >
+          <FabIcon className="w-6 h-6 text-white" />
+        </span>
         {/* Badge dot — shows when there's an unseen nudge */}
         {nudge && !nudgeSeen && !open && (
           <span className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-background animate-pulse" />
         )}
-        <span className="absolute right-full mr-3 px-3 py-1.5 rounded-lg bg-card border border-border text-xs font-medium text-foreground whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
-          {nudge && !nudgeSeen ? "Amcue noticed something" : "Amcue"}
+        <span className={cn(
+          "absolute px-3 py-1.5 rounded-lg bg-card border border-border text-xs font-medium text-foreground whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg",
+          fabSide === "right" ? "right-full mr-3" : "left-full ml-3"
+        )}>
+          {nudge && !nudgeSeen ? "Amcue noticed something" : "Amcue AI"}
         </span>
       </button>
 
