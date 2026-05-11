@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  LineChart, TrendingUp, Hash, Bookmark, Eye, Loader2,
+  LineChart, TrendingUp, Hash, Loader2,
   Plus, X, ChevronDown, ChevronUp, Instagram, Sparkles, Users,
   AlertCircle, Clock3, Share2, BadgeDollarSign, Globe2,
-  BarChart2, ChefHat, Banknote,
+  BarChart2, ChefHat, Banknote, Bookmark,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,13 +13,6 @@ import { supabase } from "@/lib/supabaseClient";
 import { toast } from "@/hooks/use-toast";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface WatchlistTag {
-  tag: string;
-  trend_status: "rising" | "plateauing" | "declining" | null;
-  trend_score: number | null;
-  trend_note: string | null;
-}
 
 interface ToneAnalysis {
   primary_tone: string;
@@ -49,20 +42,6 @@ interface ReferenceAccount {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function TrendBadge({ status }: { status: WatchlistTag["trend_status"] }) {
-  if (!status) return null;
-  const map: Record<string, string> = {
-    rising: "bg-green-500/15 text-green-600 border-green-500/25",
-    plateauing: "bg-yellow-500/15 text-yellow-600 border-yellow-500/25",
-    declining: "bg-red-500/15 text-red-500 border-red-500/25",
-  };
-  return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium capitalize ${map[status] ?? ""}`}>
-      {status}
-    </span>
-  );
-}
 
 function TonePill({ label }: { label: string }) {
   return (
@@ -323,7 +302,6 @@ const INSIGHT_CARDS = [
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 const CreatorAnalysis = () => {
-  const [watchlist, setWatchlist] = useState<WatchlistTag[]>([]);
   const [hashtagCount, setHashtagCount] = useState(0);
   const [latestScore, setLatestScore] = useState<number | null>(null);
   const [referenceAccounts, setReferenceAccounts] = useState<ReferenceAccount[]>([]);
@@ -334,18 +312,10 @@ const CreatorAnalysis = () => {
     if (!user) { setLoading(false); return; }
 
     const [
-      { data: wl },
       { count: hCount },
       { data: hResult },
       { data: refs },
     ] = await Promise.all([
-      (supabase as any)
-        .from("hashtag_watchlist")
-        .select("tag, trend_status, trend_score, trend_note")
-        .eq("user_id", user.id)
-        .order("trend_score", { ascending: false })
-        .limit(10),
-
       (supabase as any)
         .from("hashtag_requests")
         .select("id", { count: "exact", head: true })
@@ -366,7 +336,6 @@ const CreatorAnalysis = () => {
         .order("created_at", { ascending: false }),
     ]);
 
-    setWatchlist(wl || []);
     setHashtagCount(hCount || 0);
     const score = hResult?.hashtag_results?.[0]?.set_score ?? hResult?.hashtag_results?.set_score ?? null;
     setLatestScore(score);
@@ -399,9 +368,6 @@ const CreatorAnalysis = () => {
     }
   };
 
-  const rising = watchlist.filter(w => w.trend_status === "rising");
-  const declining = watchlist.filter(w => w.trend_status === "declining");
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -425,12 +391,10 @@ const CreatorAnalysis = () => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {[
           { label: "Hashtag Sets Analysed", value: hashtagCount, icon: Hash },
           { label: "Latest Set Score", value: latestScore !== null ? `${latestScore}/100` : "—", sub: latestScore !== null ? (latestScore >= 70 ? "Strong" : latestScore >= 50 ? "Average" : "Needs work") : "No data yet", icon: TrendingUp },
-          { label: "Tags in Watchlist", value: watchlist.length, icon: Bookmark },
-          { label: "Rising Tags", value: rising.length, sub: rising.length ? rising.slice(0, 2).map(r => r.tag).join(", ") : "None yet", icon: Eye },
         ].map(({ label, value, sub, icon: Icon }) => (
           <Card key={label}>
             <CardContent className="pt-5 pb-4 px-5">
@@ -478,54 +442,6 @@ const CreatorAnalysis = () => {
 
         <AddReferenceForm onAdded={a => setReferenceAccounts(prev => [a, ...prev])} />
       </div>
-
-      {/* Watchlist */}
-      {watchlist.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Bookmark className="w-4 h-4 text-primary" /> Hashtag Watchlist
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <div className="space-y-2">
-              {watchlist.map(tag => (
-                <div key={tag.tag} className="flex items-center justify-between gap-3 py-1.5 border-b border-border/50 last:border-0">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-sm font-medium text-foreground truncate">{tag.tag}</span>
-                    {tag.trend_note && (
-                      <span className="text-xs text-muted-foreground truncate hidden sm:inline">{tag.trend_note}</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {tag.trend_score !== null && (
-                      <span className="text-xs font-medium text-muted-foreground">{tag.trend_score}</span>
-                    )}
-                    <TrendBadge status={tag.trend_status} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Declining warning */}
-      {declining.length > 0 && (
-        <Card className="border-red-500/20 bg-red-500/5">
-          <CardContent className="px-4 py-3 flex items-start gap-3">
-            <TrendingUp className="w-4 h-4 text-red-500 mt-0.5 shrink-0 rotate-180" />
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                {declining.length} tag{declining.length > 1 ? "s are" : " is"} declining
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {declining.map(d => d.tag).join(", ")} — consider replacing these with rising alternatives.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* ── Analytics Insights ─────────────────────────────────────────────── */}
       <div className="space-y-3">

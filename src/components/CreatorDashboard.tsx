@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   TrendingUp, Sparkles, Hash, ArrowRight,
   Bookmark, FileText, Zap, MapPin, Flame,
-  Clock, Globe, DollarSign,
+  Clock, Globe, DollarSign, ChevronRight,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -24,6 +24,13 @@ interface HotTrend {
   region?: string;
 }
 
+interface WatchlistTag {
+  tag: string;
+  trend_status: "rising" | "plateauing" | "declining" | null;
+  trend_score: number | null;
+  trend_note: string | null;
+}
+
 interface CreatorStats {
   savedThisWeek: number;
   draftsThisMonth: number;
@@ -31,6 +38,7 @@ interface CreatorStats {
   pipelineSaved: number;
   pipelineDrafted: number;
   hotTrends: HotTrend[];
+  watchlist: WatchlistTag[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -210,6 +218,20 @@ async function fetchHotTrends(
   return { data: (data as HotTrend[]) ?? [], mode: "global" };
 }
 
+function TrendBadge({ status }: { status: WatchlistTag["trend_status"] }) {
+  if (!status) return null;
+  const map: Record<string, string> = {
+    rising:     "bg-green-500/15 text-green-600 border-green-500/25",
+    plateauing: "bg-yellow-500/15 text-yellow-600 border-yellow-500/25",
+    declining:  "bg-red-500/15 text-red-500 border-red-500/25",
+  };
+  return (
+    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium capitalize ${map[status] ?? ""}`}>
+      {status}
+    </span>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const CreatorDashboard = () => {
@@ -217,7 +239,7 @@ export const CreatorDashboard = () => {
   const { profile, user } = useAuthContext();
   const [stats, setStats] = useState<CreatorStats>({
     savedThisWeek: 0, draftsThisMonth: 0, totalSaved: 0,
-    pipelineSaved: 0, pipelineDrafted: 0, hotTrends: [],
+    pipelineSaved: 0, pipelineDrafted: 0, hotTrends: [], watchlist: [],
   });
   const [loading, setLoading] = useState(true);
   const [trendMode, setTrendMode] = useState<TrendMode>("global");
@@ -246,7 +268,7 @@ export const CreatorDashboard = () => {
     // Use the actual profile niche — null means "no profile filled" → global fallback
     const industryFilter = profile?.industry ?? null;
 
-    const [savedWeekRes, draftsMonthRes, totalSavedRes, pipelineSavedRes, hotTrendsResult] =
+    const [savedWeekRes, draftsMonthRes, totalSavedRes, pipelineSavedRes, hotTrendsResult, watchlistRes] =
       await Promise.all([
         // Saved this week
         supabase
@@ -278,6 +300,14 @@ export const CreatorDashboard = () => {
 
         // Top 3 trends — filtered by region+niche if known, with progressive fallback
         fetchHotTrends(region, industryFilter),
+
+        // Hashtag watchlist
+        supabase
+          .from("hashtag_watchlist" as any)
+          .select("tag, trend_status, trend_score, trend_note")
+          .eq("user_id", user.id)
+          .order("trend_score", { ascending: false })
+          .limit(10),
       ]);
 
     // Drafts count — tweet_drafts groups 3 drafts per generation_id,
@@ -292,6 +322,7 @@ export const CreatorDashboard = () => {
       pipelineSaved:   pipelineSavedRes.count ?? 0,
       pipelineDrafted: Math.ceil(draftsThisMonth / 3),
       hotTrends:       hotTrendsResult.data,
+      watchlist:       (watchlistRes.data as WatchlistTag[]) ?? [],
     });
     setLoading(false);
   }, [user, region, profile?.industry]);
@@ -524,7 +555,57 @@ export const CreatorDashboard = () => {
           )}
         </div>
 
-        {/* ── 4. Content pipeline ────────────────────────────────────────── */}
+        {/* ── 4. Hashtag Watchlist ───────────────────────────────────────── */}
+        {!loading && stats.watchlist.length > 0 && (() => {
+          const declining = stats.watchlist.filter(w => w.trend_status === "declining");
+          return (
+            <div className="space-y-2">
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+                  <Bookmark className="w-3.5 h-3.5 text-primary" />
+                  <h2 className="text-sm font-semibold text-foreground">Hashtag Watchlist</h2>
+                  <button
+                    onClick={() => navigate("/hashtag-watchlist")}
+                    className="ml-auto text-xs text-primary hover:underline flex items-center gap-0.5"
+                  >
+                    View all <ChevronRight className="w-3 h-3" />
+                  </button>
+                </div>
+                <div className="divide-y divide-border/50">
+                  {stats.watchlist.map(tag => (
+                    <div key={tag.tag} className="flex items-center gap-3 px-4 py-2.5">
+                      <span className="text-sm font-medium text-foreground flex-1 truncate">{tag.tag}</span>
+                      {tag.trend_note && (
+                        <span className="text-xs text-muted-foreground truncate hidden sm:inline max-w-xs">{tag.trend_note}</span>
+                      )}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {tag.trend_score !== null && (
+                          <span className="text-xs font-medium text-muted-foreground tabular-nums">{tag.trend_score}</span>
+                        )}
+                        <TrendBadge status={tag.trend_status} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {declining.length > 0 && (
+                <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 flex items-start gap-3">
+                  <TrendingUp className="w-4 h-4 text-red-500 mt-0.5 shrink-0 rotate-180" />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      {declining.length} tag{declining.length > 1 ? "s are" : " is"} declining
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {declining.map(d => d.tag).join(", ")} — consider replacing with rising alternatives.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── 5. Content Pipeline ────────────────────────────────────────── */}
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-foreground">Content Pipeline</h2>
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -587,7 +668,7 @@ export const CreatorDashboard = () => {
           </div>
         </div>
 
-        {/* ── 5. Quick actions ───────────────────────────────────────────── */}
+        {/* ── 6. Quick actions ───────────────────────────────────────────── */}
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-foreground">Quick Actions</h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
