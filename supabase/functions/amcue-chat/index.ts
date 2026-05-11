@@ -6,23 +6,61 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const BASE_SYSTEM_PROMPT = `You are Amcue, the AI Chief Marketing Officer (CMO) for Marketers Quest. You are an expert in digital marketing, SEO, social media strategy, content marketing, paid advertising, influencer marketing, PR, and brand strategy.
+// ── Creator system prompt ─────────────────────────────────────────────────────
 
-Your personality:
-- Professional but approachable
-- Data-driven and strategic
-- Proactive with actionable recommendations
-- You speak in clear, concise marketing language
-- You reference real marketing frameworks and best practices
+const CREATOR_SYSTEM_PROMPT = `You are Amcue — a veteran social media strategist and growth advisor with over a decade of hands-on experience helping creators build real audiences from scratch. You've worked across Instagram, TikTok, and YouTube with everyone from early-stage creators to multi-million follower accounts, and you have strong, well-earned opinions on what actually moves the needle.
 
-When users ask about their website or marketing:
-- Give specific, actionable advice based on their real data provided below
-- Reference their actual scores, metrics, and results when relevant
-- Suggest metrics to track
-- Recommend tools and strategies
-- Create frameworks and plans when asked
+You are the creator's personal Chief Marketing Officer. You live in their corner. You know their niche, you've seen their data, and you're here to help them grow — not just on paper, but in real follower counts, real saves, real DMs, and eventually real income.
 
-Keep responses concise but thorough. Use bullet points and structure for readability. Always end with a clear next step or action item.`;
+IMPORTANT — your user type:
+This platform serves two types of users: creators and brands. You are speaking to a CREATOR. A creator is a person who builds and grows an audience through original content — they are not running a brand campaign or managing a product. Treat them accordingly. Their goals are: content reach, audience growth, niche authority, engagement, and eventually monetisation. Every piece of advice you give must be filtered through that lens.
+
+Your communication style:
+- Talk like a trusted expert who knows the space deeply — warm, direct, and confident. Not corporate, not robotic, not a chatbot.
+- Be specific. "Post more consistently" is useless advice. "You're in the [niche] space — that audience saves educational carousels on Tuesdays through Thursdays, not Reels on weekends. Here's exactly what I'd test this week" — that's the standard.
+- Have real opinions. When you see a mistake, say it plainly. When you see a clear opportunity in their data, name it and explain exactly how to take it.
+- Write like a thoughtful human giving advice — not a bullet-point report. Use structure only when it genuinely helps. Never pad. Never start with "Great question!" or "As an AI." Just talk to them.
+- When you have data about what they've been exploring on the platform — their trends, their hashtag analysis, their watchlist — reference it directly. Make them feel like you've been paying attention, not like you're reading from a file.
+- End every substantive response with the single most important next move. Not five options — one clear action.
+
+What you understand deeply:
+- How the Instagram algorithm actually distributes content: the role of shares and saves vs. likes, the first-hour window, the importance of send rate, and why follower count means less than engagement rate for reach.
+- Hashtag strategy in the current landscape: when it matters for discoverability, what "niche saturation" means in practice, how hashtag tiers work, and when to ignore hashtags entirely.
+- Trend timing: the difference between catching a trend in its early spike (days 1–4) vs. joining it late (day 8+). Why relevance to the creator's niche matters more than raw virality.
+- Content formats and hooks: what gets saved, what gets shared, what gets DMs. Why saves signal content depth, why shares signal content emotion, and why watch time still matters more than anything.
+- Niche positioning: why most creators grow slowly because they're too broad. How to find a specific enough niche to dominate a corner, then expand. The "go narrow to go wide" principle.
+- The creator growth flywheel: discoverability → right-audience fit → trust → engagement → monetisation. Where most creators get stuck and why.
+- Audience building vs. follower buying: why vanity metrics kill real growth. How to read engagement rate as the real health signal.
+
+What you never do:
+- Give generic "post 3 times a week" advice unless you have a specific reason tied to their niche and audience behaviour.
+- Recommend chasing every trend — trend relevance to their niche and brand identity matters more than any virality score.
+- Treat the creator like a brand manager. They are building a personal media presence, not running ad campaigns.
+- Overwhelm them. One clear, actionable insight beats ten vague suggestions every single time.
+- Pretend to be certain when you're not. If you don't have enough data to make a call, say so and tell them what information would help you give better advice.`;
+
+// ── Brand system prompt ───────────────────────────────────────────────────────
+
+const BRAND_SYSTEM_PROMPT = `You are Amcue, the AI Chief Marketing Officer (CMO) for Marketers Quest — a senior marketing strategist with deep expertise in digital marketing, SEO, social media strategy, content marketing, paid acquisition, influencer partnerships, and brand positioning.
+
+IMPORTANT — your user type:
+This platform serves two types of users: creators and brands. You are speaking to a BRAND. This means your advice should focus on marketing strategy, channel performance, audience acquisition, conversion, and brand growth — not personal content creation. Think CMO-level, not creator-level.
+
+Your communication style:
+- Strategic and direct — talk like a senior marketing advisor, not a consultant writing a deck.
+- Ground everything in their actual data: scores, metrics, and specific results from their tools.
+- Give clear opinions on what to prioritise and what to drop. Be decisive.
+- No generic frameworks for the sake of it. Every recommendation must connect to their specific situation.
+- End with a clear, prioritised next step.
+
+Your expertise spans:
+- Performance marketing, SEO, and organic growth channels
+- Brand narrative, authority-building, and positioning
+- Campaign strategy and marketing funnel optimisation
+- Competitive analysis and market positioning
+- Social media strategy at a brand level (campaigns, partnerships, paid)`;
+
+// ── Brand info extraction from chat ──────────────────────────────────────────
 
 const EXTRACT_SYSTEM_PROMPT = `You are a brand data extractor. Given a user message in a marketing chat, extract any brand or company information the user mentions. Return ONLY a valid JSON object — no markdown, no explanation. Only include fields where the information is clearly stated. Omit fields not mentioned (do not include them at all, not even as null).
 
@@ -44,22 +82,39 @@ Fields to extract (use exact key names):
 - competitors (array of strings, competitor brand or company names)
 - brand_voice (string, tone/personality description)`;
 
-// ── Build user context from all tools ────────────────────────────────────────
+// ── Build user context ────────────────────────────────────────────────────────
 
-async function buildUserContext(userId: string, supabase: ReturnType<typeof createClient>): Promise<string> {
+interface ContextResult {
+  context: string;
+  accountType: "creator" | "brand" | "unknown";
+}
+
+async function buildUserContext(userId: string, supabase: ReturnType<typeof createClient>): Promise<ContextResult> {
   const sections: string[] = [];
+  let accountType: "creator" | "brand" | "unknown" = "unknown";
 
   try {
-    // First round: parallel fetches that don't depend on each other
+    // Round 1: parallel fetches
     const [
+      { data: userProfile },
       { data: brandMemory },
       { data: prProjects },
-      { data: hashtagRequestIds },
+      { data: hashtagRequests },
       { data: watchlist },
       { data: seoSites },
       { data: referenceAccounts },
+      { data: savedTrends },
+      { data: trendSession },
     ] = await Promise.all([
-      supabase.from("amcue_brand_memory").select("*").eq("user_id", userId).maybeSingle(),
+      supabase.from("user_profiles")
+        .select("account_type, creator_persona, full_name, brand_name, industry, geography, business_summary, primary_goal, creator_niche")
+        .eq("user_id", userId)
+        .maybeSingle(),
+
+      supabase.from("amcue_brand_memory")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle(),
 
       supabase.from("pr_projects")
         .select("id, brand_name, domain")
@@ -68,7 +123,7 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
         .limit(5),
 
       supabase.from("hashtag_requests")
-        .select("id")
+        .select("id, caption, created_at")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(10),
@@ -90,16 +145,33 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
         .not("tone_analysis", "is", null)
         .order("created_at", { ascending: false })
         .limit(5),
+
+      supabase.from("user_saved_trends")
+        .select("trend_name, trend_category, trend_snapshot, saved_at")
+        .eq("user_id", userId)
+        .gt("expires_at", new Date().toISOString())
+        .order("saved_at", { ascending: false })
+        .limit(10),
+
+      supabase.from("user_trend_sessions")
+        .select("niche, location, last_recommendations, last_refresh_at")
+        .eq("user_id", userId)
+        .order("last_refresh_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
-    // Second round: fetches that depend on IDs from round 1
+    // Determine account type early — everything below may branch on it
+    accountType = (userProfile?.account_type as "creator" | "brand") ?? "unknown";
+
+    // Round 2: hashtag results (depend on IDs from round 1)
     const prProjectIds = (prProjects || []).map((p: Record<string, string>) => p.id);
-    const hashtagReqIds = (hashtagRequestIds || []).map((r: Record<string, string>) => r.id);
+    const hashtagReqIds = (hashtagRequests || []).map((r: Record<string, string>) => r.id);
     const seoSiteId = seoSites?.[0]?.id;
 
     const [
       { data: prResult },
-      { data: hashtagResult },
+      { data: hashtagResults },
       { data: seoSnapshot },
     ] = await Promise.all([
       prProjectIds.length
@@ -113,12 +185,11 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
 
       hashtagReqIds.length
         ? supabase.from("hashtag_results")
-            .select("set_score, confidence_level, why_this_works, warnings, hashtags, best_posting_time, created_at")
+            .select("set_score, confidence_level, set_type, why_this_works, warnings, hashtags, best_posting_time, created_at, request_id")
             .in("request_id", hashtagReqIds)
             .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
+            .limit(5)
+        : Promise.resolve({ data: [] }),
 
       seoSiteId
         ? supabase.from("scc_snapshots")
@@ -131,7 +202,39 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
         : Promise.resolve({ data: null }),
     ]);
 
-    // ── Format: Brand Profile ─────────────────────────────────────────────────
+    // ── Creator Persona ───────────────────────────────────────────────────────
+    if (accountType === "creator" && userProfile) {
+      const persona = userProfile.creator_persona as Record<string, unknown> | null;
+      const lines: string[] = [];
+
+      if (userProfile.full_name) lines.push(`Name: ${userProfile.full_name}`);
+
+      if (persona) {
+        if (persona.niche) lines.push(`Niche: ${persona.niche}`);
+        if (Array.isArray(persona.sub_niches) && persona.sub_niches.length)
+          lines.push(`Sub-niches: ${(persona.sub_niches as string[]).join(", ")}`);
+        if (persona.content_style) lines.push(`Content Style: ${persona.content_style}`);
+        if (persona.audience_type) lines.push(`Audience Type: ${persona.audience_type}`);
+        if (Array.isArray(persona.platform_focus) && persona.platform_focus.length)
+          lines.push(`Platforms: ${(persona.platform_focus as string[]).join(", ")}`);
+        if (typeof persona.is_faceless === "boolean")
+          lines.push(`Faceless Creator: ${persona.is_faceless ? "Yes" : "No"}`);
+        if (persona.location_normalized) lines.push(`Location: ${persona.location_normalized}`);
+        if (persona.summary) lines.push(`Profile Summary: ${persona.summary}`);
+      } else {
+        // Fall back to raw profile fields
+        if (userProfile.creator_niche || userProfile.industry)
+          lines.push(`Niche/Industry: ${userProfile.creator_niche || userProfile.industry}`);
+        if (userProfile.geography) lines.push(`Location: ${userProfile.geography}`);
+        if (userProfile.business_summary) lines.push(`Bio: ${userProfile.business_summary}`);
+        if (userProfile.primary_goal) lines.push(`Primary Goal: ${userProfile.primary_goal}`);
+      }
+
+      if (lines.length)
+        sections.push(`### Creator Profile\n${lines.join("\n")}`);
+    }
+
+    // ── Brand Profile (brand users) ───────────────────────────────────────────
     if (brandMemory) {
       const b = brandMemory as Record<string, unknown>;
       const lines: string[] = [];
@@ -142,21 +245,132 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
       if (b.usp) lines.push(`USP: ${b.usp}`);
       if (b.target_audience) lines.push(`Target Audience: ${b.target_audience}`);
       if (Array.isArray(b.geographic_markets) && b.geographic_markets.length)
-        lines.push(`Markets: ${b.geographic_markets.join(", ")}`);
+        lines.push(`Markets: ${(b.geographic_markets as string[]).join(", ")}`);
       if (Array.isArray(b.competitors) && b.competitors.length)
-        lines.push(`Competitors: ${b.competitors.join(", ")}`);
+        lines.push(`Competitors: ${(b.competitors as string[]).join(", ")}`);
       if (b.brand_voice) lines.push(`Brand Voice: ${b.brand_voice}`);
       if (b.monthly_marketing_budget_usd)
         lines.push(`Monthly Budget: $${Number(b.monthly_marketing_budget_usd).toLocaleString()}`);
       if (Array.isArray(b.marketing_goals) && b.marketing_goals.length)
-        lines.push(`Goals: ${b.marketing_goals.join(", ")}`);
+        lines.push(`Goals: ${(b.marketing_goals as string[]).join(", ")}`);
       if (b.biggest_marketing_challenge)
         lines.push(`Main Challenge: ${b.biggest_marketing_challenge}`);
       if (b.products_services) lines.push(`Products/Services: ${b.products_services}`);
       if (lines.length) sections.push(`### Brand Profile\n${lines.join("\n")}`);
     }
 
-    // ── Format: PR Campaign Results ───────────────────────────────────────────
+    // ── Trend Quest Activity ──────────────────────────────────────────────────
+    const trendLines: string[] = [];
+
+    // Saved/bookmarked trends (active within 48h)
+    if (savedTrends?.length) {
+      const saved = (savedTrends as Record<string, unknown>[]).map((t) => {
+        const snap = t.trend_snapshot as Record<string, unknown> | null;
+        const virality = snap?.virality_score ?? snap?.score;
+        return `${t.trend_name}${virality ? ` (virality: ${virality})` : ""}${t.trend_category ? ` [${t.trend_category}]` : ""}`;
+      });
+      trendLines.push(`Recently saved trends (bookmarked for content): ${saved.join(", ")}`);
+    }
+
+    // Last trend session: what niche/location the recommendations were for + the actual recommendations
+    if (trendSession) {
+      const ts = trendSession as Record<string, unknown>;
+      if (ts.niche) trendLines.push(`Last Trend Quest search: niche = "${ts.niche}", location = ${ts.location || "global"}`);
+      const recs = ts.last_recommendations as unknown[];
+      if (Array.isArray(recs) && recs.length) {
+        const recNames = recs.slice(0, 5).map((r) => {
+          const rec = r as Record<string, unknown>;
+          return rec.trend_name || rec.name || "";
+        }).filter(Boolean);
+        if (recNames.length)
+          trendLines.push(`Trend recommendations surfaced: ${recNames.join(", ")}`);
+      }
+    }
+
+    if (trendLines.length)
+      sections.push(`### Trend Quest Activity\n${trendLines.join("\n")}`);
+
+    // ── Hashtag Analysis (recent set) ─────────────────────────────────────────
+    if (hashtagResults?.length) {
+      const results = hashtagResults as Record<string, unknown>[];
+
+      // Group by request_id to show the safe + experimental pair for the latest analysis
+      const latestRequestId = (hashtagRequests?.[0] as Record<string, string> | undefined)?.id;
+      const latestSet = results.filter((r) => r.request_id === latestRequestId);
+      const latestRequest = (hashtagRequests as Record<string, unknown>[] | null)?.[0];
+
+      if (latestSet.length) {
+        const hLines: string[] = [];
+        if (latestRequest?.caption)
+          hLines.push(`Post idea analyzed: "${latestRequest.caption}"`);
+        hLines.push(`Analyzed: ${new Date(latestSet[0].created_at as string).toLocaleDateString()}`);
+
+        for (const set of latestSet) {
+          const setLabel = set.set_type === "safe" ? "Safe Reach Set" : "Experimental Set";
+          hLines.push(`${setLabel} — Score: ${set.set_score}/100 (${set.confidence_level} confidence)`);
+          if (set.why_this_works) hLines.push(`  Why it works: ${set.why_this_works}`);
+          if (set.best_posting_time) hLines.push(`  Best posting time: ${set.best_posting_time}`);
+          const tags = set.hashtags as unknown[];
+          if (Array.isArray(tags) && tags.length) {
+            const tagNames = tags.slice(0, 8).map((t) =>
+              typeof t === "string" ? t : (t as Record<string, string>).tag || ""
+            ).filter(Boolean);
+            hLines.push(`  Tags: ${tagNames.join(", ")}`);
+          }
+          const warnings = set.warnings as unknown[];
+          if (Array.isArray(warnings) && warnings.length)
+            hLines.push(`  Warnings: ${(warnings as string[]).slice(0, 2).join("; ")}`);
+        }
+
+        // Mention how many total analyses they've run (context for patterns)
+        if ((hashtagRequests?.length ?? 0) > 1)
+          hLines.push(`Total analyses run: ${hashtagRequests?.length}`);
+
+        sections.push(`### Latest Hashtag Analysis\n${hLines.join("\n")}`);
+      }
+    }
+
+    // ── Hashtag Watchlist ─────────────────────────────────────────────────────
+    if (watchlist?.length) {
+      const wl = watchlist as Record<string, unknown>[];
+      const rising = wl.filter((w) => w.trend_status === "rising");
+      const plateauing = wl.filter((w) => w.trend_status === "plateauing");
+      const declining = wl.filter((w) => w.trend_status === "declining");
+      const untracked = wl.filter((w) => !w.trend_status);
+
+      const lines: string[] = [];
+      if (rising.length)
+        lines.push(`Rising tags (act now): ${rising.map((w) => `${w.tag} (score: ${w.trend_score})`).join(", ")}`);
+      if (plateauing.length)
+        lines.push(`Plateauing (use with care): ${plateauing.map((w) => w.tag).join(", ")}`);
+      if (declining.length)
+        lines.push(`Declining (consider dropping): ${declining.map((w) => w.tag).join(", ")}`);
+      if (untracked.length)
+        lines.push(`Saved tags: ${untracked.map((w) => w.tag).join(", ")}`);
+
+      sections.push(`### Hashtag Watchlist (${watchlist.length} tags)\n${lines.join("\n")}`);
+    }
+
+    // ── Creator Style References ──────────────────────────────────────────────
+    if (referenceAccounts?.length) {
+      const refLines = (referenceAccounts as Record<string, unknown>[]).map((ref) => {
+        const ta = ref.tone_analysis as Record<string, unknown> | null;
+        if (!ta) return null;
+        const parts = [`@${ref.instagram_handle}`];
+        if (ref.why_inspiring) parts.push(`(why inspiring: ${ref.why_inspiring})`);
+        if (ta.primary_tone) parts.push(`Tone: ${ta.primary_tone}${ta.secondary_tone ? ` + ${ta.secondary_tone}` : ""}`);
+        if (ta.writing_style) parts.push(`Style: ${ta.writing_style}`);
+        if (Array.isArray(ta.content_themes) && ta.content_themes.length)
+          parts.push(`Themes: ${(ta.content_themes as string[]).join(", ")}`);
+        if (ta.what_to_borrow) parts.push(`What to borrow: ${ta.what_to_borrow}`);
+        return parts.join(" | ");
+      }).filter(Boolean);
+
+      if (refLines.length)
+        sections.push(`### Creator Style References\nAccounts this creator looks up to — use as style signals when suggesting content:\n${refLines.join("\n")}`);
+    }
+
+    // ── PR Campaign Results (brand-relevant) ──────────────────────────────────
     if (prResult) {
       const pr = prResult as Record<string, unknown>;
       const project = (prProjects || []).find((p: Record<string, string>) => p.id === pr.project_id);
@@ -170,7 +384,6 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
         `Pages Analyzed: ${pr.pages_analyzed}`,
       ];
       if (pr.executive_summary) lines.push(`Executive Summary: ${pr.executive_summary}`);
-
       const gaps = pr.proof_gaps as unknown[];
       if (Array.isArray(gaps) && gaps.length) {
         const topGaps = gaps.slice(0, 3).map((g) =>
@@ -178,7 +391,6 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
         );
         lines.push(`Top Proof Gaps: ${topGaps.join("; ")}`);
       }
-
       const actions = pr.recommended_actions as unknown[];
       if (Array.isArray(actions) && actions.length) {
         const topActions = actions.slice(0, 3).map((a) =>
@@ -186,11 +398,10 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
         );
         lines.push(`Top Recommended Actions: ${topActions.join("; ")}`);
       }
-
       sections.push(`### PR Campaign Results (${new Date(pr.created_at as string).toLocaleDateString()})\n${lines.join("\n")}`);
     }
 
-    // ── Format: SEO ───────────────────────────────────────────────────────────
+    // ── SEO Analysis ──────────────────────────────────────────────────────────
     if (seoSites?.[0] && seoSnapshot) {
       const snap = seoSnapshot as Record<string, unknown>;
       const date = (snap.finished_at || snap.created_at) as string;
@@ -201,13 +412,10 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
         `Site: ${seoSites[0].site_url}`,
         `Last crawl: ${new Date(date).toLocaleDateString()}`,
       ];
-
       if (snap.business_name) lines.push(`Business: ${snap.business_name}`);
       if (snap.market) lines.push(`Market: ${snap.market}`);
       if (snap.industry) lines.push(`Industry (SEO-detected): ${snap.industry}`);
       if (snap.safe_browsing_threat) lines.push(`⚠️ Google Safe Browsing threat detected — site traffic is being blocked`);
-
-      // Money data (dedicated columns)
       const lossMin = Number(snap.total_monthly_loss_min || 0);
       const lossMax = Number(snap.total_monthly_loss_max || lossMin);
       if (lossMin > 0) {
@@ -216,12 +424,9 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
       }
       if (snap.estimated_monthly_traffic) lines.push(`Estimated Monthly Traffic: ${Number(snap.estimated_monthly_traffic).toLocaleString()} visits`);
       if (snap.value_per_visitor) lines.push(`Value per Visitor: ${sym}${Number(snap.value_per_visitor).toFixed(2)}`);
-      if (snap.confidence_score) lines.push(`Money Estimate Confidence: ${snap.confidence_score}%`);
       if (snap.executive_summary) lines.push(`SEO Executive Summary: ${snap.executive_summary}`);
-
-      // Competitor data (dedicated columns)
       if (Array.isArray(snap.competitor_domains) && (snap.competitor_domains as string[]).length) {
-        lines.push(`Top SEO Competitors (outranking this site): ${(snap.competitor_domains as string[]).join(", ")}`);
+        lines.push(`Top SEO Competitors: ${(snap.competitor_domains as string[]).join(", ")}`);
         const gMin = Number(snap.competitor_traffic_gap_min || 0);
         const gMax = Number(snap.competitor_traffic_gap_max || gMin);
         if (gMin > 0) {
@@ -229,97 +434,32 @@ async function buildUserContext(userId: string, supabase: ReturnType<typeof crea
           lines.push(`Monthly Revenue Flowing to Competitors: ${gapStr}/mo`);
         }
       }
-
-      // Top issues and focus areas from notes JSON
       try {
         const notesRaw = typeof snap.notes === "string" ? snap.notes : JSON.stringify(snap.notes ?? "{}");
         const notes = JSON.parse(notesRaw);
         const topIssues = Array.isArray(notes?.top_issues) ? notes.top_issues : [];
-        if (topIssues.length) {
+        if (topIssues.length)
           lines.push(`Top SEO Issues: ${topIssues.slice(0, 5).map((i: Record<string, unknown>) => `${i.label} (${i.count})`).join(", ")}`);
-        }
         const focusAreas = Array.isArray(notes?.focus_areas) ? notes.focus_areas : [];
-        if (focusAreas.length) {
+        if (focusAreas.length)
           lines.push(`Priority Focus Areas: ${(focusAreas as string[]).slice(0, 4).join("; ")}`);
-        }
-        // Avg scores from notes
-        const scores = notes?.avg_scores;
-        if (scores) {
-          const scoreStr = Object.entries(scores as Record<string, number>)
-            .map(([k, v]) => `${k}: ${v}`)
-            .join(", ");
-          lines.push(`Avg Scores — ${scoreStr}`);
-        }
-      } catch { /* ignore JSON parse errors */ }
+      } catch { /* ignore */ }
 
       sections.push(`### SEO Analysis\n${lines.join("\n")}`);
     } else if (seoSites?.[0]) {
       sections.push(`### SEO\nSite connected: ${seoSites[0].site_url} (no completed crawl yet)`);
     }
 
-    // ── Format: Hashtag Analysis ──────────────────────────────────────────────
-    if (hashtagResult) {
-      const h = hashtagResult as Record<string, unknown>;
-      const lines: string[] = [
-        `Set Score: ${h.set_score}/100`,
-        `Confidence: ${h.confidence_level}`,
-      ];
-      if (h.why_this_works) lines.push(`Why It Works: ${h.why_this_works}`);
-      if (h.best_posting_time) lines.push(`Best Posting Time: ${h.best_posting_time}`);
-
-      const hashtags = h.hashtags as unknown[];
-      if (Array.isArray(hashtags) && hashtags.length) {
-        const tagList = hashtags.slice(0, 10).map((t) =>
-          typeof t === "string" ? t : (t as Record<string, string>).tag || (t as Record<string, string>).name || JSON.stringify(t)
-        );
-        lines.push(`Hashtags: ${tagList.join(", ")}`);
-      }
-
-      const warnings = h.warnings as unknown[];
-      if (Array.isArray(warnings) && warnings.length)
-        lines.push(`Warnings: ${warnings.slice(0, 2).join("; ")}`);
-
-      sections.push(`### Latest Hashtag Analysis (${new Date(h.created_at as string).toLocaleDateString()})\n${lines.join("\n")}`);
-    }
-
-    // ── Format: Hashtag Watchlist ─────────────────────────────────────────────
-    if (watchlist?.length) {
-      const rising = (watchlist as Record<string, unknown>[]).filter((w) => w.trend_status === "rising");
-      const plateauing = (watchlist as Record<string, unknown>[]).filter((w) => w.trend_status === "plateauing");
-      const declining = (watchlist as Record<string, unknown>[]).filter((w) => w.trend_status === "declining");
-
-      const lines: string[] = [];
-      if (rising.length) lines.push(`Rising: ${rising.map((w) => `${w.tag} (${w.trend_score})`).join(", ")}`);
-      if (plateauing.length) lines.push(`Plateauing: ${plateauing.map((w) => w.tag).join(", ")}`);
-      if (declining.length) lines.push(`Declining: ${declining.map((w) => w.tag).join(", ")}`);
-
-      sections.push(`### Hashtag Watchlist (${watchlist.length} tags)\n${lines.join("\n")}`);
-    }
-
-    // ── Format: Reference Accounts (creator style inspiration) ────────────────
-    if (referenceAccounts?.length) {
-      const refLines = (referenceAccounts as Record<string, unknown>[]).map((ref) => {
-        const ta = ref.tone_analysis as Record<string, unknown> | null;
-        if (!ta) return null;
-        const parts = [`@${ref.instagram_handle}`];
-        if (ref.why_inspiring) parts.push(`(why inspiring: ${ref.why_inspiring})`);
-        if (ta.primary_tone) parts.push(`Tone: ${ta.primary_tone}${ta.secondary_tone ? ` + ${ta.secondary_tone}` : ""}`);
-        if (ta.writing_style) parts.push(`Style: ${ta.writing_style}`);
-        if (Array.isArray(ta.content_themes) && ta.content_themes.length) parts.push(`Themes: ${(ta.content_themes as string[]).join(", ")}`);
-        if (ta.what_to_borrow) parts.push(`What to borrow: ${ta.what_to_borrow}`);
-        return parts.join(" | ");
-      }).filter(Boolean);
-
-      if (refLines.length) {
-        sections.push(`### Creator Style References\nThis creator looks up to these accounts — use their styles as inspiration when suggesting content:\n${refLines.join("\n")}`);
-      }
-    }
   } catch (e) {
     console.error("buildUserContext error:", e);
   }
 
-  if (!sections.length) return "";
-  return `\n\n---\n## YOUR USER'S REAL DATA\nUse this data to give specific, personalised advice. Reference actual scores and metrics in your responses.\n\n${sections.join("\n\n")}`;
+  const contextHeader = accountType === "creator"
+    ? `\n\n---\n## WHAT YOU KNOW ABOUT THIS CREATOR\nThis is live data from their activity on Marketers Quest. Use it to make your advice specific to them — reference their niche, their actual hashtag scores, the trends they've been exploring. Don't just summarise this data back at them; use it as your briefing.\n\n`
+    : `\n\n---\n## YOUR USER'S REAL DATA\nUse this data to give specific, personalised advice. Reference actual scores and metrics in your responses.\n\n`;
+
+  const context = sections.length ? contextHeader + sections.join("\n\n") : "";
+  return { context, accountType };
 }
 
 // ── Brand info extraction from chat ──────────────────────────────────────────
@@ -424,7 +564,7 @@ serve(async (req) => {
     });
 
     // Fetch history and build user context in parallel
-    const [{ data: history }, userContext] = await Promise.all([
+    const [{ data: history }, { context: userContext, accountType }] = await Promise.all([
       supabase
         .from("amcue_messages")
         .select("role, content")
@@ -434,7 +574,9 @@ serve(async (req) => {
       buildUserContext(user.id, supabase),
     ]);
 
-    const systemPrompt = BASE_SYSTEM_PROMPT + userContext;
+    // Select the right system prompt based on account type
+    const basePrompt = accountType === "creator" ? CREATOR_SYSTEM_PROMPT : BRAND_SYSTEM_PROMPT;
+    const systemPrompt = basePrompt + userContext;
 
     const messages = [
       { role: "system", content: systemPrompt },
