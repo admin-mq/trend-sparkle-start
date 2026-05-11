@@ -347,6 +347,10 @@ export interface RecommendedTrend extends Trend {
   why_good_fit: string;
   example_hook: string;
   angle_summary: string;
+  /** 'twitter' when saved from the X/Twitter trends panel. */
+  source?: 'twitter' | 'instagram';
+  /** Full TwitterTrend snapshot stored at save-time for "Generate tweets" replay. */
+  twitter_trend_data?: TwitterTrend;
 }
 
 // ── Twitter / Social Pulse types ─────────────────────────────────────────────
