@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import {
   ArrowLeft, Layers, Zap, Loader2, TrendingUp, Minus, X,
   Shield, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp,
-  Sparkles, Hash, ArrowRight,
+  Sparkles, Hash, ArrowRight, Info, Wifi,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -36,6 +36,7 @@ interface GapResult {
   overlap_strength: "strong" | "moderate" | "weak";
   strategy_summary: string;
   top_actions: string[];
+  live_signal_used?: boolean;
 }
 
 interface PortfolioTag {
@@ -58,6 +59,19 @@ const REGIONS = [
   { value: "DE",     label: "Germany"        },
   { value: "BR",     label: "Brazil"         },
 ];
+
+// Maps country names from user_profiles.location → region select values
+const LOCATION_TO_REGION: Record<string, string> = {
+  'united states': 'US', 'usa': 'US', 'us': 'US',
+  'united kingdom': 'UK', 'uk': 'UK', 'england': 'UK', 'britain': 'UK',
+  'india': 'IN',
+  'australia': 'AU',
+  'canada': 'CA',
+  'uae': 'UAE', 'united arab emirates': 'UAE', 'dubai': 'UAE',
+  'singapore': 'SG',
+  'germany': 'DE',
+  'brazil': 'BR',
+};
 
 const VERDICT_CONFIG = {
   adopt: {
@@ -111,8 +125,9 @@ const OVERLAP_CONFIG = {
 };
 
 const ANALYSIS_STEPS = [
-  "Parsing competitor hashtags",
-  "Loading your portfolio",
+  "Parsing hashtags",
+  "Checking live performance on Instagram",
+  "Comparing against your portfolio",
   "Mapping overlaps and gaps",
   "Scoring adoption opportunities",
   "Building strategic recommendations",
@@ -160,7 +175,6 @@ function GapCard({ gap }: { gap: GapTag }) {
             <p className="text-xs text-muted-foreground leading-snug line-clamp-1">{gap.reason}</p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            {/* Opportunity score */}
             <div className="text-right hidden sm:block">
               <span className={`text-base font-bold tabular-nums ${
                 gap.opportunity_score >= 70 ? "text-emerald-400" :
@@ -177,7 +191,6 @@ function GapCard({ gap }: { gap: GapTag }) {
 
       {open && (
         <div className="px-4 pb-4 pt-2 bg-secondary/20 border-t border-border space-y-3 animate-fade-in">
-          {/* Score bar */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground font-medium">Opportunity Score</span>
@@ -207,24 +220,62 @@ const HashtagGapAnalysis = () => {
 
   // Input state
   const [competitorInput, setCompetitorInput] = useState("");
+  const [yourInput,       setYourInput]       = useState("");
   const [nicheContext,    setNicheContext]     = useState("");
   const [region,          setRegion]           = useState("global");
+  const [profileLoaded,   setProfileLoaded]   = useState(false);
 
   // Analysis state
-  const [view,         setView]         = useState<"input" | "loading" | "results">("input");
-  const [loadingStep,  setLoadingStep]  = useState(0);
-  const [result,       setResult]       = useState<GapResult | null>(null);
-  const [portfolio,    setPortfolio]    = useState<PortfolioTag[]>([]);
-  const [portfolioLoaded, setPortfolioLoaded] = useState(false);
+  const [view,        setView]        = useState<"input" | "loading" | "results">("input");
+  const [loadingStep, setLoadingStep] = useState(0);
+  const [result,      setResult]      = useState<GapResult | null>(null);
+  const [portfolio,   setPortfolio]   = useState<PortfolioTag[]>([]);
 
   // Results state
   const [activeTab, setActiveTab] = useState<Tab>("gaps");
 
-  // Load portfolio on mount
+  // ── Load profile + portfolio on mount ──────────────────────────────────────
   useEffect(() => {
     if (!user) return;
-    loadPortfolio();
+
+    // Load both in parallel
+    Promise.all([loadProfile(), loadPortfolio()]);
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadProfile = async () => {
+    try {
+      const { data } = await supabase
+        .from("user_profiles")
+        .select("industry, industry_other, location, business_summary, creator_persona")
+        .eq("user_id", user!.id)
+        .maybeSingle();
+
+      if (!data) return;
+
+      // Auto-fill niche from AI persona or raw industry
+      const persona = data.creator_persona as { niche?: string } | null;
+      const niche = persona?.niche || (
+        data.industry === 'Other' ? data.industry_other : data.industry
+      ) || '';
+
+      if (niche) {
+        const nicheStr = data.business_summary
+          ? `${niche} — ${data.business_summary}`
+          : niche;
+        setNicheContext(prev => prev || nicheStr);
+      }
+
+      // Auto-fill region from location
+      if (data.location) {
+        const regionCode = LOCATION_TO_REGION[data.location.toLowerCase()];
+        if (regionCode) setRegion(prev => prev === 'global' ? regionCode : prev);
+      }
+    } catch (err) {
+      console.error("Profile load error:", err);
+    } finally {
+      setProfileLoaded(true);
+    }
+  };
 
   const loadPortfolio = async () => {
     try {
@@ -260,8 +311,6 @@ const HashtagGapAnalysis = () => {
       setPortfolio(built);
     } catch (err) {
       console.error("Portfolio load error:", err);
-    } finally {
-      setPortfolioLoaded(true);
     }
   };
 
@@ -276,21 +325,23 @@ const HashtagGapAnalysis = () => {
       return;
     }
 
+    const yourTags = parseTags(yourInput);
+
     setView("loading");
     setLoadingStep(0);
 
-    // Step animation
     const stepInterval = setInterval(() => {
       setLoadingStep((s) => Math.min(s + 1, ANALYSIS_STEPS.length - 1));
-    }, 700);
+    }, 900);
 
     try {
       const { data, error } = await supabase.functions.invoke("analyze-hashtag-gaps", {
         body: {
-          competitor_tags:  competitorTags,
-          user_portfolio:   portfolio,
-          niche_context:    nicheContext.trim() || undefined,
-          platform:         "instagram",
+          competitor_tags: competitorTags,
+          user_portfolio:  portfolio,
+          your_tags:       yourTags,
+          niche_context:   nicheContext.trim() || undefined,
+          platform:        "instagram",
           region,
         },
       });
@@ -327,7 +378,7 @@ const HashtagGapAnalysis = () => {
             {ANALYSIS_STEPS.map((step, i) => (
               <div key={i} className="flex items-center gap-2.5">
                 <div className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
-                  i < loadingStep  ? "bg-primary"           :
+                  i < loadingStep   ? "bg-primary"           :
                   i === loadingStep ? "bg-primary/40 animate-pulse" :
                   "bg-secondary"
                 }`}>
@@ -347,9 +398,9 @@ const HashtagGapAnalysis = () => {
   // ── Results view ─────────────────────────────────────────────────────────────
 
   if (view === "results" && result) {
-    const adoptTags = result.gaps.filter((g) => g.verdict === "adopt");
-    const testTags  = result.gaps.filter((g) => g.verdict === "test");
-    const skipTags  = result.gaps.filter((g) => g.verdict === "skip");
+    const adoptTags  = result.gaps.filter((g) => g.verdict === "adopt");
+    const testTags   = result.gaps.filter((g) => g.verdict === "test");
+    const skipTags   = result.gaps.filter((g) => g.verdict === "skip");
     const overlapCfg = OVERLAP_CONFIG[result.overlap_strength];
 
     return (
@@ -366,15 +417,23 @@ const HashtagGapAnalysis = () => {
                 <ArrowLeft className="w-4 h-4" />
                 New analysis
               </button>
-              <button
-                onClick={() => setView("input")}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
-              >
-                Change inputs
-              </button>
+              <div className="flex items-center gap-3">
+                {result.live_signal_used && (
+                  <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-400">
+                    <Wifi className="w-3 h-3" />
+                    Live data used
+                  </span>
+                )}
+                <button
+                  onClick={() => setView("input")}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+                >
+                  Change inputs
+                </button>
+              </div>
             </div>
 
-            {/* ── Headline banner — the number leads ── */}
+            {/* Headline banner */}
             <div className={`post-card p-5 space-y-1 ${
               result.gaps.length > 0
                 ? "border-amber-500/30 bg-amber-500/5"
@@ -424,7 +483,7 @@ const HashtagGapAnalysis = () => {
               </div>
             </div>
 
-            {/* Overlap indicator + strategy summary */}
+            {/* Strategy summary */}
             <div className="post-card p-4 space-y-3 border-primary/15 bg-primary/3">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-primary flex-shrink-0" />
@@ -434,7 +493,6 @@ const HashtagGapAnalysis = () => {
               <p className="text-sm text-secondary-foreground leading-relaxed">{result.strategy_summary}</p>
               <p className="text-xs text-muted-foreground">{overlapCfg.note}</p>
 
-              {/* Top actions */}
               <div className="pt-1 space-y-2 border-t border-border">
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Top Actions</p>
                 {result.top_actions.map((action, i) => (
@@ -469,7 +527,7 @@ const HashtagGapAnalysis = () => {
               ))}
             </div>
 
-            {/* ── Gaps tab ─────────────────────────────────────────────────── */}
+            {/* Gaps tab */}
             {activeTab === "gaps" && (
               <div className="space-y-4">
                 {result.gaps.length === 0 ? (
@@ -509,7 +567,7 @@ const HashtagGapAnalysis = () => {
               </div>
             )}
 
-            {/* ── Your Edge tab ─────────────────────────────────────────────── */}
+            {/* Your Edge tab */}
             {activeTab === "user_edge" && (
               <div className="space-y-2">
                 {result.user_edge.length === 0 ? (
@@ -539,7 +597,7 @@ const HashtagGapAnalysis = () => {
               </div>
             )}
 
-            {/* ── Common Ground tab ─────────────────────────────────────────── */}
+            {/* Common Ground tab */}
             {activeTab === "common" && (
               <div>
                 {result.common_ground.length === 0 ? (
@@ -566,7 +624,7 @@ const HashtagGapAnalysis = () => {
               </div>
             )}
 
-            {/* Run analysis on a gap tag */}
+            {/* CTA */}
             {activeTab === "gaps" && adoptTags.length > 0 && (
               <div className="post-card p-4 flex items-center justify-between gap-3 border-primary/20">
                 <div>
@@ -594,7 +652,9 @@ const HashtagGapAnalysis = () => {
   // ── Input view ───────────────────────────────────────────────────────────────
 
   const competitorTags = parseTags(competitorInput);
-  const isReady = competitorTags.length >= 2 && portfolioLoaded;
+  const yourTags       = parseTags(yourInput);
+  const hasPortfolio   = portfolio.length > 0 || yourTags.length > 0;
+  const isReady        = competitorTags.length >= 2;
 
   return (
     <div className="h-full overflow-y-auto">
@@ -612,7 +672,7 @@ const HashtagGapAnalysis = () => {
             </button>
             {portfolio.length > 0 && (
               <span className="text-xs text-muted-foreground">
-                Portfolio: {portfolio.length} unique tags from your history
+                {portfolio.length} tags from your analysis history
               </span>
             )}
           </div>
@@ -625,32 +685,35 @@ const HashtagGapAnalysis = () => {
             <div>
               <h1 className="text-xl font-bold text-foreground">Find Your Missing Tags</h1>
               <p className="text-xs text-muted-foreground">
-                Paste hashtags that are working in your niche — we'll show you exactly what you're missing.
+                Paste hashtags working in your niche — we'll find what you're missing and verify it with live Instagram data.
               </p>
             </div>
           </div>
 
-          {/* Empty portfolio notice */}
-          {portfolioLoaded && portfolio.length === 0 && (
-            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-              <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-300">
-                No history yet — we'll still score every gap tag on its own merit. Run a few post analyses first to unlock the personal comparison layer.
-              </p>
+          {/* Mode banner — only show when no portfolio history and no own tags typed yet */}
+          {portfolio.length === 0 && yourTags.length === 0 && (
+            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-primary/8 border border-primary/20">
+              <Info className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <p className="text-xs font-semibold text-primary">Niche Scoring Mode</p>
+                <p className="text-xs text-muted-foreground">
+                  Scores are grounded in live Instagram data and your niche context. Paste your own hashtags below to unlock personal gap comparison.
+                </p>
+              </div>
             </div>
           )}
 
           {/* Competitor tags input */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">
-              Paste hashtags you've seen working in your niche
-              <span className="text-muted-foreground font-normal ml-1.5">— from a competitor post, a top creator, anywhere</span>
+              Competitor / niche hashtags
+              <span className="text-muted-foreground font-normal ml-1.5">— from a top creator, competitor post, or anywhere</span>
             </label>
             <Textarea
-              placeholder={"#fitness #healthylifestyle #workout\n\nPaste from any post — one per line, comma-separated, or all at once."}
+              placeholder={"#fashion #ootd #styleinspo\n\nPaste from any post — one per line, comma-separated, or all at once."}
               value={competitorInput}
               onChange={(e) => setCompetitorInput(e.target.value)}
-              className="min-h-[120px] resize-none font-mono text-sm"
+              className="min-h-[110px] resize-none font-mono text-sm"
             />
             {competitorTags.length > 0 && (
               <p className="text-xs text-muted-foreground">
@@ -662,11 +725,33 @@ const HashtagGapAnalysis = () => {
             )}
           </div>
 
-          {/* Niche context */}
+          {/* Own hashtags input (Option 1) */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">
+              Your hashtags
+              <span className="text-muted-foreground font-normal ml-1.5">— optional · enables personal gap comparison</span>
+            </label>
+            <Textarea
+              placeholder={"#fashion #womensstyle #outfitoftheday\n\nPaste hashtags from your recent posts."}
+              value={yourInput}
+              onChange={(e) => setYourInput(e.target.value)}
+              className="min-h-[90px] resize-none font-mono text-sm"
+            />
+            {yourTags.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {yourTags.length} tag{yourTags.length !== 1 ? "s" : ""} detected
+                {portfolio.length > 0 && (
+                  <span className="text-primary ml-1">· merged with {portfolio.length} from your history</span>
+                )}
+              </p>
+            )}
+          </div>
+
+          {/* Niche context — pre-filled from profile (Option 3) */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">
               Your Niche / Content Type
-              <span className="text-muted-foreground font-normal ml-1.5">— optional but improves accuracy</span>
+              <span className="text-muted-foreground font-normal ml-1.5">— improves scoring accuracy</span>
             </label>
             <Input
               placeholder="e.g. sustainable fashion for women 25–35, B2B SaaS marketing, fitness coaching"
@@ -674,9 +759,14 @@ const HashtagGapAnalysis = () => {
               onChange={(e) => setNicheContext(e.target.value)}
               className="text-sm"
             />
+            {!profileLoaded && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" /> Loading from your profile…
+              </p>
+            )}
           </div>
 
-          {/* Region */}
+          {/* Region — pre-filled from profile (Option 3) */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">Region</label>
             <Select value={region} onValueChange={setRegion}>
@@ -698,11 +788,8 @@ const HashtagGapAnalysis = () => {
             className="w-full gap-2 text-sm font-semibold"
             size="lg"
           >
-            {!portfolioLoaded
-              ? <Loader2 className="w-4 h-4 animate-spin" />
-              : <Zap className="w-4 h-4" />
-            }
-            {!portfolioLoaded ? "Loading your portfolio…" : "Find My Missing Tags"}
+            <Zap className="w-4 h-4" />
+            Find My Missing Tags
           </Button>
 
           {/* How it works */}
@@ -710,9 +797,9 @@ const HashtagGapAnalysis = () => {
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">How it works</p>
             <div className="space-y-2.5">
               {[
-                { step: "1", text: "Paste any hashtags working in your niche — from a competitor post, a top creator, or your own research." },
-                { step: "2", text: "We compare them against your full hashtag history to surface exactly what you're not using but should be." },
-                { step: "3", text: "Every gap tag is scored and labelled: Adopt it now, Test it first, or Skip — with a one-line reason why." },
+                { step: "1", text: "Paste hashtags working in your niche — from a competitor post, a top creator, or your own research." },
+                { step: "2", text: "We verify each tag with a live Perplexity web search to check real Instagram performance right now." },
+                { step: "3", text: "Every gap tag is scored using live data + your niche context: Adopt, Test, or Skip — with a specific reason why." },
               ].map(({ step, text }) => (
                 <div key={step} className="flex items-start gap-2.5">
                   <span className="w-5 h-5 rounded-full bg-primary/15 text-primary text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
