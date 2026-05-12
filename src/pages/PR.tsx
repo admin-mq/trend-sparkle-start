@@ -168,7 +168,7 @@ function ProjectCard({
   isScanning,
 }: {
   project: ProjectWithJob;
-  onRunScan: (project: PrProject) => void;
+  onRunScan: (project: PrProject, opts?: { force?: boolean }) => void;
   isScanning: boolean;
 }) {
   const navigate = useNavigate();
@@ -266,7 +266,8 @@ function ProjectCard({
             variant={job ? "ghost" : "default"}
             className="h-7 text-xs gap-1"
             disabled={isScanning || isActive}
-            onClick={() => onRunScan(project)}
+            title={job ? "Shift+click to bypass the 24h cache and force a fresh scan" : undefined}
+            onClick={(e) => onRunScan(project, { force: e.shiftKey })}
           >
             {isActive ? (
               <><Loader2 className="w-3 h-3 animate-spin" /> Analysing…</>
@@ -872,7 +873,8 @@ const PR = () => {
 
   // ── Trigger scan ───────────────────────────────────────────────────────────
 
-  const runScan = useCallback(async (project: PrProject) => {
+  const runScan = useCallback(async (project: PrProject, opts?: { force?: boolean }) => {
+    const force = opts?.force === true;
     setScanningId(project.id);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -893,10 +895,15 @@ const PR = () => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session?.access_token || ""}`,
         },
-        body: JSON.stringify({ project_id: project.id, scan_job_id: job.id }),
+        body: JSON.stringify({ project_id: project.id, scan_job_id: job.id, force }),
       }).catch(console.error);
 
-      toast({ title: "Analysis started", description: `Scanning ${project.domain}…` });
+      toast({
+        title: force ? "Fresh analysis started" : "Analysis started",
+        description: force
+          ? `Forcing a fresh scan of ${project.domain} (bypassing cache)…`
+          : `Scanning ${project.domain}…`,
+      });
       await loadProjects();
       setPollingIds((prev) => new Set([...prev, project.id]));
       navigate(`/pr/results?project=${project.id}`);

@@ -900,7 +900,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { project_id, scan_job_id } = body;
+    const { project_id, scan_job_id, force } = body;
 
     if (!project_id || !scan_job_id) {
       return new Response(JSON.stringify({ error: "project_id and scan_job_id required" }), {
@@ -918,6 +918,108 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (projErr || !project) throw new Error("Project not found");
+
+    // ── Step 0: Idempotency cache check ──────────────────────────────────────
+    // A scan run costs ~$0.55 (crawl + multi-stage LLM synthesis). Accidental
+    // double-clicks or quick re-runs would burn that twice for an identical
+    // result. We key the cache by (project_id, sha256(domain + sorted
+    // competitor domains)), 24h TTL. On hit we duplicate the cached narrative
+    // row under the new scan_job_id so the existing frontend (which loads by
+    // scan_job_id) shows the result unchanged. Set force=true to bypass.
+    const competitorDomainsForHash = (Array.isArray(project.competitors) ? project.competitors : [])
+      .slice(0, 3)
+      .map((c: any) => String(c?.domain || "").toLowerCase().trim())
+      .filter(Boolean)
+      .sort();
+    const hashInput = JSON.stringify({
+      project_id,
+      domain: String(project.domain || "").toLowerCase().trim(),
+      competitors: competitorDomainsForHash,
+    });
+    const hashBuf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(hashInput));
+    const inputHash = Array.from(new Uint8Array(hashBuf))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    if (!force) {
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: cacheRow } = await supabase
+        .from("pr_scan_cache")
+        .select("narrative_result_id, created_at")
+        .eq("project_id", project_id)
+        .eq("input_hash", inputHash)
+        .gt("created_at", cutoff)
+        .maybeSingle();
+
+      if (cacheRow?.narrative_result_id) {
+        const { data: cachedNarrative } = await supabase
+          .from("pr_narrative_results")
+          .select("*")
+          .eq("id", cacheRow.narrative_result_id)
+          .maybeSingle();
+
+        if (cachedNarrative) {
+          console.log(`[pr-scan] CACHE HIT for ${project.domain} (hash ${inputHash.slice(0, 8)}…) — reusing narrative ${cacheRow.narrative_result_id}`);
+
+          const cachedSignals =
+            cachedNarrative.evidence_signals && typeof cachedNarrative.evidence_signals === "object"
+              ? (cachedNarrative.evidence_signals as Record<string, unknown>)
+              : {};
+          const newSignals = {
+            ...cachedSignals,
+            cache_hit: true,
+            cached_from_narrative_id: cacheRow.narrative_result_id,
+            cached_at: cacheRow.created_at,
+          };
+
+          const { data: dup, error: dupErr } = await supabase
+            .from("pr_narrative_results")
+            .insert({
+              project_id,
+              scan_job_id,
+              narrative_score: cachedNarrative.narrative_score,
+              authority_score: cachedNarrative.authority_score,
+              proof_density_score: cachedNarrative.proof_density_score,
+              risk_score: cachedNarrative.risk_score,
+              opportunity_score: cachedNarrative.opportunity_score,
+              brand_narratives: cachedNarrative.brand_narratives,
+              competitor_narratives: cachedNarrative.competitor_narratives,
+              proof_gaps: cachedNarrative.proof_gaps,
+              recommended_actions: cachedNarrative.recommended_actions,
+              executive_summary: cachedNarrative.executive_summary,
+              pages_analyzed: cachedNarrative.pages_analyzed,
+              evidence_signals: newSignals,
+            })
+            .select("id")
+            .single();
+
+          if (dupErr) {
+            console.warn(`[pr-scan] cache hit but duplicate insert failed (${dupErr.message}); falling through to full scan`);
+          } else {
+            await supabase
+              .from("pr_scan_jobs")
+              .update({
+                status: "completed",
+                started_at: new Date().toISOString(),
+                ended_at: new Date().toISOString(),
+                progress_step: "Loaded cached result (force re-scan to refresh)",
+              })
+              .eq("id", scan_job_id);
+
+            return new Response(
+              JSON.stringify({ success: true, cache_hit: true, narrative_result_id: dup.id }),
+              { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+        } else {
+          // Cache row pointed at a deleted narrative — let it fall through and
+          // the upsert at the end will overwrite the stale pointer.
+          console.warn(`[pr-scan] cache row referenced missing narrative ${cacheRow.narrative_result_id}; proceeding with fresh scan`);
+        }
+      }
+    } else {
+      console.log(`[pr-scan] force=true — skipping cache check for ${project.domain}`);
+    }
 
     // ── Step 1: Crawl brand pages ────────────────────────────────────────────
     await supabase
@@ -1207,6 +1309,26 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (insertErr) throw new Error(`Failed to store results: ${insertErr.message}`);
+
+    // ── Step 5a: Write idempotency cache entry ───────────────────────────────
+    // Upserts on (project_id, input_hash). 24h TTL is enforced at read-time;
+    // older entries are simply ignored. We don't actively prune here — periodic
+    // cleanup is cheap to add later if the table grows.
+    if (insertedNarrative?.id) {
+      const { error: cacheErr } = await supabase
+        .from("pr_scan_cache")
+        .upsert(
+          {
+            project_id,
+            input_hash: inputHash,
+            narrative_result_id: insertedNarrative.id,
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: "project_id,input_hash" },
+        );
+      if (cacheErr) console.warn(`[pr-scan] cache upsert failed (non-fatal): ${cacheErr.message}`);
+      else console.log(`[pr-scan] cache written for ${project.domain} (hash ${inputHash.slice(0, 8)}…)`);
+    }
 
     // ── Step 5b: Seed pr_actions queue ────────────────────────────────────────
     // Each recommended_action becomes a row in pr_actions with status='todo'.
