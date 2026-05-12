@@ -1701,7 +1701,7 @@ export default function Home() {
                 className="absolute bottom-[-1px] left-0 w-full h-[1px] origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-300"
                 style={{ background: "hsl(217 91% 60% / 0.5)" }}
               />
-            </Link>
+            </a>
           </div>
         </div>
       </footer>
