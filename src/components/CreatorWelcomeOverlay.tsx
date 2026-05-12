@@ -19,6 +19,17 @@ type Props = {
   durationMs?: number;
 };
 
+function Word({ children, delay, className = "" }: { children: React.ReactNode; delay: number; className?: string }) {
+  return (
+    <span
+      className={`inline-block animate-mq-word-in ${className}`}
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      {children}
+    </span>
+  );
+}
+
 type Sparkle = { id: number; left: number; top: number; delay: number; size: number };
 
 function makeSparkles(count: number): Sparkle[] {
@@ -32,17 +43,15 @@ function makeSparkles(count: number): Sparkle[] {
 }
 
 export function CreatorWelcomeOverlay({ onComplete, durationMs = 5000 }: Props) {
-  const [phase, setPhase] = useState<"enter" | "hold" | "exit">("enter");
+  const [exiting, setExiting] = useState(false);
   const [sparkles] = useState(() => makeSparkles(28));
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
 
   useEffect(() => {
-    const enterTimer = setTimeout(() => setPhase("hold"), 50);
-    const exitTimer = setTimeout(() => setPhase("exit"), durationMs - 450);
+    const exitTimer = setTimeout(() => setExiting(true), durationMs - 450);
     const doneTimer = setTimeout(() => onCompleteRef.current(), durationMs);
     return () => {
-      clearTimeout(enterTimer);
       clearTimeout(exitTimer);
       clearTimeout(doneTimer);
     };
@@ -51,7 +60,7 @@ export function CreatorWelcomeOverlay({ onComplete, durationMs = 5000 }: Props) 
   return (
     <div
       className={`fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-background transition-opacity duration-500 ${
-        phase === "exit" ? "opacity-0" : "opacity-100"
+        exiting ? "opacity-0" : "opacity-100"
       }`}
       aria-live="polite"
     >
@@ -87,25 +96,25 @@ export function CreatorWelcomeOverlay({ onComplete, durationMs = 5000 }: Props) 
       </div>
 
       <div
-        className={`relative z-10 px-6 text-center transition-all duration-700 ease-out ${
-          phase === "enter"
-            ? "scale-90 opacity-0 blur-sm"
-            : phase === "exit"
-            ? "scale-105 opacity-0"
-            : "scale-100 opacity-100 blur-0"
+        className={`relative z-10 px-6 text-center transition-opacity duration-500 ease-out ${
+          exiting ? "opacity-0" : "opacity-100"
         }`}
       >
         <p className="text-lg md:text-2xl font-medium text-foreground/80 tracking-tight">
-          Welcome to the
+          <Word delay={0}>Welcome</Word>{" "}
+          <Word delay={220}>to</Word>{" "}
+          <Word delay={440}>the</Word>
         </p>
 
         <div className="my-3 md:my-4 inline-flex flex-col items-center select-none animate-mq-glow">
-          <span
-            className="text-6xl md:text-8xl font-black tracking-tight leading-none text-foreground"
-            style={{ fontFamily: '"Amazon Ember", "Helvetica Neue", Arial, sans-serif', letterSpacing: "-0.04em" }}
-          >
-            amazon
-          </span>
+          <Word delay={700} className="block">
+            <span
+              className="text-6xl md:text-8xl font-black tracking-tight leading-none text-foreground"
+              style={{ fontFamily: '"Amazon Ember", "Helvetica Neue", Arial, sans-serif', letterSpacing: "-0.04em" }}
+            >
+              amazon
+            </span>
+          </Word>
           <svg
             viewBox="0 0 220 30"
             className="w-[78%] h-5 md:h-7 mt-1 animate-mq-arrow"
@@ -130,7 +139,10 @@ export function CreatorWelcomeOverlay({ onComplete, durationMs = 5000 }: Props) 
         </div>
 
         <p className="text-[1.35rem] md:text-[1.8rem] font-medium text-foreground/80 tracking-tight">
-          of successful <span className="text-[#FF9900] font-semibold">content ideas</span>
+          <Word delay={1500}>of</Word>{" "}
+          <Word delay={1680}>successful</Word>{" "}
+          <Word delay={1860} className="text-[#FF9900] font-semibold">content</Word>{" "}
+          <Word delay={2040} className="text-[#FF9900] font-semibold">ideas</Word>
         </p>
       </div>
 
@@ -155,7 +167,16 @@ export function CreatorWelcomeOverlay({ onComplete, durationMs = 5000 }: Props) 
           to   { stroke-dasharray: 260; stroke-dashoffset: 0; }
         }
         .animate-mq-arrow path {
-          animation: mq-arrow-draw 1s ease-out forwards;
+          animation: mq-arrow-draw 0.9s ease-out 1s backwards;
+        }
+        @keyframes mq-word-in {
+          0%   { opacity: 0; transform: translateY(14px) scale(0.92); filter: blur(4px); }
+          60%  { opacity: 1; filter: blur(0); }
+          100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+        }
+        .animate-mq-word-in {
+          animation: mq-word-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+          will-change: opacity, transform, filter;
         }
       `}</style>
     </div>
