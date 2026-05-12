@@ -1695,7 +1695,7 @@ export default function Home() {
                 style={{ background: "hsl(217 91% 60% / 0.5)" }}
               />
             </a>
-            <Link to="/terms-and-conditions" className="relative group hover:text-white/55 transition-colors">
+            <a href="https://marketers.quest/terms-of-service/" className="relative group hover:text-white/55 transition-colors">
               Terms
               <span
                 className="absolute bottom-[-1px] left-0 w-full h-[1px] origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-300"

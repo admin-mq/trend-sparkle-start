@@ -300,7 +300,7 @@ export default function Auth() {
           <div className="text-center space-y-1 pt-2">
             <p className="text-xs text-muted-foreground">
               By continuing, you agree to our{' '}
-              <Link to="/terms-and-conditions" className="underline underline-offset-4 hover:text-foreground">Terms</Link>
+              <a href="https://marketers.quest/terms-of-service/" className="underline underline-offset-4 hover:text-foreground">Terms</a>
               {' '}and{' '}
               <a href="https://marketers.quest/privacy-policy/" className="underline underline-offset-4 hover:text-foreground">Privacy Policy</a>.
             </p>
