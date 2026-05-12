@@ -10,6 +10,7 @@ import { Building2, User, Loader2, AlertCircle, CheckCircle, Eye, EyeOff, ArrowL
 import { toast } from 'sonner';
 import { AccountType } from '@/types/auth';
 import { MQLogo } from '@/components/MQLogo';
+import { markCreatorWelcomePending } from '@/components/CreatorWelcomeOverlay';
 
 const BLOCKED_EMAIL_DOMAINS = ['gmail.com', 'googlemail.com'];
 
@@ -142,6 +143,7 @@ export default function Auth() {
     if (error) {
       setSignupErrors({ submit: error.message });
     } else {
+      if (accountType === 'creator') markCreatorWelcomePending();
       setSignupSuccess(true);
       toast.success('Account created! Please check your email to verify.');
     }

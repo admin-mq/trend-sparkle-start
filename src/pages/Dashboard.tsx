@@ -12,6 +12,11 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { CreatorDashboard } from "@/components/CreatorDashboard";
+import {
+  CreatorWelcomeOverlay,
+  shouldShowCreatorWelcome,
+  clearCreatorWelcome,
+} from "@/components/CreatorWelcomeOverlay";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -392,6 +397,7 @@ const Dashboard = () => {
 
   const brandName = profile?.brand_name || profile?.full_name || "Your Brand";
   const greeting = getDailyGreeting(brandName);
+  const [showWelcome, setShowWelcome] = useState(() => shouldShowCreatorWelcome());
 
   const loadDashboard = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -479,6 +485,18 @@ const Dashboard = () => {
   // Wait for auth to settle before rendering — prevents the flash where
   // profile is null, isCreator is false, and brand content renders briefly.
   if (authLoading) return null;
+
+  // ── Creator welcome overlay (3-second blank-screen intro after signup) ────
+  if (isCreator && showWelcome) {
+    return (
+      <CreatorWelcomeOverlay
+        onComplete={() => {
+          clearCreatorWelcome();
+          setShowWelcome(false);
+        }}
+      />
+    );
+  }
 
   // ── Creator dashboard ─────────────────────────────────────────────────────
   if (isCreator) return <CreatorDashboard />;

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabaseClient';
 import { AuthContextType, UserProfile, SignUpData } from '@/types/auth';
+import { markCreatorWelcomePending } from '@/components/CreatorWelcomeOverlay';
 
 const SESSION_EXPIRY_KEY = 'mq_login_at';
 const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -96,6 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .select()
           .maybeSingle();
         localStorage.removeItem('mq_pending_acct_type');
+        if (accountType === 'creator') markCreatorWelcomePending();
         if (mounted) {
           setProfile(newProfile as UserProfile | null);
           setLoading(false);
