@@ -536,8 +536,17 @@ const TrendQuest = () => {
   };
 
   const handleGenerateTweets = async (trend: TwitterTrend) => {
-    if (!userProfile) {
-      toast.error('User profile is required');
+    // userProfile may be null if session restored twitterData before authProfile
+    // or creatorProfile finished loading. Build it on-the-fly as a fallback so
+    // users with cached trends don't hit a "profile required" wall on every refresh.
+    const effectiveProfile = userProfile ?? (
+      isCreator && creatorProfile?.industry
+        ? buildCreatorProfile(creatorProfile, inputValues)
+        : null
+    );
+
+    if (!effectiveProfile) {
+      toast.error('Complete your creator profile first');
       return;
     }
     setTweetsLoading(true);
@@ -555,7 +564,7 @@ const TrendQuest = () => {
     try {
       const { data, error: fnError } = await supabase.functions.invoke('generate-tweet', {
         body: {
-          user_profile: userProfile,
+          user_profile: effectiveProfile,
           trend,
           topic_angle: inputValues.topic_angle || undefined,
           char_limit: charLimit,
