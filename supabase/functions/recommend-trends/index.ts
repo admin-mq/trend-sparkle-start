@@ -875,6 +875,11 @@ serve(async (req) => {
       ? selected_categories
       : [];
     let categoryFallback = false;
+    // noFreshData: set to true whenever we had to drop the 24h freshness
+    // filter as a last resort (means the cron hasn't populated fresh rows
+    // for this region yet). The frontend uses this to trigger an on-demand
+    // fetch-trends call and auto-retry so users never see stale data silently.
+    let noFreshData = false;
 
     // ── Freshness contract: only show trends that broke in the last 24h.
     // Without this, the daily-cron-populated trends table accumulates a
@@ -966,6 +971,7 @@ serve(async (req) => {
       // have. Without this, a region whose cron just hasn't run in 25h
       // would render an empty Trends list — worse UX than "slightly old"
       // trends with a clear timestamp on each card.
+      // noFreshData=true tells the frontend to trigger an on-demand fetch.
       if (!trendsError && trends.length === 0) {
         console.log(`[recommend-trends] No fresh trends ANYWHERE for ${location} — dropping freshness filter as last resort`);
         let q = externalSupabase
@@ -979,7 +985,10 @@ serve(async (req) => {
         const stale = await q;
         trends = stale.data || [];
         trendsError = stale.error;
-        if (trends.length > 0) categoryFallback = true; // signal "we had to relax"
+        if (trends.length > 0) {
+          categoryFallback = true; // signal "we had to relax"
+          noFreshData = true;      // signal "please trigger an on-demand fetch"
+        }
       }
 
       // Final fallback: region has NO data at all (cron hasn't run for this
@@ -1383,6 +1392,7 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
           recommended_trends,
           cooldown_active: cooldownActive,
           category_fallback: categoryFallback,
+          no_fresh_data: noFreshData,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -1567,6 +1577,7 @@ Focus on very concrete reasons this trend works for this specific brand. Do NOT 
           degraded_reason: 'ai_ranking_unavailable',
           cooldown_active: cooldownActive,
           category_fallback: categoryFallback,
+          no_fresh_data: noFreshData,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );

@@ -430,6 +430,35 @@ const TrendQuest = () => {
                 "Showing less-relevant trends from your last batch. We refresh the source data every 2 hours to avoid spamming our upstream APIs.",
               duration: 6000,
             });
+          } else if (data.no_fresh_data && inputValues.target_location) {
+            // Stale data on a manual refresh — trigger on-demand fetch.
+            const location = inputValues.target_location;
+            toast.loading('Fetching latest trends for your region…', { id: 'fresh-fetch' });
+            supabase.functions.invoke('fetch-trends', { body: { location } })
+              .then(() => {
+                toast.dismiss('fresh-fetch');
+                return supabase.functions.invoke('recommend-trends', {
+                  body: {
+                    user_profile: userProfile,
+                    user_id: user?.id || null,
+                    selected_categories: inputValues.content_categories.length > 0 ? inputValues.content_categories : undefined,
+                    location,
+                    brand_id: !isCreator ? (selectedBrandId || undefined) : undefined,
+                    refresh: true,
+                  },
+                });
+              })
+              .then(({ data: freshData }) => {
+                if (freshData?.recommended_trends?.length) {
+                  setRecommendations(freshData.recommended_trends);
+                  setCategoryFallback(!!freshData.category_fallback);
+                  toast.success('Trends refreshed with the latest data!');
+                }
+              })
+              .catch((fetchErr) => {
+                toast.dismiss('fresh-fetch');
+                console.warn('[TrendQuest] Background fetch-trends failed on refresh:', fetchErr);
+              });
           }
         }
       }
@@ -527,6 +556,40 @@ const TrendQuest = () => {
       handleRecommendationsReceived(data.recommended_trends, {
         categoryFallback: !!data.category_fallback,
       });
+
+      // no_fresh_data=true means the DB had nothing ≤24h old for this
+      // region — the cron hasn't run recently. Trigger an on-demand
+      // fetch-trends now, then auto-retry recommend-trends once it
+      // finishes so the user gets fresh data without a manual refresh.
+      if (data.no_fresh_data && inputValues.target_location) {
+        const location = inputValues.target_location;
+        toast.loading('Fetching latest trends for your region…', { id: 'fresh-fetch' });
+        supabase.functions.invoke('fetch-trends', {
+          body: { location },
+        }).then(() => {
+          toast.dismiss('fresh-fetch');
+          // Re-run recommend-trends to pick from the freshly populated DB
+          return supabase.functions.invoke('recommend-trends', {
+            body: {
+              user_profile: userProfile,
+              user_id: user?.id || null,
+              selected_categories: inputValues.content_categories.length > 0 ? inputValues.content_categories : undefined,
+              location,
+              brand_id: !isCreator ? (selectedBrandId || undefined) : undefined,
+            },
+          });
+        }).then(({ data: freshData }) => {
+          if (freshData?.recommended_trends?.length) {
+            handleRecommendationsReceived(freshData.recommended_trends, {
+              categoryFallback: !!freshData.category_fallback,
+            });
+            toast.success('Trends refreshed with the latest data!');
+          }
+        }).catch((fetchErr) => {
+          toast.dismiss('fresh-fetch');
+          console.warn('[TrendQuest] Background fetch-trends failed:', fetchErr);
+        });
+      }
     } catch (err) {
       console.error('Error fetching recommendations:', err);
       toast.error('Failed to load recommendations');
