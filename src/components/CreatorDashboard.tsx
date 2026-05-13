@@ -201,19 +201,19 @@ async function fetchHotTrends(
     if (data && data.length > 0) return { data: data as HotTrend[], mode: "niche" };
   }
 
-  // 2. Niche only — any region (creator's niche > creator's region)
-  if (niche) {
-    const { data } = await nicheFilter(baseQuery());
-    if (data && data.length > 0) return { data: data as HotTrend[], mode: "niche" };
-  }
-
-  // 3. Region only (no niche data available)
+  // 2. Region only — location always beats cross-region niche
   if (regionCode) {
     const { data } = await baseQuery().eq("region", regionCode);
     if (data && data.length > 0) return { data: data as HotTrend[], mode: "regional" };
   }
 
-  // 4. Global fallback (profile not filled)
+  // 3. Niche only — any region (better than fully global)
+  if (niche) {
+    const { data } = await nicheFilter(baseQuery());
+    if (data && data.length > 0) return { data: data as HotTrend[], mode: "niche" };
+  }
+
+  // 4. Global fallback (profile not filled or no data found)
   const { data } = await baseQuery();
   return { data: (data as HotTrend[]) ?? [], mode: "global" };
 }
@@ -248,7 +248,7 @@ export const CreatorDashboard = () => {
   // Prefer AI-parsed persona fields; fall back to raw profile fields
   const persona = profile?.creator_persona;
   const niche = persona?.niche || profile?.industry || "Content";
-  const region = persona?.region_code || geoToRegion((profile as any)?.location);
+  const region = persona?.region_code || geoToRegion(profile?.location);
   const geography = persona?.location_normalized || (profile as any)?.location;
   const regionLabel = region ? REGION_LABELS[region] ?? geography : geography;
 
@@ -265,8 +265,9 @@ export const CreatorDashboard = () => {
     const monthBegin = monthStart().toISOString();
     const now = new Date().toISOString();
 
-    // Use the actual profile niche — null means "no profile filled" → global fallback
-    const industryFilter = profile?.industry ?? null;
+    // Use persona niche first (creator accounts), then legacy industry field
+    // null means "no profile filled" → global fallback
+    const industryFilter = persona?.niche || profile?.industry || null;
 
     const [savedWeekRes, draftsMonthRes, totalSavedRes, pipelineSavedRes, hotTrendsResult, watchlistRes] =
       await Promise.all([
@@ -325,7 +326,7 @@ export const CreatorDashboard = () => {
       watchlist:       (watchlistRes.data as WatchlistTag[]) ?? [],
     });
     setLoading(false);
-  }, [user, region, profile?.industry]);
+  }, [user, region, persona?.niche, profile?.industry]);
 
   useEffect(() => { void loadData(); }, [loadData]);
 
