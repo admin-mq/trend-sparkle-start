@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { RecommendedTrend, TrendTiming, TrendCategory, TrendObservation, CompetitorCoverage, YouTubeVelocity, DecayForecast, TrendArc } from "@/types/trends";
 import { TrendingUp, ArrowRight, RefreshCw, Zap, Clock, Flame, ShieldCheck, AlertTriangle, Youtube, ThumbsUp, MessageCircle, Users, Trophy, Rocket, Gauge, Hourglass, Layers, Bookmark, BookmarkCheck, Info } from "lucide-react";
@@ -702,6 +702,18 @@ export const RecommendedTrends = ({
 }: RecommendedTrendsProps) => {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
+  // Reset the category filter whenever a new set of recommendations arrives.
+  // Without this, a "News" filter selected on a previous result set persists
+  // into the new one — showing "0/6 trends" and "No trends in News" even
+  // though News isn't among the new results.
+  const prevRecommendationsRef = useRef(recommendations);
+  useEffect(() => {
+    if (prevRecommendationsRef.current !== recommendations) {
+      prevRecommendationsRef.current = recommendations;
+      setSelectedCategories([]);
+    }
+  }, [recommendations]);
+
   // Derive unique categories present in current recommendations
   const availableCategories = useMemo(() => {
     const cats = recommendations
@@ -717,11 +729,15 @@ export const RecommendedTrends = ({
     );
   };
 
-  // Filter trends for display
+  // Filter trends for display.
+  // Only apply categories that actually exist in the current result set —
+  // stale selections from a previous result set are silently dropped so
+  // they never produce a "0 results" empty state on fresh recommendations.
   const displayedTrends = useMemo(() => {
-    if (selectedCategories.length === 0) return recommendations;
-    return recommendations.filter(t => t.category && selectedCategories.includes(t.category));
-  }, [recommendations, selectedCategories]);
+    const activeFilters = selectedCategories.filter(c => availableCategories.includes(c));
+    if (activeFilters.length === 0) return recommendations;
+    return recommendations.filter(t => t.category && activeFilters.includes(t.category));
+  }, [recommendations, selectedCategories, availableCategories]);
 
   if (recommendations.length === 0) {
     return (
@@ -821,11 +837,12 @@ export const RecommendedTrends = ({
         </div>
       )}
 
-      {/* Empty state for filtered view */}
-      {displayedTrends.length === 0 && selectedCategories.length > 0 && (
+      {/* Empty state for filtered view — only when the active filter
+          genuinely exists in the current result set but has no matches */}
+      {displayedTrends.length === 0 && selectedCategories.filter(c => availableCategories.includes(c)).length > 0 && (
         <div className="flex flex-col items-center justify-center flex-1 text-center py-8">
           <p className="text-muted-foreground text-sm">
-            No trends in <strong>{selectedCategories.join(', ')}</strong> right now.
+            No trends in <strong>{selectedCategories.filter(c => availableCategories.includes(c)).join(', ')}</strong> right now.
           </p>
           <button
             onClick={() => setSelectedCategories([])}
