@@ -211,17 +211,26 @@ function CreatorProfile() {
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-3">
-              <Button
-                disabled
-                variant="outline"
-                className="gap-2 border-pink-500/20 text-pink-400/50 cursor-not-allowed"
-              >
-                <Link2 className="w-4 h-4" />
-                Connect Meta Account
-              </Button>
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
-                Coming Soon
-              </span>
+              {igConnection ? (
+                <div className="flex items-center gap-2 text-sm text-green-500">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Connected as @{igConnection.username}
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="gap-2 border-pink-500/40 text-pink-500 hover:bg-pink-500/10 hover:text-pink-400"
+                  onClick={handleConnectInstagram}
+                  disabled={igConnecting}
+                >
+                  {igConnecting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Link2 className="w-4 h-4" />
+                  )}
+                  {igConnecting ? "Connecting…" : "Connect Meta Account"}
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>

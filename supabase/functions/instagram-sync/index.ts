@@ -140,6 +140,38 @@ serve(async (req) => {
 
     console.log(`Sync complete for user ${user_id}: ${synced}/${posts.length} posts synced, ${linked} linked to requests, ${insightsFail} insight failures`);
 
+    // Enrich creator persona with real post captions
+    const captions = posts
+      .map((p: { caption?: string }) => p.caption)
+      .filter((c: string | undefined): c is string => typeof c === 'string' && c.trim().length > 0);
+
+    if (captions.length > 0) {
+      const { data: profile } = await db
+        .from('user_profiles')
+        .select('full_name, industry, location, business_summary')
+        .eq('user_id', user_id)
+        .maybeSingle();
+
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const anonKey     = Deno.env.get('SUPABASE_ANON_KEY')!;
+
+      fetch(`${supabaseUrl}/functions/v1/parse-creator-persona`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${anonKey}`,
+        },
+        body: JSON.stringify({
+          user_id,
+          full_name: profile?.full_name    || null,
+          industry:  profile?.industry     || null,
+          location:  profile?.location     || null,
+          bio:       profile?.business_summary || null,
+          captions,
+        }),
+      }).catch((err: unknown) => console.warn('parse-creator-persona call failed:', err));
+    }
+
     return json({ success: true, synced, linked, total: posts.length, insight_failures: insightsFail });
 
   } catch (err) {
