@@ -881,15 +881,16 @@ serve(async (req) => {
     // fetch-trends call and auto-retry so users never see stale data silently.
     let noFreshData = false;
 
-    // ── Freshness contract: only show trends that broke in the last 24h.
-    // Without this, the daily-cron-populated trends table accumulates a
-    // long tail of multi-day-old "still active" rows. The user sees a
-    // "Broke 2d ago" badge and asks "why are you showing me old news?"
+    // ── Freshness contract: only show trends that broke in the last 6h.
+    // fetch-trends runs every 4h via cron — a 6h window ensures users
+    // always get the latest batch. Anything older than 6h means the cron
+    // missed a run; the last-resort fallback fires noFreshData=true so
+    // the frontend triggers an on-demand fetch-trends immediately.
     // We measure freshness off `first_seen_at` (the moment the trend
     // was first detected by fetch-trends), not `last_seen_at` — the
     // latter ticks on every re-detection and would keep stale trends
     // alive indefinitely.
-    const FRESH_HOURS = 24;
+    const FRESH_HOURS = 6;
     const freshCutoffMs = Date.now() - FRESH_HOURS * 3_600_000;
     const isFresh = (t: any) => {
       if (!t?.first_seen_at) return false; // no timestamp = treat as stale
