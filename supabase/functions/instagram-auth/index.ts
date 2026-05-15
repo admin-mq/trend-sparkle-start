@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const META_API_VERSION = 'v20.0';
+const META_API_VERSION = 'v21.0';
 const SCOPES = 'instagram_basic,instagram_manage_insights,pages_show_list';
 
 serve(async (req) => {
@@ -82,23 +82,19 @@ serve(async (req) => {
         }
       }
 
-      // Fallback: use Facebook user ID (personal IG basic display)
       if (!igUserId) {
-        const meResp = await fetch(
-          `https://graph.facebook.com/${META_API_VERSION}/me?fields=id,name&access_token=${longToken}`
-        );
-        const meData = await meResp.json();
-        igUserId  = meData.id;
-        igUsername = meData.name;
-      } else {
-        // Fetch IG profile details
-        const profileResp = await fetch(
-          `https://graph.facebook.com/${META_API_VERSION}/${igUserId}?fields=username,profile_picture_url&access_token=${igPageToken}`
-        );
-        const profileData = await profileResp.json();
-        igUsername   = profileData.username    || null;
-        igProfilePic = profileData.profile_picture_url || null;
+        return json({
+          error: 'No Instagram Business or Creator account found. Please make sure your Instagram account is set to Business or Creator and linked to a Facebook Page.',
+        }, 400);
       }
+
+      // Fetch IG profile details
+      const profileResp = await fetch(
+        `https://graph.facebook.com/${META_API_VERSION}/${igUserId}?fields=username,profile_picture_url&access_token=${igPageToken}`
+      );
+      const profileData = await profileResp.json();
+      igUsername   = profileData.username    || null;
+      igProfilePic = profileData.profile_picture_url || null;
 
       // Store in DB
       const supabaseUrl       = Deno.env.get('SUPABASE_URL')!;
@@ -135,7 +131,29 @@ serve(async (req) => {
       return json({ connected: !!data, connection: data });
     }
 
-    // ── 4. Disconnect ──────────────────────────────────────────────────────────
+    // ── 4. Refresh long-lived token (call before it expires at 60 days) ────────
+    if (action === 'refresh') {
+      if (!user_id) return json({ error: 'user_id is required' }, 400);
+      const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+      const { data: conn } = await db
+        .from('instagram_connections')
+        .select('access_token')
+        .eq('user_id', user_id)
+        .maybeSingle();
+      if (!conn) return json({ error: 'No connection found' }, 404);
+      const refreshResp = await fetch(
+        `https://graph.facebook.com/${META_API_VERSION}/oauth/access_token?grant_type=ig_refresh_token&access_token=${conn.access_token}`
+      );
+      const refreshData = await refreshResp.json();
+      if (refreshData.error) return json({ error: refreshData.error.message }, 400);
+      await db.from('instagram_connections').update({
+        access_token: refreshData.access_token,
+        expires_at:   new Date(Date.now() + refreshData.expires_in * 1000).toISOString(),
+      }).eq('user_id', user_id);
+      return json({ success: true });
+    }
+
+    // ── 5. Disconnect ──────────────────────────────────────────────────────────
     if (action === 'disconnect') {
       if (!user_id) return json({ error: 'user_id is required' }, 400);
       const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);

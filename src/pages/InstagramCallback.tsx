@@ -68,7 +68,7 @@ const InstagramCallback = () => {
       }).catch(console.warn);
 
       // Redirect back after a short delay
-      setTimeout(() => navigate("/hashtag-analysis"), 2500);
+      setTimeout(() => navigate("/creator-dashboard"), 2500);
 
     } catch (err) {
       console.error("Instagram callback error:", err);

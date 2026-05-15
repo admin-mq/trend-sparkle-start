@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const META_API_VERSION   = 'v20.0';
+const META_API_VERSION   = 'v21.0';
 const INSIGHTS_METRICS   = 'impressions,reach,saved,shares';
 const MAX_POSTS_TO_FETCH = 25;
 
