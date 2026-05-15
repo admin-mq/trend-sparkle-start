@@ -175,47 +175,58 @@ async function fetchHotTrends(
   regionCode: string | null,
   niche: string | null
 ): Promise<{ data: HotTrend[]; mode: TrendMode }> {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const baseQuery = () =>
+  // Use first_seen_at with a 6h window — matches the recommend-trends
+  // freshness contract and the fetch-trends cron interval.
+  // last_seen_at ticks on every re-detection and kept yesterday's trends alive.
+  const since6h  = new Date(Date.now() -  6 * 60 * 60 * 1000).toISOString();
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const baseQuery = (cutoff: string) =>
     supabase
       .from("trends")
       .select("trend_id, trend_name, category, virality_score, timing, region")
       .eq("active", true)
       .eq("premium_only", false)
-      .gte("last_seen_at", since)
+      .gte("first_seen_at", cutoff)
       .order("virality_score", { ascending: false })
       .limit(3);
 
-  const nicheFilter = (q: ReturnType<typeof baseQuery>) => {
+  // Inner helper: try 6h window first, widen to 24h if empty
+  const queryWithFallback = async (applyFilters: (q: ReturnType<typeof baseQuery>) => ReturnType<typeof baseQuery>) => {
+    const { data: fresh } = await applyFilters(baseQuery(since6h));
+    if (fresh && fresh.length > 0) return fresh as HotTrend[];
+    const { data: wider } = await applyFilters(baseQuery(since24h));
+    return (wider ?? []) as HotTrend[];
+  };
+
+  const nicheFilter = <T extends ReturnType<typeof baseQuery>>(q: T): T => {
     if (!niche) return q;
-    // Map creator niche to actual DB category labels (trends table uses
-    // "Lifestyle", "Entertainment", etc. — not raw niche words like "fashion")
     const dbCategories = nicheToDbCategories(niche);
     const orFilter = dbCategories.map(c => `category.ilike.%${c}%`).join(",");
-    return q.or(orFilter);
+    return q.or(orFilter) as T;
   };
 
   // 1. Niche + region (best match)
   if (regionCode && niche) {
-    const { data } = await nicheFilter(baseQuery().eq("region", regionCode));
-    if (data && data.length > 0) return { data: data as HotTrend[], mode: "niche" };
+    const data = await queryWithFallback(q => nicheFilter(q.eq("region", regionCode) as ReturnType<typeof baseQuery>));
+    if (data.length > 0) return { data, mode: "niche" };
   }
 
   // 2. Region only — location always beats cross-region niche
   if (regionCode) {
-    const { data } = await baseQuery().eq("region", regionCode);
-    if (data && data.length > 0) return { data: data as HotTrend[], mode: "regional" };
+    const data = await queryWithFallback(q => q.eq("region", regionCode) as ReturnType<typeof baseQuery>);
+    if (data.length > 0) return { data, mode: "regional" };
   }
 
   // 3. Niche only — any region (better than fully global)
   if (niche) {
-    const { data } = await nicheFilter(baseQuery());
-    if (data && data.length > 0) return { data: data as HotTrend[], mode: "niche" };
+    const data = await queryWithFallback(q => nicheFilter(q));
+    if (data.length > 0) return { data, mode: "niche" };
   }
 
-  // 4. Global fallback (profile not filled or no data found)
-  const { data } = await baseQuery();
-  return { data: (data as HotTrend[]) ?? [], mode: "global" };
+  // 4. Global fallback
+  const data = await queryWithFallback(q => q);
+  return { data, mode: "global" };
 }
 
 function TrendBadge({ status }: { status: WatchlistTag["trend_status"] }) {
