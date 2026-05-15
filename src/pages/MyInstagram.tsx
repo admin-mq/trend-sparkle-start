@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -7,11 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Instagram, Link2, Loader2, TrendingUp, Eye, Bookmark, Share2,
-  Sparkles, Hash, ArrowRight, ExternalLink, AlertCircle,
+  Sparkles, Hash, ArrowRight, ExternalLink, AlertCircle, RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+type Connection = {
+  username: string;
+  profile_picture_url: string | null;
+};
 
 type SyncedPost = {
   caption: string | null;
@@ -41,17 +45,7 @@ type TrendingPost = {
   permalink: string | null;
 };
 
-type TrendingSection = {
-  hashtag: string;
-  posts: TrendingPost[];
-};
-
-type AnalysisResult = {
-  connection: { username: string; profile_picture_url: string | null };
-  posts: SyncedPost[];
-  summary: AISummary | null;
-  trending: TrendingSection[];
-};
+type TrendingSection = { hashtag: string; posts: TrendingPost[] };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -60,15 +54,16 @@ const fmt = (n: number | null) =>
 
 const mediaTypeLabel = (t: string | null) => {
   if (!t) return "POST";
-  if (t === "IMAGE") return "Photo";
-  if (t === "VIDEO") return "Reel";
+  if (t === "IMAGE")          return "Photo";
+  if (t === "VIDEO")          return "Reel";
   if (t === "CAROUSEL_ALBUM") return "Carousel";
   return t;
 };
 
 const trendColor = (trend: string) => {
-  if (trend.toLowerCase().startsWith("improving")) return "text-emerald-500";
-  if (trend.toLowerCase().startsWith("declining"))  return "text-rose-500";
+  const l = trend.toLowerCase();
+  if (l.startsWith("improving")) return "text-emerald-500";
+  if (l.startsWith("declining"))  return "text-rose-500";
   return "text-amber-500";
 };
 
@@ -76,46 +71,74 @@ const trendColor = (trend: string) => {
 
 export default function MyInstagram() {
   const { user } = useAuthContext();
-  const navigate  = useNavigate();
 
-  const [connected,    setConnected]    = useState<boolean | null>(null);
+  // ── Connection + posts (direct DB — always available) ─────────────────────
+  const [connLoading,  setConnLoading]  = useState(true);
+  const [connection,   setConnection]   = useState<Connection | null>(null);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [posts,        setPosts]        = useState<SyncedPost[]>([]);
+
+  // ── AI analysis + trending (edge function — optional) ─────────────────────
+  const [aiLoading,  setAiLoading]  = useState(false);
+  const [summary,    setSummary]    = useState<AISummary | null>(null);
+  const [trending,   setTrending]   = useState<TrendingSection[]>([]);
+  const [aiError,    setAiError]    = useState(false);
+
+  // ── Instagram OAuth ────────────────────────────────────────────────────────
   const [igConnecting, setIgConnecting] = useState(false);
-  const [loading,      setLoading]      = useState(false);
-  const [data,         setData]         = useState<AnalysisResult | null>(null);
-  const [error,        setError]        = useState<string | null>(null);
 
-  // Check if Instagram is connected
+  // Step 1 — check connection directly from DB
   useEffect(() => {
     if (!user) return;
     supabase
       .from("instagram_connections")
-      .select("username")
+      .select("username, profile_picture_url")
       .eq("user_id", user.id)
       .maybeSingle()
-      .then(({ data: conn }) => setConnected(!!conn));
+      .then(({ data }) => {
+        setConnection(data ?? null);
+        setConnLoading(false);
+      });
   }, [user]);
 
-  // Load analysis once we know they're connected
+  // Step 2 — load posts from DB (no edge function needed)
   useEffect(() => {
-    if (!connected || !user) return;
-    loadAnalysis();
-  }, [connected, user]);
+    if (!connection || !user) return;
+    setPostsLoading(true);
+    supabase
+      .from("instagram_synced_posts")
+      .select("caption, media_type, posted_at, permalink, impressions, reach, saved, shares")
+      .eq("user_id", user.id)
+      .order("posted_at", { ascending: false })
+      .limit(25)
+      .then(({ data }) => {
+        setPosts(data ?? []);
+        setPostsLoading(false);
+      });
+  }, [connection, user]);
 
-  const loadAnalysis = async () => {
+  // Step 3 — load AI summary + trending via edge function (optional)
+  useEffect(() => {
+    if (!connection || !user) return;
+    loadAiAnalysis();
+  }, [connection, user]);
+
+  const loadAiAnalysis = async () => {
     if (!user) return;
-    setLoading(true);
-    setError(null);
+    setAiLoading(true);
+    setAiError(false);
     try {
-      const { data: res, error: fnErr } = await supabase.functions.invoke("ig-performance-analysis", {
+      const { data, error } = await supabase.functions.invoke("ig-performance-analysis", {
         body: { user_id: user.id },
       });
-      if (fnErr || res?.error) throw new Error(res?.error || fnErr?.message);
-      setData(res as AnalysisResult);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load Instagram data");
-      toast.error("Could not load Instagram data");
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      if (data?.summary)  setSummary(data.summary);
+      if (data?.trending) setTrending(data.trending);
+    } catch {
+      setAiError(true);
     } finally {
-      setLoading(false);
+      setAiLoading(false);
     }
   };
 
@@ -124,19 +147,28 @@ export default function MyInstagram() {
     setIgConnecting(true);
     try {
       const redirectUri = `${window.location.origin}/instagram-callback`;
-      const { data: res, error: fnErr } = await supabase.functions.invoke("instagram-auth", {
+      const { data, error } = await supabase.functions.invoke("instagram-auth", {
         body: { action: "initiate", redirect_uri: redirectUri },
       });
-      if (fnErr || res?.error) throw new Error(res?.error || fnErr?.message);
-      window.location.href = res.url;
+      if (error || data?.error) throw new Error(data?.error || error?.message);
+      window.location.href = data.url;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not start Instagram connection");
       setIgConnecting(false);
     }
   };
 
+  // ── Loading: checking connection ───────────────────────────────────────────
+  if (connLoading) {
+    return (
+      <div className="p-6 flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   // ── Not connected ──────────────────────────────────────────────────────────
-  if (connected === false) {
+  if (!connection) {
     return (
       <div className="p-6 max-w-lg mx-auto flex flex-col items-center gap-6 pt-20">
         <div className="w-16 h-16 rounded-2xl bg-pink-500/10 flex items-center justify-center">
@@ -153,47 +185,27 @@ export default function MyInstagram() {
           disabled={igConnecting}
           className="gap-2 bg-pink-500 hover:bg-pink-600 text-white"
         >
-          {igConnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+          {igConnecting
+            ? <Loader2 className="w-4 h-4 animate-spin" />
+            : <Link2 className="w-4 h-4" />}
           {igConnecting ? "Connecting…" : "Connect Instagram"}
         </Button>
       </div>
     );
   }
 
-  // ── Loading check ──────────────────────────────────────────────────────────
-  if (connected === null || loading) {
-    return (
-      <div className="p-6 flex items-center justify-center min-h-[60vh]">
-        <div className="flex flex-col items-center gap-3 text-muted-foreground">
-          <Loader2 className="w-7 h-7 animate-spin" />
-          <span className="text-sm">{loading ? "Analysing your Instagram…" : "Checking connection…"}</span>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Error ──────────────────────────────────────────────────────────────────
-  if (error) {
-    return (
-      <div className="p-6 max-w-md mx-auto pt-20 text-center space-y-4">
-        <AlertCircle className="w-10 h-10 text-rose-400 mx-auto" />
-        <p className="text-sm text-muted-foreground">{error}</p>
-        <Button variant="outline" onClick={loadAnalysis}>Try again</Button>
-      </div>
-    );
-  }
-
-  if (!data) return null;
-
-  const { connection, posts, summary, trending } = data;
-
+  // ── Connected ──────────────────────────────────────────────────────────────
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-5xl mx-auto">
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="flex items-center gap-3">
         {connection.profile_picture_url ? (
-          <img src={connection.profile_picture_url} alt={connection.username} className="w-10 h-10 rounded-full object-cover" />
+          <img
+            src={connection.profile_picture_url}
+            alt={connection.username}
+            className="w-10 h-10 rounded-full object-cover"
+          />
         ) : (
           <div className="w-10 h-10 rounded-full bg-pink-500/15 flex items-center justify-center">
             <Instagram className="w-5 h-5 text-pink-500" />
@@ -203,20 +215,36 @@ export default function MyInstagram() {
           <h1 className="text-xl font-bold">My Instagram</h1>
           <p className="text-sm text-muted-foreground">@{connection.username}</p>
         </div>
-        <Button variant="ghost" size="sm" className="ml-auto gap-1 text-xs text-muted-foreground" onClick={loadAnalysis}>
+        <Button
+          variant="ghost" size="sm"
+          className="ml-auto gap-1.5 text-xs text-muted-foreground"
+          onClick={loadAiAnalysis}
+          disabled={aiLoading}
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${aiLoading ? "animate-spin" : ""}`} />
           Refresh
         </Button>
       </div>
 
-      {/* ── AI Performance Summary ── */}
-      {summary && (
+      {/* AI Performance Summary */}
+      {aiLoading ? (
+        <Card className="border-pink-500/20 bg-pink-500/5 animate-pulse">
+          <CardHeader className="pb-2">
+            <div className="h-4 w-40 bg-muted rounded" />
+            <div className="h-3 w-64 bg-muted rounded mt-1" />
+          </CardHeader>
+          <CardContent className="h-16" />
+        </Card>
+      ) : summary ? (
         <Card className="border-pink-500/20 bg-pink-500/5">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-pink-500" />
               Performance Summary
             </CardTitle>
-            <CardDescription className="text-foreground/80 font-medium">{summary.headline}</CardDescription>
+            <CardDescription className="text-foreground/80 font-medium">
+              {summary.headline}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
@@ -248,20 +276,38 @@ export default function MyInstagram() {
             )}
           </CardContent>
         </Card>
-      )}
+      ) : aiError ? (
+        <Card className="border-dashed border-border">
+          <CardContent className="py-4 flex items-center gap-3 text-sm text-muted-foreground">
+            <AlertCircle className="w-4 h-4 shrink-0 text-amber-500" />
+            AI analysis is temporarily unavailable. Your post data below is live.
+            <Button variant="ghost" size="sm" className="ml-auto text-xs" onClick={loadAiAnalysis}>
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
-      {/* ── Post Performance ── */}
+      {/* Post Performance */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <TrendingUp className="w-4 h-4" />
             Post Performance
           </CardTitle>
-          <CardDescription>Your last {posts.length} posts — impressions, reach, saves, shares</CardDescription>
+          <CardDescription>
+            Your last {posts.length > 0 ? posts.length : "—"} posts — impressions, reach, saves, shares
+          </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          {posts.length === 0 ? (
-            <p className="text-sm text-muted-foreground p-4">No posts synced yet. This updates automatically after connecting.</p>
+          {postsLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : posts.length === 0 ? (
+            <p className="text-sm text-muted-foreground p-4">
+              No posts synced yet. Posts sync automatically after connecting — try refreshing in a moment.
+            </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -292,11 +338,15 @@ export default function MyInstagram() {
                           </Badge>
                           <div className="min-w-0">
                             <p className="truncate text-foreground/90">
-                              {post.caption ? post.caption.slice(0, 80) : <span className="text-muted-foreground italic">No caption</span>}
+                              {post.caption
+                                ? post.caption.slice(0, 80)
+                                : <span className="text-muted-foreground italic">No caption</span>}
                             </p>
                             {post.posted_at && (
                               <p className="text-[11px] text-muted-foreground mt-0.5">
-                                {new Date(post.posted_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                                {new Date(post.posted_at).toLocaleDateString("en-GB", {
+                                  day: "numeric", month: "short", year: "numeric",
+                                })}
                               </p>
                             )}
                           </div>
@@ -309,7 +359,12 @@ export default function MyInstagram() {
                         <div className="flex items-center justify-end gap-2">
                           {fmt(post.shares)}
                           {post.permalink && (
-                            <a href={post.permalink} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground">
+                            <a
+                              href={post.permalink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-muted-foreground hover:text-foreground"
+                            >
                               <ExternalLink className="w-3 h-3" />
                             </a>
                           )}
@@ -324,55 +379,69 @@ export default function MyInstagram() {
         </CardContent>
       </Card>
 
-      {/* ── Trending in Your Niche ── */}
-      <div className="space-y-3">
-        <div>
-          <h2 className="text-base font-semibold flex items-center gap-2">
-            <Hash className="w-4 h-4 text-pink-500" />
-            Trending in Your Niche
-          </h2>
-          <p className="text-sm text-muted-foreground mt-0.5">Top content right now under the hashtags you use most</p>
-        </div>
+      {/* Trending in Your Niche */}
+      {(aiLoading || trending.length > 0) && (
+        <div className="space-y-3">
+          <div>
+            <h2 className="text-base font-semibold flex items-center gap-2">
+              <Hash className="w-4 h-4 text-pink-500" />
+              Trending in Your Niche
+            </h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Top content right now under the hashtags you use most
+            </p>
+          </div>
 
-        {trending.length === 0 ? (
-          <Card>
-            <CardContent className="py-8 text-center text-sm text-muted-foreground">
-              {summary === null
-                ? "Connect Instagram and save your profile to generate hashtag trends."
-                : "No hashtag trend data yet — this populates once your persona has top hashtags identified."}
-            </CardContent>
-          </Card>
-        ) : (
-          trending.map(({ hashtag, posts: tPosts }) => (
-            <Card key={hashtag}>
-              <CardHeader className="pb-2 pt-4">
-                <CardTitle className="text-sm font-semibold text-pink-500">#{hashtag}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 pb-4">
-                {tPosts.map((tp) => (
-                  <div key={tp.id} className="flex items-start justify-between gap-3 text-sm py-2 border-b border-border/40 last:border-0">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-foreground/90">
-                        {tp.caption ? tp.caption.slice(0, 100) : <span className="text-muted-foreground italic">No caption</span>}
-                      </p>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                        {tp.like_count != null && <span>❤️ {fmt(tp.like_count)}</span>}
-                        {tp.comments_count != null && <span>💬 {fmt(tp.comments_count)}</span>}
-                        {tp.media_type && <Badge variant="outline" className="text-[10px]">{mediaTypeLabel(tp.media_type)}</Badge>}
-                      </div>
-                    </div>
-                    {tp.permalink && (
-                      <a href={tp.permalink} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5">
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    )}
-                  </div>
-                ))}
-              </CardContent>
+          {aiLoading ? (
+            <Card className="animate-pulse">
+              <CardContent className="py-8" />
             </Card>
-          ))
-        )}
-      </div>
+          ) : (
+            trending.map(({ hashtag, posts: tPosts }) => (
+              <Card key={hashtag}>
+                <CardHeader className="pb-2 pt-4">
+                  <CardTitle className="text-sm font-semibold text-pink-500">#{hashtag}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 pb-4">
+                  {tPosts.map((tp) => (
+                    <div
+                      key={tp.id}
+                      className="flex items-start justify-between gap-3 text-sm py-2 border-b border-border/40 last:border-0"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-foreground/90">
+                          {tp.caption
+                            ? tp.caption.slice(0, 100)
+                            : <span className="text-muted-foreground italic">No caption</span>}
+                        </p>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                          {tp.like_count != null     && <span>❤️ {fmt(tp.like_count)}</span>}
+                          {tp.comments_count != null && <span>💬 {fmt(tp.comments_count)}</span>}
+                          {tp.media_type && (
+                            <Badge variant="outline" className="text-[10px]">
+                              {mediaTypeLabel(tp.media_type)}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      {tp.permalink && (
+                        <a
+                          href={tp.permalink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-muted-foreground hover:text-foreground shrink-0 mt-0.5"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      )}
 
     </div>
   );
