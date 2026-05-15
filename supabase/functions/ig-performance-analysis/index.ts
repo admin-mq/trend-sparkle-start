@@ -7,9 +7,25 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const META_API_VERSION   = 'v21.0';
-const MAX_HASHTAGS       = 5;   // IG hashtag search: 30 unique/week limit — keep conservative
-const TOP_MEDIA_PER_TAG  = 4;
+const META_API_VERSION  = 'v21.0';
+const MAX_HASHTAGS      = 5;
+const TOP_MEDIA_PER_TAG = 4;
+
+// Extract most-frequent hashtags from post captions
+function extractTopHashtags(captions: string[], limit: number): string[] {
+  const freq = new Map<string, number>();
+  for (const caption of captions) {
+    const matches = caption.match(/#(\w+)/g) ?? [];
+    for (const tag of matches) {
+      const t = tag.slice(1).toLowerCase();
+      freq.set(t, (freq.get(t) ?? 0) + 1);
+    }
+  }
+  return [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([tag]) => tag);
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -23,7 +39,7 @@ serve(async (req) => {
 
     const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
-    // ── 1. Load connection ─────────────────────────────────────────────────────
+    // 1. Load connection
     const { data: conn } = await db
       .from('instagram_connections')
       .select('instagram_user_id, access_token, username, profile_picture_url')
@@ -34,7 +50,7 @@ serve(async (req) => {
 
     const { instagram_user_id: igUserId, access_token: token } = conn;
 
-    // ── 2. Load synced posts ───────────────────────────────────────────────────
+    // 2. Load synced posts
     const { data: posts } = await db
       .from('instagram_synced_posts')
       .select('caption, media_type, posted_at, permalink, impressions, reach, saved, shares')
@@ -44,7 +60,7 @@ serve(async (req) => {
 
     const syncedPosts = posts ?? [];
 
-    // ── 3. OpenAI performance summary ─────────────────────────────────────────
+    // 3. OpenAI performance summary
     const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     let summary: Record<string, unknown> | null = null;
 
@@ -84,29 +100,47 @@ serve(async (req) => {
       }
     }
 
-    // ── 4. Trending hashtags via Instagram Public Content Access ───────────────
+    // 4. Resolve hashtags to search:
+    //    Primary  — top_hashtags from creator persona (set by parse-creator-persona after sync)
+    //    Fallback — extract most-used hashtags directly from post captions
     const { data: profile } = await db
       .from('user_profiles')
       .select('creator_persona')
       .eq('user_id', user_id)
       .maybeSingle();
 
-    const topHashtags: string[] = (profile?.creator_persona as Record<string, unknown>)?.top_hashtags as string[] ?? [];
-    const hashtagsToSearch = topHashtags.slice(0, MAX_HASHTAGS);
+    const personaHashtags: string[] =
+      (profile?.creator_persona as Record<string, unknown>)?.top_hashtags as string[] ?? [];
 
+    const captionTexts = syncedPosts
+      .map((p) => p.caption ?? '')
+      .filter((c) => c.length > 0);
+
+    const hashtagsToSearch = personaHashtags.length > 0
+      ? personaHashtags.slice(0, MAX_HASHTAGS)
+      : extractTopHashtags(captionTexts, MAX_HASHTAGS);
+
+    console.log(
+      `[ig-performance-analysis] source=${
+        personaHashtags.length > 0 ? 'persona' : 'captions'
+      } hashtags:`, hashtagsToSearch
+    );
+
+    // 5. Trending hashtags via Instagram Public Content Access
     const trending: { hashtag: string; posts: unknown[] }[] = [];
 
     for (const tag of hashtagsToSearch) {
       try {
-        // Step 1 — get hashtag ID
         const idResp = await fetch(
           `https://graph.facebook.com/${META_API_VERSION}/ig_hashtag_search?user_id=${igUserId}&q=${encodeURIComponent(tag)}&access_token=${token}`
         );
         const idData = await idResp.json();
         const hashtagId = idData.data?.[0]?.id;
-        if (!hashtagId) continue;
+        if (!hashtagId) {
+          console.warn(`[ig-performance-analysis] No hashtag ID for #${tag}:`, idData);
+          continue;
+        }
 
-        // Step 2 — get top media for that hashtag
         const mediaResp = await fetch(
           `https://graph.facebook.com/${META_API_VERSION}/${hashtagId}/top_media?user_id=${igUserId}&fields=id,caption,media_type,like_count,comments_count,timestamp,permalink&limit=${TOP_MEDIA_PER_TAG}&access_token=${token}`
         );
@@ -114,6 +148,8 @@ serve(async (req) => {
 
         if (!mediaData.error && mediaData.data?.length > 0) {
           trending.push({ hashtag: tag, posts: mediaData.data });
+        } else if (mediaData.error) {
+          console.warn(`[ig-performance-analysis] top_media error for #${tag}:`, mediaData.error);
         }
       } catch (err) {
         console.warn(`[ig-performance-analysis] Hashtag search failed for #${tag}:`, err);
