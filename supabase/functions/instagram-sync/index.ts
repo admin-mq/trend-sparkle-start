@@ -62,12 +62,19 @@ serve(async (req) => {
         );
         const insightsData = await insightsResp.json();
 
-        if (!insightsData.error && insightsData.data) {
+        if (!insightsData.error && insightsData.data?.length > 0) {
           for (const m of insightsData.data) {
             // Insights can return `values` array or top-level `value`
             metrics[m.name] = m.values?.[0]?.value ?? m.value ?? 0;
           }
         } else {
+          // Log first two failures so we can diagnose the root cause
+          if (insightsFail < 2) {
+            console.warn(
+              `[instagram-sync] Insights failed for post ${post.id} (type=${post.media_type}):`,
+              JSON.stringify(insightsData).slice(0, 500)
+            );
+          }
           insightsFail++;
         }
 
