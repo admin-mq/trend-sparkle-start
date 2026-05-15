@@ -26,6 +26,7 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
+  Instagram,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -90,6 +91,7 @@ const creatorNavGroups = [
       { path: "/hashtag-gap-analysis", label: "Tag Gap Finder",   icon: Layers },
       { path: "/trending-audios",      label: "Trending Audios",  icon: Music },
       { path: "/creator-analysis",     label: "Analysis",         icon: LineChart },
+      { path: "/my-instagram",          label: "My Instagram",     icon: Instagram },
       { path: "/brand-collab",          label: "Brand Collab",     icon: DollarSign },
       { path: "/creator-collab",        label: "Creator Collab",   icon: Eye },
     ],
