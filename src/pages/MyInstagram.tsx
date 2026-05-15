@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Instagram, Link2, Loader2, TrendingUp, Eye, Bookmark, Share2,
   Sparkles, Hash, ArrowRight, ExternalLink, AlertCircle, RefreshCw,
+  Brain,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -47,6 +48,18 @@ type TrendingPost = {
 
 type TrendingSection = { hashtag: string; posts: TrendingPost[] };
 
+type CreatorPersona = {
+  niche?: string;
+  sub_niches?: string[];
+  region_code?: string;
+  content_style?: string;
+  audience_type?: string;
+  top_hashtags?: string[];
+  content_themes?: string[];
+  ig_enriched?: boolean;
+  summary?: string;
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const fmt = (n: number | null) =>
@@ -78,6 +91,10 @@ export default function MyInstagram() {
   const [postsLoading, setPostsLoading] = useState(false);
   const [posts,        setPosts]        = useState<SyncedPost[]>([]);
 
+  // ── Creator persona (direct DB — always available) ────────────────────────
+  const [persona,        setPersona]        = useState<CreatorPersona | null>(null);
+  const [personaLoading, setPersonaLoading] = useState(false);
+
   // ── AI analysis + trending (edge function — optional) ─────────────────────
   const [aiLoading,  setAiLoading]  = useState(false);
   const [summary,    setSummary]    = useState<AISummary | null>(null);
@@ -87,7 +104,7 @@ export default function MyInstagram() {
   // ── Instagram OAuth ────────────────────────────────────────────────────────
   const [igConnecting, setIgConnecting] = useState(false);
 
-  // Step 1 — check connection directly from DB
+  // Step 1 — check connection + load persona, both directly from DB
   useEffect(() => {
     if (!user) return;
     supabase
@@ -98,6 +115,16 @@ export default function MyInstagram() {
       .then(({ data }) => {
         setConnection(data ?? null);
         setConnLoading(false);
+      });
+    setPersonaLoading(true);
+    supabase
+      .from("user_profiles")
+      .select("creator_persona")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        setPersona((data?.creator_persona as CreatorPersona) ?? null);
+        setPersonaLoading(false);
       });
   }, [user]);
 
@@ -225,6 +252,95 @@ export default function MyInstagram() {
           Refresh
         </Button>
       </div>
+
+      {/* Creator Persona */}
+      {!personaLoading && persona && persona.niche ? (
+        <Card className="border-violet-500/20 bg-violet-500/5">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Brain className="w-4 h-4 text-violet-500" />
+              Your Creator Persona
+              {persona.ig_enriched && (
+                <Badge className="ml-auto text-[10px] bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                  Built from your posts
+                </Badge>
+              )}
+            </CardTitle>
+            {persona.summary && (
+              <CardDescription className="text-foreground/80">
+                {persona.summary}
+              </CardDescription>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {persona.niche && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Niche</p>
+                  <p className="font-medium">{persona.niche}</p>
+                </div>
+              )}
+              {persona.content_style && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Content Style</p>
+                  <p>{persona.content_style}</p>
+                </div>
+              )}
+              {persona.audience_type && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Audience</p>
+                  <p>{persona.audience_type}</p>
+                </div>
+              )}
+              {persona.region_code && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Region</p>
+                  <p>{persona.region_code}</p>
+                </div>
+              )}
+            </div>
+            {(persona.sub_niches?.length ?? 0) > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Sub-niches</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {persona.sub_niches!.map((s) => (
+                    <Badge key={s} variant="secondary" className="text-xs">{s}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {(persona.content_themes?.length ?? 0) > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Content Themes</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {persona.content_themes!.map((t) => (
+                    <Badge key={t} variant="outline" className="text-xs">{t}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            {(persona.top_hashtags?.length ?? 0) > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">Your Top Hashtags</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {persona.top_hashtags!.map((h) => (
+                    <Badge key={h} variant="outline" className="text-xs text-pink-500 border-pink-500/30">
+                      #{h}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : !personaLoading && !persona?.niche ? (
+        <Card className="border-dashed border-border/60">
+          <CardContent className="py-4 flex items-center gap-3 text-sm text-muted-foreground">
+            <Brain className="w-4 h-4 shrink-0 text-violet-500/60" />
+            Your creator persona will appear here after your first Instagram sync.
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* AI Performance Summary */}
       {aiLoading ? (
