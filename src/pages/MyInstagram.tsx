@@ -169,6 +169,40 @@ export default function MyInstagram() {
     }
   };
 
+  // Full refresh: sync posts → rebuild persona → AI analysis
+  const [syncing, setSyncing] = useState(false);
+
+  const handleRefresh = async () => {
+    if (!user) return;
+    setSyncing(true);
+    try {
+      // Re-sync posts + insights + trigger persona rebuild
+      await supabase.functions.invoke("instagram-sync", { body: { user_id: user.id } });
+      // Reload posts from DB
+      const { data: freshPosts } = await supabase
+        .from("instagram_synced_posts")
+        .select("caption, media_type, posted_at, permalink, impressions, reach, saved, shares")
+        .eq("user_id", user.id)
+        .order("posted_at", { ascending: false })
+        .limit(25);
+      setPosts(freshPosts ?? []);
+      // Reload persona from DB (parse-creator-persona runs async in sync, give it a moment)
+      await new Promise(r => setTimeout(r, 3000));
+      const { data: freshProfile } = await supabase
+        .from("user_profiles")
+        .select("creator_persona")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      setPersona((freshProfile?.creator_persona as CreatorPersona) ?? null);
+    } catch {
+      toast.error("Sync failed — check your connection");
+    } finally {
+      setSyncing(false);
+    }
+    // Then fire AI analysis
+    loadAiAnalysis();
+  };
+
   const handleConnectInstagram = async () => {
     if (!user) { toast.error("Sign in first"); return; }
     setIgConnecting(true);
@@ -245,11 +279,11 @@ export default function MyInstagram() {
         <Button
           variant="ghost" size="sm"
           className="ml-auto gap-1.5 text-xs text-muted-foreground"
-          onClick={loadAiAnalysis}
-          disabled={aiLoading}
+          onClick={handleRefresh}
+          disabled={syncing || aiLoading}
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${aiLoading ? "animate-spin" : ""}`} />
-          Refresh
+          <RefreshCw className={`w-3.5 h-3.5 ${syncing || aiLoading ? "animate-spin" : ""}`} />
+          {syncing ? "Syncing…" : "Refresh"}
         </Button>
       </div>
 
