@@ -1347,15 +1347,6 @@ const HashtagAnalysis = () => {
                 <p className="text-[10px] text-muted-foreground">Include in your caption to reinforce the hashtag signals.</p>
               </div>
             )}
-            {result.safe.best_posting_time && (
-              <div className="post-card p-3.5 flex items-start gap-3">
-                <Clock className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Best Time to Post</p>
-                  <p className="text-sm text-foreground leading-snug">{result.safe.best_posting_time}</p>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* A/B set panels side by side */}
