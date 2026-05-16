@@ -6,9 +6,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const META_API_VERSION   = 'v21.0';
-const INSIGHTS_METRICS   = 'impressions,reach,saved,shares';
-const MAX_POSTS_TO_FETCH = 25;
+const META_API_VERSION        = 'v21.0';
+const IMAGE_METRICS           = 'impressions,reach,saved,shares';
+const VIDEO_METRICS           = 'plays,reach,saved,shares'; // Reels don't support impressions
+const CAROUSEL_METRICS        = 'impressions,reach,saved,shares';
+const MAX_POSTS_TO_FETCH      = 25;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -55,20 +57,26 @@ serve(async (req) => {
 
     for (const post of posts) {
       try {
-        // Fetch insights for this post
+        // Fetch insights — metric set differs by media type (Reels use 'plays' not 'impressions')
         let metrics: Record<string, number> = {};
+        const metricSet = post.media_type === 'VIDEO' ? VIDEO_METRICS
+          : post.media_type === 'CAROUSEL_ALBUM' ? CAROUSEL_METRICS
+          : IMAGE_METRICS;
+
         const insightsResp = await fetch(
-          `https://graph.facebook.com/${META_API_VERSION}/${post.id}/insights?metric=${INSIGHTS_METRICS}&access_token=${token}`
+          `https://graph.facebook.com/${META_API_VERSION}/${post.id}/insights?metric=${metricSet}&access_token=${token}`
         );
         const insightsData = await insightsResp.json();
 
         if (!insightsData.error && insightsData.data?.length > 0) {
           for (const m of insightsData.data) {
-            // Insights can return `values` array or top-level `value`
             metrics[m.name] = m.values?.[0]?.value ?? m.value ?? 0;
           }
+          // Normalise: store plays as impressions so the UI column stays consistent
+          if (metrics.plays !== undefined && metrics.impressions === undefined) {
+            metrics.impressions = metrics.plays;
+          }
         } else {
-          // Log first two failures so we can diagnose the root cause
           if (insightsFail < 2) {
             console.warn(
               `[instagram-sync] Insights failed for post ${post.id} (type=${post.media_type}):`,
